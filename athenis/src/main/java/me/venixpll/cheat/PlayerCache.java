@@ -1,5 +1,6 @@
 package me.venixpll.cheat;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -7,8 +8,12 @@ import java.util.List;
  * memory-polling thread and the main rendering thread.
  */
 public class PlayerCache {
+
     /**
      * PlayerData holds cached state information for a single player in the game.
+     * Written exclusively by the slow entity-traversal thread and the fast
+     * position thread. Never read directly by the renderer — use
+     * {@link PlayerSnapshot} instead.
      */
     public static class PlayerData {
         public int index;
@@ -16,15 +21,15 @@ public class PlayerCache {
         public int team;
         public String name;
         public final Vector3 position = new Vector3();
-        
+
         public boolean isLocal;
         public boolean onScreen;
-        
-        // Projected screen coordinates (feet/base of box)
+
+        // Projected screen coordinates (feet/base of box) — kept for legacy modules
         public float feetX;
         public float feetY;
-        
-        // Projected screen coordinates (head/top of box)
+
+        // Projected screen coordinates (head/top of box) — kept for legacy modules
         public float headX;
         public float headY;
 
@@ -58,6 +63,74 @@ public class PlayerCache {
     }
 
     /**
+     * Immutable snapshot of a single player's render-ready state, built by the
+     * fast position loop and consumed by the renderer.
+     * <p>
+     * Because all fields are set once in the constructor and never mutated
+     * afterwards, the renderer can read any field at any time without
+     * synchronization and always gets a fully consistent value — no half-updated
+     * states, no race conditions between the memory thread and the render thread.
+     */
+    public static final class PlayerSnapshot {
+        public final int index;
+        public final int health;
+        public final int team;
+        public final String name;
+        public final boolean isLocal;
+        public final boolean onScreen;
+
+        /** Screen-space coordinates of the feet (bottom of bounding box). */
+        public final float feetX;
+        public final float feetY;
+        /** Screen-space coordinates of the head (top of bounding box). */
+        public final float headX;
+        public final float headY;
+
+        /** World-space foot position — kept for future use (distance calc, etc.). */
+        public final float worldX;
+        public final float worldY;
+        public final float worldZ;
+
+        public final float yaw;
+        public final boolean hasBomb;
+        public final long pawnAddress;
+
+        /** Velocity vector in world-space units/sec, read alongside origin. */
+        public final float velX;
+        public final float velY;
+        public final float velZ;
+
+        /**
+         * Builds an immutable snapshot from the mutable {@link PlayerData} object
+         * plus freshly projected screen coordinates.
+         * Called once per fast-loop iteration for every tracked player.
+         */
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ) {
+            this.index       = src.index;
+            this.health      = src.health;
+            this.team        = src.team;
+            this.name        = src.name;
+            this.isLocal     = src.isLocal;
+            this.onScreen    = onScreen;
+            this.feetX       = feetX;
+            this.feetY       = feetY;
+            this.headX       = headX;
+            this.headY       = headY;
+            this.worldX      = src.position.x;
+            this.worldY      = src.position.y;
+            this.worldZ      = src.position.z;
+            this.yaw         = src.yaw;
+            this.hasBomb     = src.hasBomb;
+            this.pawnAddress = src.pawnAddress;
+            this.velX        = velX;
+            this.velY        = velY;
+            this.velZ        = velZ;
+        }
+    }
+
+    /**
      * Raw player metadata snapshot published by the slow entity-traversal loop (~10 Hz).
      * Contains health, team, name, and pawn addresses; positions and screen coordinates
      * start at zero and are filled in by the fast position loop on its next iteration.
@@ -68,27 +141,39 @@ public class PlayerCache {
     public static volatile List<PlayerData> rawPlayers = new java.util.ArrayList<>();
 
     /**
-     * Screen-ready player snapshot published by the fast position loop every iteration.
-     * Contains up-to-date world positions and projected screen coordinates alongside
-     * the health / team / name data carried over from the last slow-loop update.
-     * <p>
-     * This is the list the render thread reads — it always reflects the most recent
-     * position sync without blocking on the slower entity traversal.
+     * Screen-ready player snapshot (legacy mutable list) published by the fast
+     * position loop every iteration. Kept for compatibility with modules that
+     * still reference {@code PlayerData} directly (e.g. RadarHackModule).
      */
     public static volatile List<PlayerData> players = new java.util.ArrayList<>();
-    
-    // Cached game view matrix
-    public static final float[] viewMatrix = new float[16];
-    
-    // Overlay screen width matching CS2 window
+
+    /**
+     * Immutable render-ready snapshot list published by the fast position loop every
+     * iteration. The renderer reads this once per frame; the volatile reference swap
+     * ensures it always sees a fully-consistent, never half-written snapshot list.
+     * <p>
+     * This is what ESPModule reads. Never mutate entries — they are final objects.
+     */
+    public static volatile List<PlayerSnapshot> renderPlayers = Collections.emptyList();
+
+    /**
+     * Current view-projection matrix from CS2, stored as a {@code volatile}
+     * reference. {@link me.venixpll.cheat.reader.ViewMatrixReader} writes a
+     * freshly-allocated {@code float[16]} each tick and swaps the reference
+     * atomically, so the renderer always reads a completely written matrix
+     * and never catches it mid-update.
+     */
+    public static volatile float[] viewMatrix = new float[16];
+
+    /** Overlay screen width matching CS2 window. */
     public static volatile int screenWidth = 1920;
-    
-    // Overlay screen height matching CS2 window
+
+    /** Overlay screen height matching CS2 window. */
     public static volatile int screenHeight = 1080;
-    
-    // Status flag indicating whether the overlay is aligned and tracking CS2
+
+    /** Status flag indicating whether the overlay is aligned and tracking CS2. */
     public static volatile boolean tracking = false;
 
-    // Raw pawn memory address of the local player (used for view-angle read/write)
+    /** Raw pawn memory address of the local player (used for view-angle read/write). */
     public static volatile long localPlayerPawnAddress = 0L;
 }

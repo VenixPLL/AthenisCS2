@@ -44,22 +44,27 @@ public final class ScreenProjector {
                 + matrix[13] * worldPos.y
                 + matrix[14] * worldPos.z
                 + matrix[15];
-        if (w < 0.01f) return false;
+        // Guard against NaN/Infinity: IEEE 754 means NaN < 0.01f is FALSE,
+        // so without this isFinite check a NaN w would pass and produce NaN
+        // screen coordinates that crash native ImGui draw calls.
+        if (!Float.isFinite(w) || w < 0.01f) return false;
 
-        // Compute clip-space X and Y from the view-projection matrix rows 0 and 1.
         float x = matrix[0] * worldPos.x + matrix[1] * worldPos.y
                 + matrix[2]  * worldPos.z + matrix[3];
         float y = matrix[4] * worldPos.x + matrix[5] * worldPos.y
                 + matrix[6]  * worldPos.z + matrix[7];
 
-        // Perspective divide: transform clip coords to NDC in the range [-1, +1].
         float nx = x / w;
         float ny = y / w;
 
-        // Map NDC to pixel space.
-        // NDC X [-1..+1] → [0..width]; NDC Y is flipped because screen Y grows downward.
-        screenOut[0] = (width  * 0.5f) + (nx * width  * 0.5f);
-        screenOut[1] = (height * 0.5f) - (ny * height * 0.5f);
+        float sx = (width  * 0.5f) + (nx * width  * 0.5f);
+        float sy = (height * 0.5f) - (ny * height * 0.5f);
+
+        // Final sanity check: projected coords must be finite numbers.
+        if (!Float.isFinite(sx) || !Float.isFinite(sy)) return false;
+
+        screenOut[0] = sx;
+        screenOut[1] = sy;
         return true;
     }
 }

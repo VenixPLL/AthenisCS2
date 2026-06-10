@@ -11,6 +11,7 @@ import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 
 import java.nio.charset.StandardCharsets;
+import com.sun.jna.ptr.IntByReference;
 
 /**
  * CS2Memory handles external interaction with the Counter-Strike 2 process.
@@ -117,6 +118,22 @@ public class CS2Memory {
      */
     public static boolean isAttached() {
         return processHandle != null;
+    }
+
+    /**
+     * Checks if the CS2 process is still running.
+     * 
+     * @return True if running, false if exited or not attached.
+     */
+    public static boolean isProcessRunning() {
+        if (processHandle == null) {
+            return false;
+        }
+        IntByReference exitCode = new IntByReference();
+        if (Kernel32.INSTANCE.GetExitCodeProcess(processHandle, exitCode)) {
+            return exitCode.getValue() == WinBase.STILL_ACTIVE;
+        }
+        return false;
     }
 
     /**

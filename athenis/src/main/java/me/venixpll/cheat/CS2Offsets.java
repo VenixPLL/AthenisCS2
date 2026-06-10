@@ -41,6 +41,14 @@ public class CS2Offsets {
     /** Offset to the view angles struct {pitch, yaw, roll} inside player pawn */
     public static int m_angEyeAngles = 0x1518;
 
+    /**
+     * Velocity vector of the player pawn (3 floats: vx, vy, vz in units/sec).
+     * Used by PositionReader to extrapolate the player's current world position
+     * forward by the pipeline read latency, compensating for m_vOldOrigin lag.
+     * Fallback: 0x3C8 (typical offset in recent CS2 builds).
+     */
+    public static int m_vecVelocity = 0x3C8;
+
     // Weapon services offsets
     public static int m_pWeaponServices = 0x11A0;
     public static int m_hMyWeapons = 0x40;
@@ -183,6 +191,10 @@ public class CS2Offsets {
             if (fields != null && fields.has("m_pWeaponServices")) {
                 m_pWeaponServices = fields.get("m_pWeaponServices").getAsInt();
             }
+            // Velocity offset — lives in C_BasePlayerPawn alongside m_vOldOrigin
+            if (fields != null && fields.has("m_vecVelocity")) {
+                m_vecVelocity = fields.get("m_vecVelocity").getAsInt();
+            }
         }
 
         if (classes.has("CPlayer_WeaponServices")) {
@@ -211,5 +223,6 @@ public class CS2Offsets {
         System.out.println(String.format("  > m_bSpotted: 0x%X", m_bSpotted));
         System.out.println(String.format("  > m_pWeaponServices: 0x%X", m_pWeaponServices));
         System.out.println(String.format("  > m_hMyWeapons: 0x%X", m_hMyWeapons));
+        System.out.println(String.format("  > m_vecVelocity: 0x%X", m_vecVelocity));
     }
 }

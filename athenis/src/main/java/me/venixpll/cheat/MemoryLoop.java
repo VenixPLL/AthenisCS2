@@ -8,6 +8,7 @@ import me.venixpll.cheat.reader.PositionReader;
 import me.venixpll.cheat.reader.ViewMatrixReader;
 
 import java.util.List;
+import me.venixpll.overlay.OverlayWindow;
 
 /**
  * Orchestrates two background daemon threads for CS2 memory polling.
@@ -110,6 +111,11 @@ public class MemoryLoop {
                             Thread.sleep(1000);
                             continue;
                         }
+                    } else if (!CS2Memory.isProcessRunning()) {
+                        System.out.println("[MemoryLoop] Counter-Strike 2 process has exited. Stopping engine.");
+                        MemoryLoop.stop();
+                        OverlayWindow.requestClose();
+                        break;
                     }
 
                     long clientBase = CS2Memory.getClientBase();
@@ -119,29 +125,38 @@ public class MemoryLoop {
                     }
 
                     // ── 1. Read latest view matrix ────────────────────────────
-                    // Writes directly into PlayerCache.viewMatrix using a pre-allocated buffer.
+                    // Writes a freshly-allocated float[16] into PlayerCache.viewMatrix
+                    // via a volatile reference swap — renderer never sees a half-written matrix.
                     ViewMatrixReader.read(clientBase);
 
-                    // ── 2. Read positions for all tracked players ─────────────
+                    // ── 2. Snapshot the current matrix reference once ──────────
+                    // Take a local reference so we use the exact same matrix for
+                    // all projections in this iteration, even if ViewMatrixReader
+                    // swaps in a new one mid-loop.
+                    float[] matrix = PlayerCache.viewMatrix;
+
+                    // ── 3. Build immutable render snapshots ───────────────────
                     // rawPlayers is set by the slow loop; we take a snapshot reference
                     // so a slow-loop swap mid-iteration doesn't affect us.
                     List<PlayerCache.PlayerData> raw = PlayerCache.rawPlayers;
 
-                    PositionReader.updatePositions(
+                    List<PlayerCache.PlayerSnapshot> snapshots = PositionReader.buildSnapshots(
                             raw,
-                            PlayerCache.viewMatrix,
+                            matrix,
                             PlayerCache.screenWidth,
                             PlayerCache.screenHeight);
 
-                    // ── 3. Publish screen-ready data to the render thread ─────
-                    // Volatile write — render thread sees the new reference on its
-                    // next read without needing a lock.
-                    PlayerCache.players = raw;
+                    // ── 4. Publish both new and legacy lists atomically ────────
+                    // volatile writes — render thread and legacy modules see the new
+                    // reference on their next read without needing a lock.
+                    PlayerCache.renderPlayers = snapshots;   // immutable; used by ESPModule
+                    PlayerCache.players = raw;                // mutable; used by RadarHack etc.
 
                     // Yield the remainder of the time slice so other threads can run.
                     // We do NOT sleep — any sleep granularity (typically 15 ms on
                     // Windows) would cap us well below high-refresh-rate displays.
                     Thread.yield();
+
 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

@@ -36,9 +36,12 @@ public final class ViewMatrixReader {
      */
     public static void read(long clientBase) {
         if (CS2Memory.readInto(clientBase + CS2Offsets.dwViewMatrix, BUFFER, 64)) {
-            // Copy the 16 native floats directly into the shared PlayerCache array.
-            // No intermediate allocation — BUFFER ownership stays in this class.
-            BUFFER.read(0, PlayerCache.viewMatrix, 0, 16);
+            // Allocate a fresh array and swap the volatile reference atomically.
+            // The renderer always reads a fully-written matrix this way — it can
+            // never observe a matrix being written to concurrently.
+            float[] fresh = new float[16];
+            BUFFER.read(0, fresh, 0, 16);
+            PlayerCache.viewMatrix = fresh;
         }
     }
 }

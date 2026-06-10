@@ -15,10 +15,12 @@ me\venixpll\launcher\LauncherWindow$5.class
 me\venixpll\cheat\MemoryLoop.class
 me\venixpll\launcher\LauncherWindow$6.class
 me\venixpll\cheat\module\CheatModule.class
+me\venixpll\cheat\PlayerCache$PlayerSnapshot.class
 me\venixpll\launcher\LauncherWindow$TeeOutputStream.class
 me\venixpll\launcher\LauncherWindow.class
 me\venixpll\cheat\projection\ScreenProjector.class
 me\venixpll\cheat\Vector3.class
+me\venixpll\cheat\module\impl\TriggerBotModule.class
 me\venixpll\config\ConfigManager.class
 me\venixpll\overlay\OverlayMenu.class
 me\venixpll\cheat\module\ModuleManager.class
