@@ -2,6 +2,11 @@ package me.venixpll.cheat.module.impl;
 
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
+import me.venixpll.cheat.CS2Memory;
+import me.venixpll.cheat.CS2Offsets;
+import me.venixpll.cheat.Vector3;
+import me.venixpll.cheat.vischeck.VisCheck;
+import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
@@ -64,6 +69,11 @@ public class TriggerBotModule extends CheatModule {
      */
     public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only", true);
 
+    /**
+     * When {@code true}, the triggerbot will only fire if the target's head is visible via VisCheck.
+     */
+    public final BooleanSetting useVisCheck = new BooleanSetting("Use VisCheck Filter", true);
+
     // ── Internals ─────────────────────────────────────────────────────────────
 
     private volatile boolean triggerThreadRunning = false;
@@ -88,6 +98,7 @@ public class TriggerBotModule extends CheatModule {
         addSetting(clickDuration);
         addSetting(cooldown);
         addSetting(enemyOnly);
+        addSetting(useVisCheck);
     }
 
     /**
@@ -147,9 +158,28 @@ public class TriggerBotModule extends CheatModule {
 
                     boolean onHead = false;
 
+                    // Read local camera position once per tick
+                    Vector3 localCamera = null;
+                    VisCheck visCheck = VisCheckAdapter.getVisCheck();
+                    if (useVisCheck.getValue() && visCheck != null) {
+                        long localPawn = PlayerCache.localPlayerPawnAddress;
+                        if (localPawn != 0) {
+                            Vector3 localOrigin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+                            if (localOrigin != null) {
+                                localCamera = new Vector3(localOrigin.x, localOrigin.y, localOrigin.z + 64.0f);
+                            }
+                        }
+                    }
+
                     for (PlayerSnapshot p : players) {
                         if (p.isLocal || !p.onScreen) continue;
                         if (enemyOnly.getValue() && p.team == ESPModule.localTeam) continue;
+                        if (useVisCheck.getValue() && visCheck != null && localCamera != null) {
+                            Vector3 targetHead = new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f);
+                            if (!visCheck.isPointVisible(localCamera, targetHead)) {
+                                continue;
+                            }
+                        }
 
                         // Distance from crosshair to projected head position.
                         // headX/headY are the top-of-box projection; the visual head
@@ -216,9 +246,27 @@ public class TriggerBotModule extends CheatModule {
      */
     private boolean stillOnHead(float cx, float cy, float r2) {
         List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        VisCheck visCheck = VisCheckAdapter.getVisCheck();
+        Vector3 localCamera = null;
+        if (useVisCheck.getValue() && visCheck != null) {
+            long localPawn = PlayerCache.localPlayerPawnAddress;
+            if (localPawn != 0) {
+                Vector3 localOrigin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+                if (localOrigin != null) {
+                    localCamera = new Vector3(localOrigin.x, localOrigin.y, localOrigin.z + 64.0f);
+                }
+            }
+        }
+
         for (PlayerSnapshot p : players) {
             if (p.isLocal || !p.onScreen) continue;
             if (enemyOnly.getValue() && p.team == ESPModule.localTeam) continue;
+            if (useVisCheck.getValue() && visCheck != null && localCamera != null) {
+                Vector3 targetHead = new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f);
+                if (!visCheck.isPointVisible(localCamera, targetHead)) {
+                    continue;
+                }
+            }
             float biasPx = (p.feetY - p.headY) * 0.05f;
             float dx = cx - p.headX;
             float dy = cy - (p.headY + biasPx);

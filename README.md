@@ -103,6 +103,7 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 | Click Duration (ms) | `40` | LMB hold duration |
 | Cooldown (ms) | `80` | Minimum time between shots |
 | Enemy Only | ✅ | Only fire at opponents |
+| Use VisCheck Filter | ✅ | Only fire if the target's head is visible via VisCheck |
 
 ---
 
