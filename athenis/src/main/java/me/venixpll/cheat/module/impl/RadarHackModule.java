@@ -329,6 +329,7 @@ public class RadarHackModule extends CheatModule {
 
                 if (rawMap.isEmpty()) {
                         currentMapData = null;
+                        lastMapName = "";
                         VisCheckAdapter.update("");
                         mapLogTicks++;
                         if (mapLogTicks % 30 == 0) {
@@ -388,6 +389,8 @@ public class RadarHackModule extends CheatModule {
                 if (!isEnabled() || !showOverlay.getValue())
                         return;
                 if (!PlayerCache.tracking)
+                        return;
+                if (lastMapName == null || lastMapName.isEmpty() || lastMapName.equalsIgnoreCase("<empty>"))
                         return;
 
                 // ── Dynamic HUD Alignment ─────────────────────────────────────────────

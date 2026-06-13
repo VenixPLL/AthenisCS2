@@ -7,6 +7,7 @@ import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.cheat.module.impl.RadarHackModule;
 import me.venixpll.cheat.module.impl.TriggerBotModule;
+import me.venixpll.cheat.module.impl.BunnyHopModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
@@ -26,13 +27,14 @@ import java.time.format.DateTimeFormatter;
  * <p>
  * Provides a modern dark-themed GUI with:
  * <ul>
- *   <li>A <b>START</b> button that loads offsets, registers modules, starts the
- *       memory threads, and launches the transparent overlay window.</li>
- *   <li>A <b>STOP</b> button that halts the memory threads and closes the overlay.</li>
- *   <li>A live coloured log area that intercepts {@link System#out} and
- *       {@link System#err}, timestamps every line, and highlights known patterns
- *       (addresses, success messages, errors, tags).</li>
- *   <li>An animated pulsing status dot indicating the current engine state.</li>
+ * <li>A <b>START</b> button that loads offsets, registers modules, starts the
+ * memory threads, and launches the transparent overlay window.</li>
+ * <li>A <b>STOP</b> button that halts the memory threads and closes the
+ * overlay.</li>
+ * <li>A live coloured log area that intercepts {@link System#out} and
+ * {@link System#err}, timestamps every line, and highlights known patterns
+ * (addresses, success messages, errors, tags).</li>
+ * <li>An animated pulsing status dot indicating the current engine state.</li>
  * </ul>
  * The launcher is an undecorated window with a custom drag-able title bar,
  * keeping it visually consistent across Windows versions.
@@ -40,24 +42,24 @@ import java.time.format.DateTimeFormatter;
 public class LauncherWindow extends JFrame {
 
     // ── Colour palette (Catppuccin Mocha-inspired) ────────────────────────────
-    private static final Color C_BG       = new Color(0x0A0B0E);
-    private static final Color C_SURFACE  = new Color(0x111318);
+    private static final Color C_BG = new Color(0x0A0B0E);
+    private static final Color C_SURFACE = new Color(0x111318);
     private static final Color C_SURFACE2 = new Color(0x161B22);
-    private static final Color C_BORDER   = new Color(0x21262D);
-    private static final Color C_ACCENT   = new Color(0x00B4D8);  // cyan
-    private static final Color C_TAG      = new Color(0x89B4FA);  // lavender — for [Tag] labels
-    private static final Color C_TEXT     = new Color(0xCDD6F4);  // primary text
-    private static final Color C_TEXT_DIM = new Color(0x6C7086);  // muted text
-    private static final Color C_SUCCESS  = new Color(0xA6E3A1);  // green
-    private static final Color C_ERROR    = new Color(0xF38BA8);  // red
-    private static final Color C_WARN     = new Color(0xF9E2AF);  // yellow
-    private static final Color C_TEAL     = new Color(0x89DCEB);  // hex values / addresses
+    private static final Color C_BORDER = new Color(0x21262D);
+    private static final Color C_ACCENT = new Color(0x00B4D8); // cyan
+    private static final Color C_TAG = new Color(0x89B4FA); // lavender — for [Tag] labels
+    private static final Color C_TEXT = new Color(0xCDD6F4); // primary text
+    private static final Color C_TEXT_DIM = new Color(0x6C7086); // muted text
+    private static final Color C_SUCCESS = new Color(0xA6E3A1); // green
+    private static final Color C_ERROR = new Color(0xF38BA8); // red
+    private static final Color C_WARN = new Color(0xF9E2AF); // yellow
+    private static final Color C_TEAL = new Color(0x89DCEB); // hex values / addresses
 
     // ── Typography ────────────────────────────────────────────────────────────
-    private static final Font F_TITLE  = new Font("Segoe UI", Font.BOLD,  20);
-    private static final Font F_SMALL  = new Font("Segoe UI", Font.PLAIN, 12);
-    private static final Font F_MONO   = new Font("Consolas", Font.PLAIN, 12);
-    private static final Font F_BTN    = new Font("Segoe UI", Font.BOLD,  12);
+    private static final Font F_TITLE = new Font("Segoe UI", Font.BOLD, 20);
+    private static final Font F_SMALL = new Font("Segoe UI", Font.PLAIN, 12);
+    private static final Font F_MONO = new Font("Consolas", Font.PLAIN, 12);
+    private static final Font F_BTN = new Font("Segoe UI", Font.BOLD, 12);
     private static final Font F_STATUS = new Font("Segoe UI", Font.PLAIN, 13);
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -72,18 +74,18 @@ public class LauncherWindow extends JFrame {
     private Point windowLocAtDrag;
 
     // ── Component references ──────────────────────────────────────────────────
-    private JTextPane      logPane;
+    private JTextPane logPane;
     private StyledDocument logDoc;
-    private JButton        startBtn;
-    private JButton        stopBtn;
-    private JButton        hotkeyBtn;
-    private JLabel         statusLabel;
-    private JPanel         pulseDot;
+    private JButton startBtn;
+    private JButton stopBtn;
+    private JButton hotkeyBtn;
+    private JLabel statusLabel;
+    private JPanel pulseDot;
 
     /** Pulse animation: current opacity of the status dot (0.0–1.0). */
-    private float   pulseAlpha   = 1.0f;
+    private float pulseAlpha = 1.0f;
     /** True while the dot is fading out; false while brightening. */
-    private boolean pulseFading  = true;
+    private boolean pulseFading = true;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -105,6 +107,7 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new ESPModule());
             ModuleManager.registerModule(new RadarHackModule());
             ModuleManager.registerModule(new TriggerBotModule());
+            ModuleManager.registerModule(new BunnyHopModule());
         }
         ConfigManager.load();
 
@@ -123,13 +126,13 @@ public class LauncherWindow extends JFrame {
         setLayout(new BorderLayout());
         getRootPane().setBorder(BorderFactory.createLineBorder(C_BORDER, 1));
 
-        add(buildTitleBar(),  BorderLayout.NORTH);
+        add(buildTitleBar(), BorderLayout.NORTH);
 
         JPanel body = new JPanel(new BorderLayout());
         body.setBackground(C_BG);
         body.add(buildStatusBar(), BorderLayout.NORTH);
-        body.add(buildLogArea(),   BorderLayout.CENTER);
-        body.add(buildControls(),  BorderLayout.SOUTH);
+        body.add(buildLogArea(), BorderLayout.CENTER);
+        body.add(buildControls(), BorderLayout.SOUTH);
         add(body, BorderLayout.CENTER);
     }
 
@@ -151,7 +154,8 @@ public class LauncherWindow extends JFrame {
 
         // Small glowing accent dot acting as a logo
         JPanel logoDot = new JPanel() {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 // Outer soft glow ring
@@ -208,20 +212,25 @@ public class LauncherWindow extends JFrame {
         bar.add(right, BorderLayout.EAST);
 
         // ── Drag support ──────────────────────────────────────────────────────
-        // Track screen coordinates so drag works regardless of which child fires the event.
+        // Track screen coordinates so drag works regardless of which child fires the
+        // event.
         MouseAdapter drag = new MouseAdapter() {
-            @Override public void mousePressed(MouseEvent e) {
+            @Override
+            public void mousePressed(MouseEvent e) {
                 dragAnchorScreen = e.getLocationOnScreen();
-                windowLocAtDrag  = getLocation();
+                windowLocAtDrag = getLocation();
             }
-            @Override public void mouseDragged(MouseEvent e) {
-                if (dragAnchorScreen == null) return;
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (dragAnchorScreen == null)
+                    return;
                 Point now = e.getLocationOnScreen();
                 setLocation(windowLocAtDrag.x + now.x - dragAnchorScreen.x,
-                            windowLocAtDrag.y + now.y - dragAnchorScreen.y);
+                        windowLocAtDrag.y + now.y - dragAnchorScreen.y);
             }
         };
-        for (Component c : new Component[]{bar, left, logoDot, title, sub}) {
+        for (Component c : new Component[] { bar, left, logoDot, title, sub }) {
             c.addMouseListener(drag);
             c.addMouseMotionListener(drag);
         }
@@ -230,7 +239,8 @@ public class LauncherWindow extends JFrame {
     }
 
     /**
-     * Builds the slim status row that shows the animated pulse dot and current state text.
+     * Builds the slim status row that shows the animated pulse dot and current
+     * state text.
      */
     private JPanel buildStatusBar() {
         JPanel row = new JPanel(new BorderLayout());
@@ -242,11 +252,12 @@ public class LauncherWindow extends JFrame {
 
         // Animated dot — colour and opacity driven by pulseTimer
         pulseDot = new JPanel() {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color base = overlayRunning ? C_SUCCESS : C_TEXT_DIM;
-                int alpha  = Math.max(0, Math.min(255, (int)(pulseAlpha * 255)));
+                int alpha = Math.max(0, Math.min(255, (int) (pulseAlpha * 255)));
                 g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha));
                 g2.fillOval(0, 2, 10, 10);
                 g2.dispose();
@@ -316,7 +327,8 @@ public class LauncherWindow extends JFrame {
 
         // Hotkey configuration button
         hotkeyBtn = new JButton("MENU KEY: " + KeyEvent.getKeyText(OverlayWindow.toggleKeyJava).toUpperCase()) {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color fill;
@@ -355,7 +367,7 @@ public class LauncherWindow extends JFrame {
                     int code = e.getKeyCode();
                     OverlayWindow.toggleKeyJava = code;
                     ConfigManager.save();
-                    
+
                     isListeningForKey = false;
                     hotkeyBtn.setText("MENU KEY: " + KeyEvent.getKeyText(OverlayWindow.toggleKeyJava).toUpperCase());
                     hotkeyBtn.repaint();
@@ -383,7 +395,8 @@ public class LauncherWindow extends JFrame {
             LookAndFeel oldLaF = UIManager.getLookAndFeel();
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
@@ -393,7 +406,8 @@ public class LauncherWindow extends JFrame {
 
             try {
                 UIManager.setLookAndFeel(oldLaF);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             if (result == JFileChooser.APPROVE_OPTION) {
                 File selectedDir = chooser.getSelectedFile();
@@ -437,7 +451,8 @@ public class LauncherWindow extends JFrame {
      */
     private JButton buildWindowCtrlButton(String text, Color fg, Color hoverBg) {
         JButton btn = new JButton(text) {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 if (getModel().isRollover()) {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -456,7 +471,8 @@ public class LauncherWindow extends JFrame {
     }
 
     /**
-     * Creates a flat rounded action button used for secondary actions like STOP and CLEAR.
+     * Creates a flat rounded action button used for secondary actions like STOP and
+     * CLEAR.
      *
      * @param text Label.
      * @param fg   Foreground colour.
@@ -464,7 +480,8 @@ public class LauncherWindow extends JFrame {
      */
     private JButton buildFlatButton(String text, Color fg, Color bg) {
         JButton btn = new JButton(text) {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color fill = isEnabled()
@@ -492,7 +509,8 @@ public class LauncherWindow extends JFrame {
      */
     private JButton buildGradientButton(String text, Color topCol, Color botCol) {
         JButton btn = new JButton(text) {
-            @Override protected void paintComponent(Graphics g) {
+            @Override
+            protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
@@ -528,8 +546,10 @@ public class LauncherWindow extends JFrame {
     // ── Pulse animation ───────────────────────────────────────────────────────
 
     /**
-     * Starts a 50 ms Swing Timer that drives the breathing animation of the status dot.
-     * When the engine is idle the dot is dim; when running it cycles between 30–100% opacity.
+     * Starts a 50 ms Swing Timer that drives the breathing animation of the status
+     * dot.
+     * When the engine is idle the dot is dim; when running it cycles between
+     * 30–100% opacity.
      */
     private void startPulseAnimation() {
         new Timer(50, e -> {
@@ -540,13 +560,20 @@ public class LauncherWindow extends JFrame {
                 // Running: smooth breath effect
                 if (pulseFading) {
                     pulseAlpha -= 0.04f;
-                    if (pulseAlpha <= 0.3f) { pulseAlpha = 0.3f; pulseFading = false; }
+                    if (pulseAlpha <= 0.3f) {
+                        pulseAlpha = 0.3f;
+                        pulseFading = false;
+                    }
                 } else {
                     pulseAlpha += 0.04f;
-                    if (pulseAlpha >= 1.0f) { pulseAlpha = 1.0f; pulseFading = true;  }
+                    if (pulseAlpha >= 1.0f) {
+                        pulseAlpha = 1.0f;
+                        pulseFading = true;
+                    }
                 }
             }
-            if (pulseDot != null) pulseDot.repaint();
+            if (pulseDot != null)
+                pulseDot.repaint();
         }).start();
     }
 
@@ -561,23 +588,27 @@ public class LauncherWindow extends JFrame {
         PrintStream origOut = System.out;
         PrintStream origErr = System.err;
         System.setOut(new PrintStream(new TeeOutputStream(origOut, false), true));
-        System.setErr(new PrintStream(new TeeOutputStream(origErr, true),  true));
+        System.setErr(new PrintStream(new TeeOutputStream(origErr, true), true));
     }
 
     // ── Engine lifecycle ──────────────────────────────────────────────────────
 
     /**
-     * Bootstraps the full cheat engine on a background thread when START is clicked.
+     * Bootstraps the full cheat engine on a background thread when START is
+     * clicked.
      * <ol>
-     *   <li>Loads CS2 offsets (network or fallback).</li>
-     *   <li>Registers cheat modules (idempotent on repeated START).</li>
-     *   <li>Starts the fast position thread and slow data thread via {@link MemoryLoop}.</li>
-     *   <li>Calls {@code Application.launch()} which blocks until the overlay closes.</li>
+     * <li>Loads CS2 offsets (network or fallback).</li>
+     * <li>Registers cheat modules (idempotent on repeated START).</li>
+     * <li>Starts the fast position thread and slow data thread via
+     * {@link MemoryLoop}.</li>
+     * <li>Calls {@code Application.launch()} which blocks until the overlay
+     * closes.</li>
      * </ol>
      * All UI mutations are dispatched to the EDT.
      */
     private void onStart() {
-        if (overlayRunning) return;
+        if (overlayRunning)
+            return;
         startBtn.setEnabled(false);
         setStatus("Initialising...", C_WARN);
 
@@ -591,12 +622,12 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new ESPModule());
                     ModuleManager.registerModule(new RadarHackModule());
                     ModuleManager.registerModule(new TriggerBotModule());
+                    ModuleManager.registerModule(new BunnyHopModule());
                 }
 
                 // Restore user's last saved configuration before starting the engine.
                 log("INFO", "Loading saved configuration...");
                 ConfigManager.load();
-
 
                 log("INFO", "Starting background memory threads...");
                 MemoryLoop.start();
@@ -628,7 +659,8 @@ public class LauncherWindow extends JFrame {
 
     /**
      * Requests a graceful shutdown of the memory threads and the overlay window
-     * when STOP is clicked. The actual cleanup and UI reset happen in {@link #onStopped()}
+     * when STOP is clicked. The actual cleanup and UI reset happen in
+     * {@link #onStopped()}
      * once the overlay's blocking {@code Application.launch()} call returns.
      */
     private void onStop() {
@@ -637,13 +669,14 @@ public class LauncherWindow extends JFrame {
         // even if the overlay window closes before postRun() fully executes.
         ConfigManager.save();
         MemoryLoop.stop();
-        OverlayWindow.requestClose();   // signals the GLFW window to close
+        OverlayWindow.requestClose(); // signals the GLFW window to close
         setStatus("Stopping...", C_WARN);
         stopBtn.setEnabled(false);
     }
 
     /**
-     * Called on the background engine thread after {@code Application.launch()} returns.
+     * Called on the background engine thread after {@code Application.launch()}
+     * returns.
      * Resets all UI state so the user can press START again.
      */
     private void onStopped() {
@@ -657,7 +690,7 @@ public class LauncherWindow extends JFrame {
     }
 
     /**
-     * Updates the status bar label and dot colour.  Safe to call from any thread.
+     * Updates the status bar label and dot colour. Safe to call from any thread.
      */
     private void setStatus(String text, Color color) {
         if (SwingUtilities.isEventDispatchThread()) {
@@ -675,7 +708,8 @@ public class LauncherWindow extends JFrame {
      * Safe to call from any thread — marshals to the EDT when necessary.
      *
      * @param level  Log level ("INFO", "WARN", "ERROR").
-     * @param rawMsg Raw message string, optionally starting with a {@code [Tag]} prefix.
+     * @param rawMsg Raw message string, optionally starting with a {@code [Tag]}
+     *               prefix.
      */
     void log(String level, String rawMsg) {
         if (!SwingUtilities.isEventDispatchThread()) {
@@ -689,8 +723,8 @@ public class LauncherWindow extends JFrame {
             // If the message already carries a [Tag] prefix, colour that separately
             // from the body so e.g. "[CS2Memory] Found..." shows a distinct teal tag.
             if (rawMsg.startsWith("[") && rawMsg.indexOf(']') > 0) {
-                int  end  = rawMsg.indexOf(']') + 1;
-                String tag  = rawMsg.substring(0, end);
+                int end = rawMsg.indexOf(']') + 1;
+                String tag = rawMsg.substring(0, end);
                 String rest = rawMsg.substring(end).stripLeading();
                 appendStyled(tag + " ", C_TAG, true);
                 appendStyled(rest + "\n", resolveColor(level, rest), false);
@@ -700,29 +734,37 @@ public class LauncherWindow extends JFrame {
 
             // Always scroll to the newest line
             logPane.setCaretPosition(logDoc.getLength());
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     /**
-     * Picks the foreground colour for a log message based on stream level and keywords.
+     * Picks the foreground colour for a log message based on stream level and
+     * keywords.
      *
      * @param level Log level ("INFO", "WARN", "ERROR", …).
      * @param msg   Message body (without the [Tag] prefix).
      * @return A {@link Color} appropriate for the content.
      */
     private Color resolveColor(String level, String msg) {
-        if ("ERROR".equalsIgnoreCase(level)) return C_ERROR;
+        if ("ERROR".equalsIgnoreCase(level))
+            return C_ERROR;
         String lo = msg.toLowerCase();
-        if (lo.contains("error") || lo.contains("fail") || lo.contains("exception")) return C_ERROR;
-        if (lo.contains("warn"))                                                      return C_WARN;
+        if (lo.contains("error") || lo.contains("fail") || lo.contains("exception"))
+            return C_ERROR;
+        if (lo.contains("warn"))
+            return C_WARN;
         if (lo.contains("success") || lo.contains("attached") || lo.contains("found")
-                || lo.contains("registered") || lo.contains("ready"))                return C_SUCCESS;
-        if (lo.contains("0x") || lo.contains("pid") || lo.contains("base"))          return C_TEAL;
+                || lo.contains("registered") || lo.contains("ready"))
+            return C_SUCCESS;
+        if (lo.contains("0x") || lo.contains("pid") || lo.contains("base"))
+            return C_TEAL;
         return C_TEXT;
     }
 
     /**
-     * Inserts {@code text} into the styled log document with the given colour and weight.
+     * Inserts {@code text} into the styled log document with the given colour and
+     * weight.
      */
     private void appendStyled(String text, Color color, boolean bold) {
         try {
@@ -732,7 +774,8 @@ public class LauncherWindow extends JFrame {
             StyleConstants.setFontFamily(s, "Consolas");
             StyleConstants.setFontSize(s, 12);
             logDoc.insertString(logDoc.getLength(), text, s);
-        } catch (BadLocationException ignored) {}
+        } catch (BadLocationException ignored) {
+        }
     }
 
     // ── TeeOutputStream ───────────────────────────────────────────────────────
@@ -748,16 +791,17 @@ public class LauncherWindow extends JFrame {
      */
     private class TeeOutputStream extends OutputStream {
 
-        private final PrintStream   delegate;
-        private final boolean       isErrorStream;
+        private final PrintStream delegate;
+        private final boolean isErrorStream;
         private final StringBuilder buf = new StringBuilder(128);
 
         /**
          * @param delegate      The original stream to forward bytes to.
-         * @param isErrorStream {@code true} for {@code stderr}; used to assign ERROR level.
+         * @param isErrorStream {@code true} for {@code stderr}; used to assign ERROR
+         *                      level.
          */
         TeeOutputStream(PrintStream delegate, boolean isErrorStream) {
-            this.delegate      = delegate;
+            this.delegate = delegate;
             this.isErrorStream = isErrorStream;
         }
 
@@ -766,7 +810,8 @@ public class LauncherWindow extends JFrame {
             delegate.write(b);
             synchronized (buf) {
                 buf.append((char) b);
-                if (b == '\n') drainBuffer();
+                if (b == '\n')
+                    drainBuffer();
             }
         }
 
@@ -780,7 +825,8 @@ public class LauncherWindow extends JFrame {
                 while ((nl = buf.indexOf("\n")) >= 0) {
                     String line = buf.substring(0, nl).stripTrailing();
                     buf.delete(0, nl + 1);
-                    if (!line.isEmpty()) emitLine(line);
+                    if (!line.isEmpty())
+                        emitLine(line);
                 }
             }
         }
@@ -789,7 +835,8 @@ public class LauncherWindow extends JFrame {
         private void drainBuffer() {
             String line = buf.toString().stripTrailing();
             buf.setLength(0);
-            if (!line.isEmpty()) emitLine(line);
+            if (!line.isEmpty())
+                emitLine(line);
         }
 
         /**
@@ -798,7 +845,8 @@ public class LauncherWindow extends JFrame {
          */
         private void emitLine(String line) {
             String level = isErrorStream ? "ERROR" : "INFO";
-            if (line.toLowerCase().contains("warn")) level = "WARN";
+            if (line.toLowerCase().contains("warn"))
+                level = "WARN";
             final String finalLevel = level;
             SwingUtilities.invokeLater(() -> log(finalLevel, line));
         }
@@ -807,19 +855,29 @@ public class LauncherWindow extends JFrame {
     // ── Dark scrollbar ────────────────────────────────────────────────────────
 
     /**
-     * A minimal dark-themed scroll bar UI with rounded thumb and invisible arrow buttons.
-     * Applied to the log pane's vertical scrollbar to match the overall colour palette.
+     * A minimal dark-themed scroll bar UI with rounded thumb and invisible arrow
+     * buttons.
+     * Applied to the log pane's vertical scrollbar to match the overall colour
+     * palette.
      */
     private static class DarkScrollBarUI extends BasicScrollBarUI {
 
-        @Override protected void configureScrollBarColors() {
+        @Override
+        protected void configureScrollBarColors() {
             thumbColor = new Color(0x3D4451);
             trackColor = C_BG;
         }
 
         /** Replaces the default arrow buttons with invisible zero-size stubs. */
-        @Override protected JButton createDecreaseButton(int o) { return zeroButton(); }
-        @Override protected JButton createIncreaseButton(int o) { return zeroButton(); }
+        @Override
+        protected JButton createDecreaseButton(int o) {
+            return zeroButton();
+        }
+
+        @Override
+        protected JButton createIncreaseButton(int o) {
+            return zeroButton();
+        }
 
         private JButton zeroButton() {
             JButton b = new JButton();
@@ -829,8 +887,10 @@ public class LauncherWindow extends JFrame {
             return b;
         }
 
-        @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
-            if (r.isEmpty()) return;
+        @Override
+        protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
+            if (r.isEmpty())
+                return;
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(isDragging ? new Color(0x585B70) : thumbColor);
@@ -838,7 +898,8 @@ public class LauncherWindow extends JFrame {
             g2.dispose();
         }
 
-        @Override protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
+        @Override
+        protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
             g.setColor(trackColor);
             g.fillRect(r.x, r.y, r.width, r.height);
         }

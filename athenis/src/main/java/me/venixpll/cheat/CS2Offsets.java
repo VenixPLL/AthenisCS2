@@ -21,6 +21,7 @@ public class CS2Offsets {
     /** Offset to local player view angle struct {pitch, yaw, roll} in client.dll */
     public static long dwViewAngles = 37034408L;
     public static long dwGlobalVars = 0L;
+    public static long dwForceJump = 33972128L;
 
     // Schema variable offsets (loaded from client_dll.json)
     public static int m_hPlayerPawn = 2316;
@@ -28,6 +29,7 @@ public class CS2Offsets {
     public static int m_iTeamNum = 1003;
     public static int m_vOldOrigin = 5008;
     public static int m_iszPlayerName = 1780;
+    public static int m_fFlags = 0x3EC;
     /** Offset to the recoil punch angle struct {pitch, yaw} inside player pawn */
     public static int m_aimPunchAngle = 5296;
     /**
@@ -56,6 +58,7 @@ public class CS2Offsets {
 
     private static final String OFFSETS_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/offsets.json";
     private static final String CLIENT_DLL_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/client_dll.json";
+    private static final String BUTTONS_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/buttons.json";
 
     /**
      * Initializes offsets by attempting to download them dynamically from GitHub.
@@ -77,9 +80,14 @@ public class CS2Offsets {
             HttpResponse<String> clientDllResponse = client.send(clientDllRequest,
                     HttpResponse.BodyHandlers.ofString());
 
-            if (offsetsResponse.statusCode() == 200 && clientDllResponse.statusCode() == 200) {
+            // Fetch buttons.json
+            HttpRequest buttonsRequest = HttpRequest.newBuilder().uri(URI.create(BUTTONS_URL)).build();
+            HttpResponse<String> buttonsResponse = client.send(buttonsRequest, HttpResponse.BodyHandlers.ofString());
+
+            if (offsetsResponse.statusCode() == 200 && clientDllResponse.statusCode() == 200 && buttonsResponse.statusCode() == 200) {
                 parseOffsets(offsetsResponse.body());
                 parseClientDll(clientDllResponse.body());
+                parseButtons(buttonsResponse.body());
                 System.out.println("[CS2Offsets] Successfully loaded latest offsets from a2x/cs2-dumper!");
                 logOffsets();
                 return;
@@ -140,6 +148,13 @@ public class CS2Offsets {
         m_iszPlayerName = classes.getAsJsonObject("CBasePlayerController")
                 .getAsJsonObject("fields")
                 .get("m_iszPlayerName").getAsInt();
+
+        if (classes.has("C_BaseEntity") &&
+                classes.getAsJsonObject("C_BaseEntity").getAsJsonObject("fields").has("m_fFlags")) {
+            m_fFlags = classes.getAsJsonObject("C_BaseEntity")
+                    .getAsJsonObject("fields")
+                    .get("m_fFlags").getAsInt();
+        }
 
         // Aim punch angle (recoil compensation for silent aim)
         if (classes.has("C_CSPlayerPawnBase") &&
@@ -206,6 +221,19 @@ public class CS2Offsets {
     }
 
     /**
+     * Parses the button offsets from buttons.json content.
+     * 
+     * @param json Content of the buttons.json file.
+     */
+    private static void parseButtons(String json) {
+        JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+        JsonObject clientButtons = obj.getAsJsonObject("client.dll");
+        if (clientButtons.has("jump")) {
+            dwForceJump = clientButtons.get("jump").getAsLong();
+        }
+    }
+
+    /**
      * Logs the current offsets to console for debugging purposes.
      */
     private static void logOffsets() {
@@ -214,11 +242,13 @@ public class CS2Offsets {
         System.out.println(String.format("  > dwLocalPlayerPawn: 0x%X", dwLocalPlayerPawn));
         System.out.println(String.format("  > dwViewAngles: 0x%X", dwViewAngles));
         System.out.println(String.format("  > dwGlobalVars: 0x%X", dwGlobalVars));
+        System.out.println(String.format("  > dwForceJump: 0x%X", dwForceJump));
         System.out.println(String.format("  > m_hPlayerPawn: 0x%X", m_hPlayerPawn));
         System.out.println(String.format("  > m_iHealth: 0x%X", m_iHealth));
         System.out.println(String.format("  > m_iTeamNum: 0x%X", m_iTeamNum));
         System.out.println(String.format("  > m_vOldOrigin: 0x%X", m_vOldOrigin));
         System.out.println(String.format("  > m_iszPlayerName: 0x%X", m_iszPlayerName));
+        System.out.println(String.format("  > m_fFlags: 0x%X", m_fFlags));
         System.out.println(String.format("  > m_aimPunchAngle: 0x%X", m_aimPunchAngle));
         System.out.println(String.format("  > m_bSpotted: 0x%X", m_bSpotted));
         System.out.println(String.format("  > m_pWeaponServices: 0x%X", m_pWeaponServices));
