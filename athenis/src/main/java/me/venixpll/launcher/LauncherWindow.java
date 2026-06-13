@@ -63,6 +63,7 @@ public class LauncherWindow extends JFrame {
 
     // ── Runtime state ─────────────────────────────────────────────────────────
     private volatile boolean overlayRunning = false;
+    private boolean isListeningForKey = false;
 
     /** Screen position at the start of a title-bar drag gesture. */
     private Point dragAnchorScreen;
@@ -74,6 +75,7 @@ public class LauncherWindow extends JFrame {
     private StyledDocument logDoc;
     private JButton        startBtn;
     private JButton        stopBtn;
+    private JButton        hotkeyBtn;
     private JLabel         statusLabel;
     private JPanel         pulseDot;
 
@@ -96,6 +98,14 @@ public class LauncherWindow extends JFrame {
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         getContentPane().setBackground(C_BG);
+
+        // Register cheat modules early so settings can be loaded at startup
+        if (ModuleManager.getModules().isEmpty()) {
+            ModuleManager.registerModule(new ESPModule());
+            ModuleManager.registerModule(new RadarHackModule());
+            ModuleManager.registerModule(new TriggerBotModule());
+        }
+        ConfigManager.load();
 
         buildUI();
         redirectStreams();
@@ -302,6 +312,69 @@ public class LauncherWindow extends JFrame {
             log("INFO", "Log cleared.");
         });
         left.add(clearBtn);
+
+        // Hotkey configuration button
+        hotkeyBtn = new JButton("MENU KEY: " + KeyEvent.getKeyText(OverlayWindow.toggleKeyJava).toUpperCase()) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color fill;
+                if (isListeningForKey) {
+                    fill = new Color(0x1B2A4A); // deep blue for active listening state
+                } else if (getModel().isRollover()) {
+                    fill = C_SURFACE2.brighter();
+                } else {
+                    fill = C_SURFACE2;
+                }
+                g2.setColor(fill);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        hotkeyBtn.setForeground(C_ACCENT);
+        hotkeyBtn.setFont(F_BTN);
+        hotkeyBtn.setPreferredSize(new Dimension(170, 34));
+        styleButtonBase(hotkeyBtn);
+        hotkeyBtn.setFocusable(true);
+
+        hotkeyBtn.addActionListener(e -> {
+            if (!isListeningForKey) {
+                isListeningForKey = true;
+                hotkeyBtn.setText("PRESS ANY KEY...");
+                hotkeyBtn.repaint();
+                hotkeyBtn.requestFocusInWindow();
+            }
+        });
+
+        hotkeyBtn.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (isListeningForKey) {
+                    int code = e.getKeyCode();
+                    OverlayWindow.toggleKeyJava = code;
+                    ConfigManager.save();
+                    
+                    isListeningForKey = false;
+                    hotkeyBtn.setText("MENU KEY: " + KeyEvent.getKeyText(OverlayWindow.toggleKeyJava).toUpperCase());
+                    hotkeyBtn.repaint();
+                    logPane.requestFocusInWindow();
+                }
+            }
+        });
+
+        hotkeyBtn.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                if (isListeningForKey) {
+                    isListeningForKey = false;
+                    hotkeyBtn.setText("MENU KEY: " + KeyEvent.getKeyText(OverlayWindow.toggleKeyJava).toUpperCase());
+                    hotkeyBtn.repaint();
+                }
+            }
+        });
+
+        left.add(hotkeyBtn);
 
         // Primary (right) actions
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));

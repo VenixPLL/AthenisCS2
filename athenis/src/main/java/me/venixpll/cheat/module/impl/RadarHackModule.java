@@ -14,6 +14,13 @@ import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.Type;
+import java.util.Map;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
 import java.util.List;
 
 /**
@@ -121,21 +128,28 @@ public class RadarHackModule extends CheatModule {
                 }
         }
 
-        private static final java.util.Map<String, MapOverviewData> MAPS = new java.util.HashMap<>();
+        private static final Map<String, MapOverviewData> MAPS = new java.util.HashMap<>();
         static {
-                MAPS.put("de_dust2", new MapOverviewData(-2476f, 3239f, 4.4f)); // ok
-                MAPS.put("de_mirage", new MapOverviewData(-3230f, 1713f, 5.0f)); // ok (corrected)
-                MAPS.put("de_inferno", new MapOverviewData(-2087f, 3870f, 4.9f)); // ok
-                MAPS.put("de_nuke", new MapOverviewData(-3453f, 2887f, 7.0f)); // ok (corrected)
-                MAPS.put("de_overpass", new MapOverviewData(-4831f, 1781f, 5.2f)); // ok
-                MAPS.put("de_ancient", new MapOverviewData(-2896f, 2170f, 5.0f)); // ok (corrected for CS2)
-                MAPS.put("de_ancient_night", new MapOverviewData(-2896f, 2170f, 5.0f)); // ok (corrected for CS2)
-                MAPS.put("de_anubis", new MapOverviewData(-2796f, 3328f, 5.22f)); // ok
-                MAPS.put("de_vertigo", new MapOverviewData(-3168f, 1762f, 4.0f)); // ok (corrected)
-                MAPS.put("cs_office", new MapOverviewData(-1838f, 1858f, 4.1f)); // ok (corrected)
-                MAPS.put("cs_italy", new MapOverviewData(-2647f, 2592f, 4.6f)); // ok
-                MAPS.put("de_cache", new MapOverviewData(-2278f, 3469f, 5.5f));
+                try (InputStream stream = RadarHackModule.class.getResourceAsStream("/data/radar_offsets.json")) {
+                        if (stream != null) {
+                                try (InputStreamReader reader = new InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)) {
+                                        Gson gson = new Gson();
+                                        Type type = new TypeToken<java.util.Map<String, MapOverviewData>>(){}.getType();
+                                        Map<String, MapOverviewData> loaded = gson.fromJson(reader, type);
+                                        if (loaded != null) {
+                                                MAPS.putAll(loaded);
+                                                System.out.println("[RadarHackModule] Loaded " + MAPS.size() + " map overview data entries from radar_offsets.json");
+                                        }
+                                }
+                        } else {
+                                System.err.println("[RadarHackModule] Could not find /data/radar_offsets.json in resources!");
+                        }
+                } catch (Exception e) {
+                        System.err.println("[RadarHackModule] Failed to load map overview data from JSON: " + e.getMessage());
+                        e.printStackTrace();
+                }
         }
+
 
         private String lastMapName = "";
         private volatile MapOverviewData currentMapData = null;

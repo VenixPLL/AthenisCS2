@@ -1,0 +1,62 @@
+{
+  "de_dust2": {
+    "posX": -2476.0,
+    "posY": 3239.0,
+    "scale": 4.4
+  },
+  "de_mirage": {
+    "posX": -3230.0,
+    "posY": 1713.0,
+    "scale": 5.0
+  },
+  "de_inferno": {
+    "posX": -2087.0,
+    "posY": 3870.0,
+    "scale": 4.9
+  },
+  "de_nuke": {
+    "posX": -3453.0,
+    "posY": 2887.0,
+    "scale": 7.0
+  },
+  "de_overpass": {
+    "posX": -4831.0,
+    "posY": 1781.0,
+    "scale": 5.2
+  },
+  "de_ancient": {
+    "posX": -2896.0,
+    "posY": 2170.0,
+    "scale": 5.0
+  },
+  "de_ancient_night": {
+    "posX": -2896.0,
+    "posY": 2170.0,
+    "scale": 5.0
+  },
+  "de_anubis": {
+    "posX": -2796.0,
+    "posY": 3328.0,
+    "scale": 5.22
+  },
+  "de_vertigo": {
+    "posX": -3168.0,
+    "posY": 1762.0,
+    "scale": 4.0
+  },
+  "cs_office": {
+    "posX": -1838.0,
+    "posY": 1858.0,
+    "scale": 4.1
+  },
+  "cs_italy": {
+    "posX": -2647.0,
+    "posY": 2592.0,
+    "scale": 4.6
+  },
+  "de_cache": {
+    "posX": -2000.0,
+    "posY": 3250.0,
+    "scale": 5.5
+  }
+}

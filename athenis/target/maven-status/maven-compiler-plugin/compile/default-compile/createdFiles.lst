@@ -1,5 +1,6 @@
 me\venixpll\launcher\LauncherWindow$DarkScrollBarUI.class
 me\venixpll\cheat\vischeck\Triangle.class
+me\venixpll\launcher\LauncherWindow$7.class
 me\venixpll\cheat\vischeck\Parser.class
 me\venixpll\launcher\LauncherWindow$3.class
 me\venixpll\cheat\reader\PositionReader.class
@@ -12,10 +13,12 @@ me\venixpll\launcher\LauncherWindow$TeeOutputStream.class
 me\venixpll\cheat\projection\ScreenProjector.class
 me\venixpll\cheat\Vector3.class
 me\venixpll\cheat\module\ModuleManager.class
+me\venixpll\launcher\LauncherWindow$9.class
 me\venixpll\cheat\module\impl\RadarHackModule.class
 me\venixpll\cheat\setting\Setting.class
 me\venixpll\overlay\OverlayWindow.class
 me\venixpll\Main.class
+me\venixpll\cheat\module\impl\RadarHackModule$1.class
 me\venixpll\cheat\CS2Memory.class
 me\venixpll\cheat\setting\BooleanSetting.class
 me\venixpll\cheat\vischeck\VisCheck.class
@@ -23,6 +26,7 @@ me\venixpll\cheat\vischeck\OptimizedGeometry.class
 me\venixpll\cheat\PlayerCache.class
 me\venixpll\cheat\vischeck\AABB.class
 me\venixpll\cheat\reader\EntityDataReader.class
+me\venixpll\launcher\LauncherWindow$8.class
 me\venixpll\launcher\LauncherWindow$2.class
 me\venixpll\cheat\setting\FloatSetting.class
 me\venixpll\cheat\setting\ColorSetting.class

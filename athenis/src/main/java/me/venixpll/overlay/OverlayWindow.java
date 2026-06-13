@@ -7,6 +7,7 @@ import imgui.ImGui;
 import imgui.app.Application;
 import imgui.app.Configuration;
 import imgui.flag.ImGuiConfigFlags;
+import java.awt.event.KeyEvent;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.module.CheatModule;
@@ -42,8 +43,62 @@ public class OverlayWindow extends Application {
     private int cachedGameX = 0, cachedGameY = 0, cachedGameW = 1920, cachedGameH = 1080;
     private boolean cachedGameFound = false;
 
+    /** Configurable Java keycode to toggle the menu, default is KeyEvent.VK_INSERT (155) */
+    public static int toggleKeyJava = KeyEvent.VK_INSERT;
+
+    /**
+     * Maps Java AWT KeyEvent codes to Windows Virtual Key (VK) codes.
+     */
+    public static int javaToWindowsKey(int javaKey) {
+        if (javaKey >= java.awt.event.KeyEvent.VK_A && javaKey <= java.awt.event.KeyEvent.VK_Z) {
+            return javaKey; // A-Z are same
+        }
+        if (javaKey >= java.awt.event.KeyEvent.VK_0 && javaKey <= java.awt.event.KeyEvent.VK_9) {
+            return javaKey; // 0-9 are same
+        }
+        if (javaKey >= java.awt.event.KeyEvent.VK_F1 && javaKey <= java.awt.event.KeyEvent.VK_F12) {
+            return javaKey; // F1-F12 are same
+        }
+        if (javaKey >= java.awt.event.KeyEvent.VK_NUMPAD0 && javaKey <= java.awt.event.KeyEvent.VK_NUMPAD9) {
+            return javaKey - java.awt.event.KeyEvent.VK_NUMPAD0 + 0x60; // Numpad 0-9
+        }
+        switch (javaKey) {
+            case java.awt.event.KeyEvent.VK_INSERT: return 0x2D;
+            case java.awt.event.KeyEvent.VK_DELETE: return 0x2E;
+            case java.awt.event.KeyEvent.VK_BACK_SPACE: return 0x08;
+            case java.awt.event.KeyEvent.VK_TAB: return 0x09;
+            case java.awt.event.KeyEvent.VK_ENTER: return 0x0D;
+            case java.awt.event.KeyEvent.VK_SHIFT: return 0x10;
+            case java.awt.event.KeyEvent.VK_CONTROL: return 0x11;
+            case java.awt.event.KeyEvent.VK_ALT: return 0x12;
+            case java.awt.event.KeyEvent.VK_PAUSE: return 0x13;
+            case java.awt.event.KeyEvent.VK_CAPS_LOCK: return 0x14;
+            case java.awt.event.KeyEvent.VK_ESCAPE: return 0x1B;
+            case java.awt.event.KeyEvent.VK_SPACE: return 0x20;
+            case java.awt.event.KeyEvent.VK_PAGE_UP: return 0x21;
+            case java.awt.event.KeyEvent.VK_PAGE_DOWN: return 0x22;
+            case java.awt.event.KeyEvent.VK_END: return 0x23;
+            case java.awt.event.KeyEvent.VK_HOME: return 0x24;
+            case java.awt.event.KeyEvent.VK_LEFT: return 0x25;
+            case java.awt.event.KeyEvent.VK_UP: return 0x26;
+            case java.awt.event.KeyEvent.VK_RIGHT: return 0x27;
+            case java.awt.event.KeyEvent.VK_DOWN: return 0x28;
+            case java.awt.event.KeyEvent.VK_COMMA: return 0xBC;
+            case java.awt.event.KeyEvent.VK_PERIOD: return 0xBE;
+            case java.awt.event.KeyEvent.VK_SLASH: return 0xBF;
+            case java.awt.event.KeyEvent.VK_SEMICOLON: return 0xBA;
+            case java.awt.event.KeyEvent.VK_EQUALS: return 0xBB;
+            case java.awt.event.KeyEvent.VK_OPEN_BRACKET: return 0xDB;
+            case java.awt.event.KeyEvent.VK_BACK_SLASH: return 0xDC;
+            case java.awt.event.KeyEvent.VK_CLOSE_BRACKET: return 0xDD;
+            case java.awt.event.KeyEvent.VK_MINUS: return 0xBD;
+            case java.awt.event.KeyEvent.VK_BACK_QUOTE: return 0xC0;
+            default: return javaKey; // fallback
+        }
+    }
+
     /** Toggle state controlling whether the configuration menu panel is drawn. */
-    public static boolean menuOpen = true;
+    public static boolean menuOpen = false;
 
     /**
      * When {@code true} the overlay will call
@@ -184,8 +239,9 @@ public class OverlayWindow extends Application {
         long windowHandle = GLFW.glfwGetCurrentContext();
         if (windowHandle == 0) return;
 
-        // Toggle configuration menu via Insert key (VK_INSERT: 0x2D)
-        boolean insertDown = (User32.INSTANCE.GetAsyncKeyState(0x2D) & 0x8000) != 0;
+        // Toggle configuration menu via configured key
+        int winKey = javaToWindowsKey(toggleKeyJava);
+        boolean insertDown = (User32.INSTANCE.GetAsyncKeyState(winKey) & 0x8000) != 0;
         if (insertDown && !lastInsertDown) {
             menuOpen = !menuOpen;
             System.out.println("[OverlayWindow] Menu toggled: " + (menuOpen ? "Visible" : "Hidden"));

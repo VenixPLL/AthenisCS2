@@ -9,6 +9,7 @@ import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.Setting;
+import me.venixpll.overlay.OverlayWindow;
 
 import java.io.File;
 import java.io.FileReader;
@@ -71,6 +72,7 @@ public final class ConfigManager {
     public static void save() {
         try {
             JsonObject root    = new JsonObject();
+            root.addProperty("toggleKeyJava", OverlayWindow.toggleKeyJava);
             JsonObject modules = new JsonObject();
 
             for (CheatModule module : ModuleManager.getModules()) {
@@ -122,31 +124,37 @@ public final class ConfigManager {
 
         try (FileReader reader = new FileReader(file)) {
             JsonObject root = GSON.fromJson(reader, JsonObject.class);
-            if (root == null || !root.has("modules")) return;
+            if (root == null) return;
 
-            JsonObject modules = root.getAsJsonObject("modules");
+            if (root.has("toggleKeyJava")) {
+                OverlayWindow.toggleKeyJava = root.get("toggleKeyJava").getAsInt();
+            }
 
-            for (CheatModule module : ModuleManager.getModules()) {
-                if (!modules.has(module.getName())) continue;
-                JsonObject moduleObj = modules.getAsJsonObject(module.getName());
+            if (root.has("modules")) {
+                JsonObject modules = root.getAsJsonObject("modules");
 
-                // Restore enabled state
-                if (moduleObj.has("enabled")) {
-                    module.setEnabled(moduleObj.get("enabled").getAsBoolean());
-                }
+                for (CheatModule module : ModuleManager.getModules()) {
+                    if (!modules.has(module.getName())) continue;
+                    JsonObject moduleObj = modules.getAsJsonObject(module.getName());
 
-                // Restore individual settings
-                if (!moduleObj.has("settings")) continue;
-                JsonObject settingObj = moduleObj.getAsJsonObject("settings");
+                    // Restore enabled state
+                    if (moduleObj.has("enabled")) {
+                        module.setEnabled(moduleObj.get("enabled").getAsBoolean());
+                    }
 
-                for (Setting<?> setting : module.getSettings()) {
-                    JsonElement el = settingObj.get(setting.getName());
-                    if (el == null) continue;
+                    // Restore individual settings
+                    if (!moduleObj.has("settings")) continue;
+                    JsonObject settingObj = moduleObj.getAsJsonObject("settings");
 
-                    if (setting instanceof FloatSetting) {
-                        ((FloatSetting) setting).setValue(el.getAsFloat());
-                    } else if (setting instanceof BooleanSetting) {
-                        ((BooleanSetting) setting).setValue(el.getAsBoolean());
+                    for (Setting<?> setting : module.getSettings()) {
+                        JsonElement el = settingObj.get(setting.getName());
+                        if (el == null) continue;
+
+                        if (setting instanceof FloatSetting) {
+                            ((FloatSetting) setting).setValue(el.getAsFloat());
+                        } else if (setting instanceof BooleanSetting) {
+                            ((BooleanSetting) setting).setValue(el.getAsBoolean());
+                        }
                     }
                 }
             }
