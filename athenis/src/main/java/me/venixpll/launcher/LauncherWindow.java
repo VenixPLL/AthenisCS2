@@ -9,6 +9,7 @@ import me.venixpll.cheat.module.impl.RadarHackModule;
 import me.venixpll.cheat.module.impl.TriggerBotModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
+import me.venixpll.cheat.vischeck.VPhysToOptConverter;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -375,6 +376,36 @@ public class LauncherWindow extends JFrame {
         });
 
         left.add(hotkeyBtn);
+
+        // VPhys to Opt Converter button
+        JButton convertBtn = buildFlatButton("CONVERT MAPS", C_TEXT_DIM, C_SURFACE2);
+        convertBtn.addActionListener(e -> {
+            LookAndFeel oldLaF = UIManager.getLookAndFeel();
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setDialogTitle("Select Directory containing .vphys files");
+
+            int result = chooser.showOpenDialog(LauncherWindow.this);
+
+            try {
+                UIManager.setLookAndFeel(oldLaF);
+            } catch (Exception ignored) {}
+
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedDir = chooser.getSelectedFile();
+                if (selectedDir != null) {
+                    new Thread(() -> {
+                        log("INFO", "Starting conversion of .vphys files in: " + selectedDir.getAbsolutePath());
+                        VPhysToOptConverter.convertDirectory(selectedDir);
+                    }, "VPhys-Converter-Thread").start();
+                }
+            }
+        });
+        left.add(convertBtn);
 
         // Primary (right) actions
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
