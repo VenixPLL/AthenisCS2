@@ -12,6 +12,7 @@ import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.overlay.OverlayWindow;
+import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
 import java.util.List;
 
@@ -222,14 +223,14 @@ public class RadarHackModule extends CheatModule {
          */
         @Override
         public void onTick() {
-                if (!isEnabled())
-                        return;
-
                 long clientBase = CS2Memory.getClientBase();
                 if (clientBase == 0)
                         return;
 
                 updateCurrentMap();
+
+                if (!isEnabled())
+                        return;
 
                 // ── 1. Cache local player state for the radar renderer ────────────────
                 long localPawn = PlayerCache.localPlayerPawnAddress;
@@ -251,6 +252,7 @@ public class RadarHackModule extends CheatModule {
                         currentMapData = null;
                         lastMapName = "";
                         detectedOffset = -1;
+                        VisCheckAdapter.update("");
                         return;
                 }
 
@@ -313,6 +315,7 @@ public class RadarHackModule extends CheatModule {
 
                 if (rawMap.isEmpty()) {
                         currentMapData = null;
+                        VisCheckAdapter.update("");
                         mapLogTicks++;
                         if (mapLogTicks % 30 == 0) {
                                 long base1 = CS2Memory.readLong(clientBase + CS2Offsets.dwGlobalVars);
@@ -335,6 +338,7 @@ public class RadarHackModule extends CheatModule {
 
                 if (!cleanMap.equals(lastMapName)) {
                         lastMapName = cleanMap;
+                        VisCheckAdapter.update(cleanMap);
                         currentMapData = MAPS.get(cleanMap);
                         if (currentMapData != null) {
                                 System.out.println("[RadarHackModule] Detected map: " + cleanMap

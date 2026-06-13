@@ -15,14 +15,16 @@
 
 | Module | Description |
 |--------|-------------|
-| **ESP Overlay** | 2D bounding boxes with health bars and player names. Enemy-only filter, configurable colors, forward position extrapolation to compensate for server tick lag. |
+| **ESP Overlay** | 2D bounding boxes with health bars and player names. Enemy-only filter, configurable colors, forward position extrapolation to compensate for server tick lag. Integrates **VisCheck** to highlight visible players. |
 | **Radar Hack** | Minimap radar with per-map auto-alignment, zoom, rotation, C4 carrier highlight. |
 | **TriggerBot** | Auto-fires a left click when the crosshair lands on an enemy's head hitbox. Configurable reaction delay, click duration, post-shot cooldown, and hitbox radius. |
+| **VisCheck Map Physics** | Real-time raycasting collision detection using a custom Bounding Volume Hierarchy (BVH) tree. Resolves map-specific `.opt` files from `/physics/` resources to check line-of-sight between the local player and target pawn. Highlights visible enemies in **yellow** on ESP. Disables itself when the map's `.opt` file is missing. |
 
 ### Architecture highlights
 
 - **Two-thread memory loop** — a fast uncapped position thread and a slow (~10 Hz) entity-data thread minimize kernel call budget.
 - **Immutable render snapshots** — `PlayerSnapshot` objects are built per-frame and published via a volatile reference swap, eliminating renderer race conditions.
+- **VisCheck BVH Raycasting** — performs real-time ray-triangle collision tracing against 3D map geometries using a custom Bounding Volume Hierarchy (BVH) tree and the Möller–Trumbore intersection algorithm.
 - **Forward position extrapolation** — reads `m_vecVelocity` alongside `m_vOldOrigin` and projects `pos + vel × latency` to compensate for the inherent 1-tick lag of external overlays.
 - **Auto offset updates** — offsets are fetched at startup from [a2x/cs2-dumper](https://github.com/a2x/cs2-dumper) and fall back to bundled defaults when offline.
 - **Persistent config** — all module settings are saved to `%APPDATA%\Athenis\settings.json` via Gson.
@@ -121,6 +123,15 @@ athenis/
 │   │   ├── MemoryLoop.java              # Fast + slow background threads
 │   │   ├── PlayerCache.java             # PlayerData / PlayerSnapshot bridge
 │   │   ├── Vector3.java                 # 3D vector math
+│   │   ├── vischeck/
+│   │   │   ├── VisCheck.java            # Visibility check engine
+│   │   │   ├── VisCheckAdapter.java     # JAR resource loader & life cycle manager
+│   │   │   ├── BVHNode.java             # Bounding Volume Hierarchy tree node
+│   │   │   ├── AABB.java                # Bounding box & ray-box intersections
+│   │   │   ├── Triangle.java            # Mesh index representation
+│   │   │   ├── TriangleCombined.java    # 3D triangle coordinates
+│   │   │   ├── OptimizedGeometry.java   # Binary opt serializer and deserializer
+│   │   │   └── VPhysToOptConverter.java # CLI tool to compile Valve .vphys to .opt
 │   │   ├── module/
 │   │   │   ├── CheatModule.java         # Module base class
 │   │   │   ├── ModuleManager.java       # Module registry
