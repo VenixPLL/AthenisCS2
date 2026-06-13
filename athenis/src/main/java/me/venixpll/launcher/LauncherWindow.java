@@ -192,10 +192,10 @@ public class LauncherWindow extends JFrame {
         right.setBackground(C_SURFACE);
         right.setBorder(new EmptyBorder(0, 0, 0, 8));
 
-        JButton minBtn = buildWindowCtrlButton("—", C_TEXT_DIM, new Color(0x2D3142));
+        JButton minBtn = buildIconCtrlButton("/assets/menu-burger.png", new Color(0x2D3142));
         minBtn.addActionListener(e -> setState(JFrame.ICONIFIED));
 
-        JButton closeBtn = buildWindowCtrlButton("✕", C_ERROR, new Color(0x3D1010));
+        JButton closeBtn = buildIconCtrlButton("/assets/cross.png", new Color(0x3D1010));
         closeBtn.addActionListener(e -> {
             // Gracefully shut down the engine before exiting
             if (overlayRunning) {
@@ -443,14 +443,13 @@ public class LauncherWindow extends JFrame {
     // ── Button factories ──────────────────────────────────────────────────────
 
     /**
-     * Creates a compact window chrome button (minimise / close) with a hover fill.
+     * Creates a compact window chrome button (minimise / close) with a hover fill and an icon.
      *
-     * @param text    Glyph label.
-     * @param fg      Foreground colour.
-     * @param hoverBg Background colour shown on hover.
+     * @param iconPath Path to the icon in resources.
+     * @param hoverBg  Background colour shown on hover.
      */
-    private JButton buildWindowCtrlButton(String text, Color fg, Color hoverBg) {
-        JButton btn = new JButton(text) {
+    private JButton buildIconCtrlButton(String iconPath, Color hoverBg) {
+        JButton btn = new JButton() {
             @Override
             protected void paintComponent(Graphics g) {
                 if (getModel().isRollover()) {
@@ -463,8 +462,18 @@ public class LauncherWindow extends JFrame {
                 super.paintComponent(g);
             }
         };
-        btn.setForeground(fg);
-        btn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        try {
+            java.net.URL url = LauncherWindow.class.getResource(iconPath);
+            if (url != null) {
+                ImageIcon icon = new ImageIcon(url);
+                Image img = icon.getImage().getScaledInstance(14, 14, Image.SCALE_SMOOTH);
+                btn.setIcon(new ImageIcon(img));
+            } else {
+                System.err.println("Icon not found: " + iconPath);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         btn.setPreferredSize(new Dimension(32, 26));
         styleButtonBase(btn);
         return btn;
