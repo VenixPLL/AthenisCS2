@@ -100,6 +100,14 @@ public class PlayerCache {
         public final float velY;
         public final float velZ;
 
+        // Bone coordinates in screen space
+        public final float[] boneX;
+        public final float[] boneY;
+        public final boolean[] boneVisible;
+
+        private static final float[] EMPTY_FLOAT = new float[0];
+        private static final boolean[] EMPTY_BOOL = new boolean[0];
+
         /**
          * Builds an immutable snapshot from the mutable {@link PlayerData} object
          * plus freshly projected screen coordinates.
@@ -108,6 +116,16 @@ public class PlayerCache {
         public PlayerSnapshot(PlayerData src, float feetX, float feetY,
                               float headX, float headY, boolean onScreen,
                               float velX, float velY, float velZ) {
+            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, null, null, null);
+        }
+
+        /**
+         * Builds an immutable snapshot including bone coordinates.
+         */
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ,
+                              float[] boneX, float[] boneY, boolean[] boneVisible) {
             this.index       = src.index;
             this.health      = src.health;
             this.team        = src.team;
@@ -127,6 +145,9 @@ public class PlayerCache {
             this.velX        = velX;
             this.velY        = velY;
             this.velZ        = velZ;
+            this.boneX       = boneX != null ? boneX : EMPTY_FLOAT;
+            this.boneY       = boneY != null ? boneY : EMPTY_FLOAT;
+            this.boneVisible = boneVisible != null ? boneVisible : EMPTY_BOOL;
         }
     }
 

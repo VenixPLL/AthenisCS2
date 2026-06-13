@@ -38,21 +38,31 @@ public final class ScreenProjector {
                                   float[] screenOut,
                                   float[] matrix,
                                   int width, int height) {
+        return project(worldPos.x, worldPos.y, worldPos.z, screenOut, matrix, width, height);
+    }
+
+    /**
+     * Projects a 3D world-space position specified as float coordinates onto 2D pixel screen coordinates.
+     */
+    public static boolean project(float wx, float wy, float wz,
+                                  float[] screenOut,
+                                  float[] matrix,
+                                  int width, int height) {
         // Compute the clip-space W component.
         // Points with w < 0.01 are behind or on the camera near plane — reject them.
-        float w = matrix[12] * worldPos.x
-                + matrix[13] * worldPos.y
-                + matrix[14] * worldPos.z
+        float w = matrix[12] * wx
+                + matrix[13] * wy
+                + matrix[14] * wz
                 + matrix[15];
         // Guard against NaN/Infinity: IEEE 754 means NaN < 0.01f is FALSE,
         // so without this isFinite check a NaN w would pass and produce NaN
         // screen coordinates that crash native ImGui draw calls.
         if (!Float.isFinite(w) || w < 0.01f) return false;
 
-        float x = matrix[0] * worldPos.x + matrix[1] * worldPos.y
-                + matrix[2]  * worldPos.z + matrix[3];
-        float y = matrix[4] * worldPos.x + matrix[5] * worldPos.y
-                + matrix[6]  * worldPos.z + matrix[7];
+        float x = matrix[0] * wx + matrix[1] * wy
+                + matrix[2]  * wz + matrix[3];
+        float y = matrix[4] * wx + matrix[5] * wy
+                + matrix[6]  * wz + matrix[7];
 
         float nx = x / w;
         float ny = y / w;

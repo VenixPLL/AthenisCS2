@@ -51,6 +51,10 @@ public class CS2Offsets {
      */
     public static int m_vecVelocity = 0x3C8;
 
+    // GameSceneNode & Model/Skeleton offsets
+    public static int m_pGameSceneNode = 0x310;
+    public static int m_modelState = 0x160;
+
     // Weapon services offsets
     public static int m_pWeaponServices = 0x11A0;
     public static int m_hMyWeapons = 0x40;
@@ -218,6 +222,20 @@ public class CS2Offsets {
                 m_hMyWeapons = fields.get("m_hMyWeapons").getAsInt();
             }
         }
+
+        if (classes.has("C_BaseEntity")) {
+            com.google.gson.JsonObject fields = classes.getAsJsonObject("C_BaseEntity").getAsJsonObject("fields");
+            if (fields != null && fields.has("m_pGameSceneNode")) {
+                m_pGameSceneNode = fields.get("m_pGameSceneNode").getAsInt();
+            }
+        }
+
+        if (classes.has("CSkeletonInstance")) {
+            com.google.gson.JsonObject fields = classes.getAsJsonObject("CSkeletonInstance").getAsJsonObject("fields");
+            if (fields != null && fields.has("m_modelState")) {
+                m_modelState = fields.get("m_modelState").getAsInt();
+            }
+        }
     }
 
     /**
@@ -254,5 +272,7 @@ public class CS2Offsets {
         System.out.println(String.format("  > m_pWeaponServices: 0x%X", m_pWeaponServices));
         System.out.println(String.format("  > m_hMyWeapons: 0x%X", m_hMyWeapons));
         System.out.println(String.format("  > m_vecVelocity: 0x%X", m_vecVelocity));
+        System.out.println(String.format("  > m_pGameSceneNode: 0x%X", m_pGameSceneNode));
+        System.out.println(String.format("  > m_modelState: 0x%X", m_modelState));
     }
 }

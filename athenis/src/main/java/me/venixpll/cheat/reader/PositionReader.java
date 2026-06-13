@@ -46,6 +46,10 @@ public final class PositionReader {
     /** Reusable projection output arrays. */
     private static final float[] FEET_OUT = new float[2];
     private static final float[] HEAD_OUT = new float[2];
+    private static final float[] BONE_OUT = new float[2];
+
+    /** Pre-allocated 896-byte buffer for reading 28 bones (each 32 bytes). */
+    private static final Memory BONE_BUF = new Memory(896);
 
     /**
      * Approximate Z offset (CS2 source units) from foot origin to head.
@@ -168,10 +172,40 @@ public final class PositionReader {
                 player.headX = HEAD_OUT[0];
                 player.headY = HEAD_OUT[1];
                 player.onScreen = true;
+
+                float[] bonesX = null;
+                float[] bonesY = null;
+                boolean[] bonesVisible = null;
+
+                long gameSceneNode = CS2Memory.readLong(player.pawnAddress + CS2Offsets.m_pGameSceneNode);
+                if (gameSceneNode != 0) {
+                    long boneArray = CS2Memory.readLong(gameSceneNode + CS2Offsets.m_modelState + 0x80);
+                    if (boneArray != 0 && CS2Memory.readInto(boneArray, BONE_BUF, 896)) {
+                        bonesX = new float[28];
+                        bonesY = new float[28];
+                        bonesVisible = new boolean[28];
+                        for (int i = 0; i < 28; i++) {
+                            float bx = BONE_BUF.getFloat(i * 32);
+                            float by = BONE_BUF.getFloat(i * 32 + 4);
+                            float bz = BONE_BUF.getFloat(i * 32 + 8);
+
+                            boolean projected = ScreenProjector.project(bx, by, bz, BONE_OUT, matrix, width, height);
+                            if (projected) {
+                                bonesX[i] = BONE_OUT[0];
+                                bonesY[i] = BONE_OUT[1];
+                                bonesVisible[i] = true;
+                            } else {
+                                bonesVisible[i] = false;
+                            }
+                        }
+                    }
+                }
+
                 out.add(new PlayerSnapshot(player,
                         FEET_OUT[0], FEET_OUT[1],
                         HEAD_OUT[0], HEAD_OUT[1],
-                        true, vx, vy, vz));
+                        true, vx, vy, vz,
+                        bonesX, bonesY, bonesVisible));
             } else {
                 player.onScreen = false;
                 out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, vx, vy, vz));

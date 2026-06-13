@@ -32,13 +32,44 @@ import java.util.List;
 public class ESPModule extends CheatModule {
 
     /** Toggle to show/hide player bounding boxes */
-    public final BooleanSetting boxEsp    = new BooleanSetting("Show Box Outline", true);
+    public final BooleanSetting boxEsp    = new BooleanSetting("Render Box", true);
+    /** Toggle to show/hide player skeletons */
+    public final BooleanSetting skeletonEsp = new BooleanSetting("Render Skeleton", true);
     /** Toggle to show/hide player health bars */
     public final BooleanSetting healthEsp = new BooleanSetting("Show Health Indicators", true);
     /** Toggle to show/hide player names */
     public final BooleanSetting nameEsp   = new BooleanSetting("Show Player Names", true);
     /** Filter out teammate ESP options */
     public final BooleanSetting teamCheck = new BooleanSetting("Enemy-Only Team Filter", true);
+
+    /** Bone connections for drawing the skeleton */
+    private static final int[][] BONE_CONNECTIONS = {
+        // Spine / Body
+        {7, 6},   // Head -> Neck
+        {6, 4},   // Neck -> Spine2
+        {4, 2},   // Spine2 -> Spine0
+        {2, 1},   // Spine0 -> Pelvis
+
+        // Left arm
+        {6, 9},   // Neck -> L Shoulder
+        {9, 10},  // L Shoulder -> L Elbow
+        {10, 11}, // L Elbow -> L Hand
+
+        // Right arm
+        {6, 13},  // Neck -> R Shoulder
+        {13, 14}, // R Shoulder -> R Elbow
+        {14, 15}, // R Elbow -> R Hand
+
+        // Left leg
+        {1, 17},  // Pelvis -> L Hip
+        {17, 18}, // L Hip -> L Knee
+        {18, 19}, // L Knee -> L Foot (Heel)
+
+        // Right leg
+        {1, 20},  // Pelvis -> R Hip
+        {20, 21}, // R Hip -> R Knee
+        {21, 22}  // R Knee -> R Foot (Heel)
+    };
 
     /**
      * Forward extrapolation time in milliseconds.
@@ -78,6 +109,7 @@ public class ESPModule extends CheatModule {
     public ESPModule() {
         super("ESP Overlay", true);
         addSetting(boxEsp);
+        addSetting(skeletonEsp);
         addSetting(healthEsp);
         addSetting(nameEsp);
         addSetting(teamCheck);
@@ -167,6 +199,40 @@ public class ESPModule extends CheatModule {
                 drawList.addRect(minX - 1, minY - 1, maxX + 1, maxY + 1, ImColor.rgba(0, 0, 0, 150), 0.0f, 0, 1.0f);
                 drawList.addRect(minX + 1, minY + 1, maxX - 1, maxY - 1, ImColor.rgba(0, 0, 0, 150), 0.0f, 0, 1.0f);
                 drawList.addRect(minX,     minY,     maxX,     maxY,     colorInt,                   0.0f, 0, 1.0f);
+            }
+
+            // ── Skeleton (BoneESP) ───────────────────────────────────────────
+            if (skeletonEsp.getValue() && player.boneX.length > 0) {
+                for (int[] connection : BONE_CONNECTIONS) {
+                    int bone1 = connection[0];
+                    int bone2 = connection[1];
+
+                    if (bone1 < player.boneX.length && bone2 < player.boneX.length) {
+                        if (player.boneVisible[bone1] && player.boneVisible[bone2]) {
+                            float x1 = player.boneX[bone1] + espOffsetX;
+                            float y1 = player.boneY[bone1] + espOffsetY;
+                            float x2 = player.boneX[bone2] + espOffsetX;
+                            float y2 = player.boneY[bone2] + espOffsetY;
+
+                            // Draw high-contrast outlines
+                            drawList.addLine(x1 - 1, y1 - 1, x2 - 1, y2 - 1, ImColor.rgba(0, 0, 0, 120), 1.5f);
+                            drawList.addLine(x1 + 1, y1 + 1, x2 + 1, y2 + 1, ImColor.rgba(0, 0, 0, 120), 1.5f);
+                            drawList.addLine(x1,     y1,     x2,     y2,     colorInt,                   1.5f);
+                        }
+                    }
+                }
+
+                // Draw head circle if HEAD bone is visible (index 7)
+                if (7 < player.boneX.length && player.boneVisible[7]) {
+                    float headCX = player.boneX[7] + espOffsetX;
+                    float headCY = player.boneY[7] + espOffsetY;
+                    float headRadius = Math.max(3.0f, Math.min(12.0f, height / 12.0f));
+
+                    // High-contrast outlines for the head circle
+                    drawList.addCircle(headCX, headCY, headRadius - 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
+                    drawList.addCircle(headCX, headCY, headRadius + 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
+                    drawList.addCircle(headCX, headCY, headRadius,        colorInt,                   16, 1.5f);
+                }
             }
 
             // ── Segmented health bar (dynamic green-to-red) ───────────────────
