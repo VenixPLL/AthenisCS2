@@ -18,7 +18,7 @@ public class OverlayMenu {
      * Constructs and draws the configurations GUI panel on screen dynamically.
      */
     public static void render() {
-        ImGui.begin("Athenis CS2 Menu (Press INSERT to Hide)",
+        ImGui.begin("Athenis CS2 Menu",
                 ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
 
         // Dynamically loop over all registered modules
@@ -61,8 +61,7 @@ public class OverlayMenu {
         }
 
         ImGui.separator();
-        ImGui.text(String.format("Attached: %s", CS2Memory.isAttached() ? "YES" : "NO"));
-        ImGui.text(String.format("Target FPS: %d", (int) ImGui.getIO().getFramerate()));
+        ImGui.text(String.format("Render FPS: %d", (int) ImGui.getIO().getFramerate()));
 
         ImGui.end();
     }

@@ -50,49 +50,49 @@ public class OverlayWindow extends Application {
      * Maps Java AWT KeyEvent codes to Windows Virtual Key (VK) codes.
      */
     public static int javaToWindowsKey(int javaKey) {
-        if (javaKey >= java.awt.event.KeyEvent.VK_A && javaKey <= java.awt.event.KeyEvent.VK_Z) {
+        if (javaKey >= KeyEvent.VK_A && javaKey <= KeyEvent.VK_Z) {
             return javaKey; // A-Z are same
         }
-        if (javaKey >= java.awt.event.KeyEvent.VK_0 && javaKey <= java.awt.event.KeyEvent.VK_9) {
+        if (javaKey >= KeyEvent.VK_0 && javaKey <= KeyEvent.VK_9) {
             return javaKey; // 0-9 are same
         }
-        if (javaKey >= java.awt.event.KeyEvent.VK_F1 && javaKey <= java.awt.event.KeyEvent.VK_F12) {
+        if (javaKey >= KeyEvent.VK_F1 && javaKey <= KeyEvent.VK_F12) {
             return javaKey; // F1-F12 are same
         }
-        if (javaKey >= java.awt.event.KeyEvent.VK_NUMPAD0 && javaKey <= java.awt.event.KeyEvent.VK_NUMPAD9) {
-            return javaKey - java.awt.event.KeyEvent.VK_NUMPAD0 + 0x60; // Numpad 0-9
+        if (javaKey >= KeyEvent.VK_NUMPAD0 && javaKey <= KeyEvent.VK_NUMPAD9) {
+            return javaKey - KeyEvent.VK_NUMPAD0 + 0x60; // Numpad 0-9
         }
         switch (javaKey) {
-            case java.awt.event.KeyEvent.VK_INSERT: return 0x2D;
-            case java.awt.event.KeyEvent.VK_DELETE: return 0x2E;
-            case java.awt.event.KeyEvent.VK_BACK_SPACE: return 0x08;
-            case java.awt.event.KeyEvent.VK_TAB: return 0x09;
-            case java.awt.event.KeyEvent.VK_ENTER: return 0x0D;
-            case java.awt.event.KeyEvent.VK_SHIFT: return 0x10;
-            case java.awt.event.KeyEvent.VK_CONTROL: return 0x11;
-            case java.awt.event.KeyEvent.VK_ALT: return 0x12;
-            case java.awt.event.KeyEvent.VK_PAUSE: return 0x13;
-            case java.awt.event.KeyEvent.VK_CAPS_LOCK: return 0x14;
-            case java.awt.event.KeyEvent.VK_ESCAPE: return 0x1B;
-            case java.awt.event.KeyEvent.VK_SPACE: return 0x20;
-            case java.awt.event.KeyEvent.VK_PAGE_UP: return 0x21;
-            case java.awt.event.KeyEvent.VK_PAGE_DOWN: return 0x22;
-            case java.awt.event.KeyEvent.VK_END: return 0x23;
-            case java.awt.event.KeyEvent.VK_HOME: return 0x24;
-            case java.awt.event.KeyEvent.VK_LEFT: return 0x25;
-            case java.awt.event.KeyEvent.VK_UP: return 0x26;
-            case java.awt.event.KeyEvent.VK_RIGHT: return 0x27;
-            case java.awt.event.KeyEvent.VK_DOWN: return 0x28;
-            case java.awt.event.KeyEvent.VK_COMMA: return 0xBC;
-            case java.awt.event.KeyEvent.VK_PERIOD: return 0xBE;
-            case java.awt.event.KeyEvent.VK_SLASH: return 0xBF;
-            case java.awt.event.KeyEvent.VK_SEMICOLON: return 0xBA;
-            case java.awt.event.KeyEvent.VK_EQUALS: return 0xBB;
-            case java.awt.event.KeyEvent.VK_OPEN_BRACKET: return 0xDB;
-            case java.awt.event.KeyEvent.VK_BACK_SLASH: return 0xDC;
-            case java.awt.event.KeyEvent.VK_CLOSE_BRACKET: return 0xDD;
-            case java.awt.event.KeyEvent.VK_MINUS: return 0xBD;
-            case java.awt.event.KeyEvent.VK_BACK_QUOTE: return 0xC0;
+            case KeyEvent.VK_INSERT: return 0x2D;
+            case KeyEvent.VK_DELETE: return 0x2E;
+            case KeyEvent.VK_BACK_SPACE: return 0x08;
+            case KeyEvent.VK_TAB: return 0x09;
+            case KeyEvent.VK_ENTER: return 0x0D;
+            case KeyEvent.VK_SHIFT: return 0x10;
+            case KeyEvent.VK_CONTROL: return 0x11;
+            case KeyEvent.VK_ALT: return 0x12;
+            case KeyEvent.VK_PAUSE: return 0x13;
+            case KeyEvent.VK_CAPS_LOCK: return 0x14;
+            case KeyEvent.VK_ESCAPE: return 0x1B;
+            case KeyEvent.VK_SPACE: return 0x20;
+            case KeyEvent.VK_PAGE_UP: return 0x21;
+            case KeyEvent.VK_PAGE_DOWN: return 0x22;
+            case KeyEvent.VK_END: return 0x23;
+            case KeyEvent.VK_HOME: return 0x24;
+            case KeyEvent.VK_LEFT: return 0x25;
+            case KeyEvent.VK_UP: return 0x26;
+            case KeyEvent.VK_RIGHT: return 0x27;
+            case KeyEvent.VK_DOWN: return 0x28;
+            case KeyEvent.VK_COMMA: return 0xBC;
+            case KeyEvent.VK_PERIOD: return 0xBE;
+            case KeyEvent.VK_SLASH: return 0xBF;
+            case KeyEvent.VK_SEMICOLON: return 0xBA;
+            case KeyEvent.VK_EQUALS: return 0xBB;
+            case KeyEvent.VK_OPEN_BRACKET: return 0xDB;
+            case KeyEvent.VK_BACK_SLASH: return 0xDC;
+            case KeyEvent.VK_CLOSE_BRACKET: return 0xDD;
+            case KeyEvent.VK_MINUS: return 0xBD;
+            case KeyEvent.VK_BACK_QUOTE: return 0xC0;
             default: return javaKey; // fallback
         }
     }
@@ -136,7 +136,7 @@ public class OverlayWindow extends Application {
      */
     @Override
     protected void configure(final Configuration config) {
-        config.setTitle("Athenis Overlay");
+        config.setTitle("Overlay");
 
         // Native GLFW initialization check
         GLFW.glfwInit();
