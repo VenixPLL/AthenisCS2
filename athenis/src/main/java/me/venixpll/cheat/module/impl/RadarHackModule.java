@@ -58,12 +58,6 @@ public class RadarHackModule extends CheatModule {
          */
         public final BooleanSetting rotateRadar = new BooleanSetting("Rotate Radar Map", true);
 
-        /**
-         * Automatically align coordinates/size to match the game's actual radar HUD
-         * position.
-         */
-        public final BooleanSetting autoAlign = new BooleanSetting("Auto-Align to Game HUD", true);
-
         /** Radar X Position offset (default top-left to align with CS2 radar). */
         public final FloatSetting radarX = new FloatSetting("Radar X Pos", 20.0f, 0.0f, 1920.0f);
 
@@ -78,15 +72,6 @@ public class RadarHackModule extends CheatModule {
          * Square Radar use 30–200+.
          */
         public final FloatSetting radarScale = new FloatSetting("Radar Scale (Zoom)", 20.0f, 1.0f, 60.0f);
-
-        /** Toggle displaying the 3D distance to the enemy in meters next to the dot. */
-        public final BooleanSetting showDistance = new BooleanSetting("Show Distance", true);
-
-        /**
-         * Toggle drawing the dark background panel (turn off to see game radar
-         * beneath).
-         */
-        public final BooleanSetting drawBackground = new BooleanSetting("Draw Background", false);
 
         /**
          * Enables "Square Radar" mode — mirrors the CS2 in-game square full-map radar.
@@ -132,24 +117,28 @@ public class RadarHackModule extends CheatModule {
         static {
                 try (InputStream stream = RadarHackModule.class.getResourceAsStream("/data/radar_offsets.json")) {
                         if (stream != null) {
-                                try (InputStreamReader reader = new InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)) {
+                                try (InputStreamReader reader = new InputStreamReader(stream,
+                                                java.nio.charset.StandardCharsets.UTF_8)) {
                                         Gson gson = new Gson();
-                                        Type type = new TypeToken<java.util.Map<String, MapOverviewData>>(){}.getType();
+                                        Type type = new TypeToken<java.util.Map<String, MapOverviewData>>() {
+                                        }.getType();
                                         Map<String, MapOverviewData> loaded = gson.fromJson(reader, type);
                                         if (loaded != null) {
                                                 MAPS.putAll(loaded);
-                                                System.out.println("[RadarHackModule] Loaded " + MAPS.size() + " map overview data entries from radar_offsets.json");
+                                                System.out.println("[RadarHackModule] Loaded " + MAPS.size()
+                                                                + " map overview data entries from radar_offsets.json");
                                         }
                                 }
                         } else {
-                                System.err.println("[RadarHackModule] Could not find /data/radar_offsets.json in resources!");
+                                System.err.println(
+                                                "[RadarHackModule] Could not find /data/radar_offsets.json in resources!");
                         }
                 } catch (Exception e) {
-                        System.err.println("[RadarHackModule] Failed to load map overview data from JSON: " + e.getMessage());
+                        System.err.println("[RadarHackModule] Failed to load map overview data from JSON: "
+                                        + e.getMessage());
                         e.printStackTrace();
                 }
         }
-
 
         private String lastMapName = "";
         private volatile MapOverviewData currentMapData = null;
@@ -213,13 +202,10 @@ public class RadarHackModule extends CheatModule {
                 addSetting(enemyOnly);
                 addSetting(showOverlay);
                 addSetting(rotateRadar);
-                addSetting(autoAlign);
                 addSetting(radarX);
                 addSetting(radarY);
                 addSetting(radarSize);
                 addSetting(radarScale);
-                addSetting(showDistance);
-                addSetting(drawBackground);
                 addSetting(squareRadar);
                 addSetting(autoMapRadar);
                 addSetting(mapCenterX);
@@ -393,17 +379,6 @@ public class RadarHackModule extends CheatModule {
                 if (lastMapName == null || lastMapName.isEmpty() || lastMapName.equalsIgnoreCase("<empty>"))
                         return;
 
-                // ── Dynamic HUD Alignment ─────────────────────────────────────────────
-                if (autoAlign.getValue()) {
-                        float computedSize = PlayerCache.screenHeight * 0.185f;
-                        float computedX = PlayerCache.screenWidth * 0.0125f;
-                        float computedY = PlayerCache.screenHeight * 0.022f;
-
-                        radarX.setValue(computedX);
-                        radarY.setValue(computedY);
-                        radarSize.setValue(computedSize);
-                }
-
                 float rx_pos = radarX.getValue();
                 float ry_pos = radarY.getValue();
                 float size = radarSize.getValue();
@@ -411,19 +386,6 @@ public class RadarHackModule extends CheatModule {
 
                 float cx = rx_pos + size / 2.0f;
                 float cy = ry_pos + size / 2.0f;
-
-                // ── Background & Borders ──────────────────────────────────────────────
-                if (drawBackground.getValue()) {
-                        // Outer dark-tinted fill
-                        drawList.addRectFilled(rx_pos, ry_pos, rx_pos + size, ry_pos + size,
-                                        ImColor.rgba(0.04f, 0.05f, 0.08f, 0.75f));
-                        // Subtle grid lines (distance rings)
-                        drawList.addCircle(cx, cy, size * 0.25f, ImColor.rgba(1.0f, 1.0f, 1.0f, 0.06f), 48, 0.8f);
-                        drawList.addCircle(cx, cy, size * 0.45f, ImColor.rgba(1.0f, 1.0f, 1.0f, 0.06f), 48, 0.8f);
-                        // Cardinal cross-hair lines
-                        drawList.addLine(rx_pos, cy, rx_pos + size, cy, ImColor.rgba(1.0f, 1.0f, 1.0f, 0.09f), 0.8f);
-                        drawList.addLine(cx, ry_pos, cx, ry_pos + size, ImColor.rgba(1.0f, 1.0f, 1.0f, 0.09f), 0.8f);
-                }
 
                 // Cyan border outline around the square radar frame
                 drawList.addRect(rx_pos, ry_pos, rx_pos + size, ry_pos + size,
@@ -636,28 +598,9 @@ public class RadarHackModule extends CheatModule {
 
                                 int arrowCol = player.hasBomb ? ImColor.rgba(1.00f, 0.60f, 0.00f, 0.85f)
                                                 : (isEnemy ? ImColor.rgba(0.95f, 0.28f, 0.28f, 0.85f)
-                                                : ImColor.rgba(0.25f, 0.58f, 1.00f, 0.85f));
+                                                                : ImColor.rgba(0.25f, 0.58f, 1.00f, 0.85f));
                                 drawList.addLine(px, py, backX, backY, arrowCol, 1.2f);
                                 drawList.addTriangleFilled(tipX, tipY, leftX, leftY, rightX, rightY, arrowCol);
-                        }
-
-                        // Distance label (3D, in meters) if enabled.
-                        if (showDistance.getValue()) {
-                                float dx = player.position.x - localX;
-                                float dy = player.position.y - localY;
-                                float dz = player.position.z - localZ;
-                                float distMeters = (float) Math.sqrt(dx * dx + dy * dy + dz * dz) / 39.37f;
-                                String distText = String.format("%dm", Math.round(distMeters));
-                                float textX = px + 6.0f;
-                                float textY = py - 4.0f;
-                                if (textX + 25.0f > rx + size)
-                                        textX = px - 25.0f;
-
-                                drawList.addText(textX - 1f, textY - 1f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX + 1f, textY - 1f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX - 1f, textY + 1f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX + 1f, textY + 1f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX, textY, ImColor.rgba(1.0f, 1.0f, 1.0f, 1.0f), distText);
                         }
                 }
 
@@ -866,31 +809,11 @@ public class RadarHackModule extends CheatModule {
 
                                 int arrowCol = player.hasBomb ? ImColor.rgba(1.00f, 0.60f, 0.00f, 0.85f)
                                                 : (isEnemy ? ImColor.rgba(0.95f, 0.28f, 0.28f, 0.85f)
-                                                : ImColor.rgba(0.25f, 0.58f, 1.00f, 0.85f));
+                                                                : ImColor.rgba(0.25f, 0.58f, 1.00f, 0.85f));
                                 drawList.addLine(px, py, backX, backY, arrowCol, 1.2f);
                                 drawList.addTriangleFilled(tipX, tipY, leftX, leftY, rightX, rightY, arrowCol);
                         }
 
-                        // Draw distance label next to the dot if enabled
-                        if (showDistance.getValue()) {
-                                String distText = String.format("%dm", Math.round(distMeters));
-                                float textX = px + 6.0f;
-                                float textY = py - 4.0f;
-
-                                // Adjust label position if near the right edge to prevent cut-off
-                                if (textX + 25.0f > rx_pos + size) {
-                                        textX = px - 25.0f;
-                                }
-
-                                // Drop shadow (four directional copies)
-                                drawList.addText(textX - 1.0f, textY - 1.0f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX + 1.0f, textY - 1.0f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX - 1.0f, textY + 1.0f, ImColor.rgba(0, 0, 0, 200), distText);
-                                drawList.addText(textX + 1.0f, textY + 1.0f, ImColor.rgba(0, 0, 0, 200), distText);
-
-                                // Main text
-                                drawList.addText(textX, textY, ImColor.rgba(1.0f, 1.0f, 1.0f, 1.0f), distText);
-                        }
                 }
 
                 drawList.popClipRect();
@@ -927,9 +850,7 @@ public class RadarHackModule extends CheatModule {
          * @param size     Current radar side length in pixels.
          */
         private void renderDragHandles(ImDrawList drawList, float rx, float ry, float size) {
-                // Drag handles only make sense when the overlay is interactive (menu open)
-                // and the user is managing the position manually (autoAlign off).
-                if (autoAlign.getValue() || !OverlayWindow.isMenuOpen())
+                if (!OverlayWindow.isMenuOpen())
                         return;
 
                 ImVec2 mousePos = ImGui.getMousePos();
