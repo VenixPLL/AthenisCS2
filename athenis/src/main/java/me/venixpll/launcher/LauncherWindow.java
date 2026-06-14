@@ -8,6 +8,7 @@ import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.cheat.module.impl.RadarHackModule;
 import me.venixpll.cheat.module.impl.TriggerBotModule;
 import me.venixpll.cheat.module.impl.BunnyHopModule;
+import me.venixpll.cheat.module.impl.BombTimerModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
@@ -108,6 +109,7 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new RadarHackModule());
             ModuleManager.registerModule(new TriggerBotModule());
             ModuleManager.registerModule(new BunnyHopModule());
+            ModuleManager.registerModule(new BombTimerModule());
         }
         ConfigManager.load();
 
@@ -632,6 +634,7 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new RadarHackModule());
                     ModuleManager.registerModule(new TriggerBotModule());
                     ModuleManager.registerModule(new BunnyHopModule());
+                    ModuleManager.registerModule(new BombTimerModule());
                 }
 
                 // Restore user's last saved configuration before starting the engine.

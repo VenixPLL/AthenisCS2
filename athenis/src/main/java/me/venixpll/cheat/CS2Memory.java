@@ -21,6 +21,7 @@ import com.sun.jna.ptr.IntByReference;
 public class CS2Memory {
     private static HANDLE processHandle = null;
     private static long clientBase = 0;
+    private static long engine2Base = 0;
     private static int processId = 0;
     private static boolean loggedError = false;
 
@@ -99,6 +100,7 @@ public class CS2Memory {
             processHandle = null;
         }
         clientBase = 0;
+        engine2Base = 0;
         processId = 0;
     }
 
@@ -109,6 +111,18 @@ public class CS2Memory {
      */
     public static long getClientBase() {
         return clientBase;
+    }
+
+    /**
+     * Returns the cached base address of engine2.dll, resolving it on first call.
+     *
+     * @return Base address or 0 if not attached / not found.
+     */
+    public static long getEngine2Base() {
+        if (engine2Base == 0 && processId != 0) {
+            engine2Base = getModuleBaseAddress(processId, "engine2.dll");
+        }
+        return engine2Base;
     }
 
     /**
@@ -164,6 +178,22 @@ public class CS2Memory {
         Memory mem = MEM_8.get();
         if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 8, null)) {
             return mem.getLong(0);
+        }
+        return 0;
+    }
+
+    /**
+     * Reads a single byte from the specified memory address.
+     * 
+     * @param address Native memory address to read from.
+     * @return Read byte value, or 0 if reading fails.
+     */
+    public static byte readByte(long address) {
+        if (processHandle == null || address == 0)
+            return 0;
+        Memory mem = MEM_1.get();
+        if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 1, null)) {
+            return mem.getByte(0);
         }
         return 0;
     }

@@ -712,7 +712,6 @@ public class RadarHackModule extends CheatModule {
                         // Calculate 3D distance in meters
                         float dz = player.position.z - localZ;
                         float distWorld = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-                        float distMeters = distWorld / 39.37f;
 
                         // Clamp to the square boundary so out-of-range targets sit at the edge
                         boolean clamped = false;

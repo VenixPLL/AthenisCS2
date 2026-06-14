@@ -22,6 +22,11 @@ public class CS2Offsets {
     public static long dwViewAngles = 37034408L;
     public static long dwGlobalVars = 0L;
     public static long dwForceJump = 33972128L;
+    public static long dwPlantedC4 = 0L;
+
+    // engine2.dll offsets for server tick count → current game time
+    public static long dwNetworkGameClient = 9478560L;        // engine2.dll offset
+    public static int  dwNetworkGameClient_serverTickCount = 588; // field inside INetworkGameClient
 
     // Schema variable offsets (loaded from client_dll.json)
     public static int m_hPlayerPawn = 2316;
@@ -54,10 +59,16 @@ public class CS2Offsets {
     // GameSceneNode & Model/Skeleton offsets
     public static int m_pGameSceneNode = 0x310;
     public static int m_modelState = 0x160;
+    /** Absolute world-space origin inside CGameSceneNode. Used to read bomb/entity position. */
+    public static int m_vecAbsOrigin = 200; // 0xC8
 
     // Weapon services offsets
     public static int m_pWeaponServices = 0x11A0;
     public static int m_hMyWeapons = 0x40;
+
+    // Planted C4 offsets
+    public static int m_flC4Blow = 0xEB4;
+    public static int m_bBombTicking = 0xEC0;
 
 
     private static final String OFFSETS_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/offsets.json";
@@ -121,6 +132,20 @@ public class CS2Offsets {
         }
         if (clientOffsets.has("dwGlobalVars")) {
             dwGlobalVars = clientOffsets.get("dwGlobalVars").getAsLong();
+        }
+        if (clientOffsets.has("dwPlantedC4")) {
+            dwPlantedC4 = clientOffsets.get("dwPlantedC4").getAsLong();
+        }
+
+        // engine2.dll offsets for server tick → current game time
+        if (obj.has("engine2.dll")) {
+            JsonObject engine2Offsets = obj.getAsJsonObject("engine2.dll");
+            if (engine2Offsets.has("dwNetworkGameClient")) {
+                dwNetworkGameClient = engine2Offsets.get("dwNetworkGameClient").getAsLong();
+            }
+            if (engine2Offsets.has("dwNetworkGameClient_serverTickCount")) {
+                dwNetworkGameClient_serverTickCount = engine2Offsets.get("dwNetworkGameClient_serverTickCount").getAsInt();
+            }
         }
     }
 
@@ -236,6 +261,18 @@ public class CS2Offsets {
                 m_modelState = fields.get("m_modelState").getAsInt();
             }
         }
+
+        if (classes.has("C_PlantedC4")) {
+            com.google.gson.JsonObject fields = classes.getAsJsonObject("C_PlantedC4").getAsJsonObject("fields");
+            if (fields != null) {
+                if (fields.has("m_flC4Blow")) {
+                    m_flC4Blow = fields.get("m_flC4Blow").getAsInt();
+                }
+                if (fields.has("m_bBombTicking")) {
+                    m_bBombTicking = fields.get("m_bBombTicking").getAsInt();
+                }
+            }
+        }
     }
 
     /**
@@ -274,5 +311,8 @@ public class CS2Offsets {
         System.out.println(String.format("  > m_vecVelocity: 0x%X", m_vecVelocity));
         System.out.println(String.format("  > m_pGameSceneNode: 0x%X", m_pGameSceneNode));
         System.out.println(String.format("  > m_modelState: 0x%X", m_modelState));
+        System.out.println(String.format("  > dwPlantedC4: 0x%X", dwPlantedC4));
+        System.out.println(String.format("  > m_flC4Blow: 0x%X", m_flC4Blow));
+        System.out.println(String.format("  > m_bBombTicking: 0x%X", m_bBombTicking));
     }
 }
