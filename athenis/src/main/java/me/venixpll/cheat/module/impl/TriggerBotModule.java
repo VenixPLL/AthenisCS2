@@ -208,7 +208,6 @@ public class TriggerBotModule extends CheatModule {
 
                     int hitPlayerIndex = -1;
 
-                    outer:
                     for (PlayerSnapshot p : players) {
                         if (p.isLocal || !p.onScreen) continue;
                         if (enemyOnly.getValue() && p.team == ESPModule.localTeam) continue;

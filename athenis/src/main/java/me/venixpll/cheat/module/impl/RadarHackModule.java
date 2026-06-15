@@ -158,6 +158,7 @@ public class RadarHackModule extends CheatModule {
         private volatile float localY = 0f;
 
         /** Local player Z world coordinate, updated every slow tick. */
+        @SuppressWarnings("unused")
         private volatile float localZ = 0f;
 
         /** Local player view yaw in degrees, updated every slow tick. */
@@ -708,10 +709,6 @@ public class RadarHackModule extends CheatModule {
                         // Convert to radar space
                         float px = cx + rx / scale;
                         float py = cy - ry / scale;
-
-                        // Calculate 3D distance in meters
-                        float dz = player.position.z - localZ;
-                        float distWorld = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
 
                         // Clamp to the square boundary so out-of-range targets sit at the edge
                         boolean clamped = false;
