@@ -1,15 +1,16 @@
 package me.venixpll.cheat.module.impl;
 
-import me.venixpll.cheat.PlayerCache;
-import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
+import me.venixpll.cheat.PlayerCache;
+import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
-import me.venixpll.cheat.vischeck.VisCheck;
-import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
+import me.venixpll.cheat.setting.ModeSetting;
+import me.venixpll.cheat.vischeck.VisCheck;
+import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
 import java.awt.Robot;
 import java.awt.event.InputEvent;
@@ -17,101 +18,137 @@ import java.util.List;
 
 /**
  * TriggerBot Module.
- * <p>
- * Automatically fires a left-click when the local player's crosshair is over
- * an enemy's head hitbox. Detection runs on a dedicated high-priority daemon
- * thread that stays tight-looped (yield-only) to minimise reaction latency.
- * <p>
- * <h3>Detection method</h3>
- * The crosshair in screen space is always at the centre of the game viewport
- * {@code (screenWidth/2, screenHeight/2)}.  The head position is taken from the
- * latest immutable {@link PlayerSnapshot} list — the same extrapolated,
- * race-condition-free data used by the ESP renderer.  A hit is registered when
- * the Euclidean distance from crosshair to head-centre is ≤ {@link #headRadius}.
- * <p>
- * <h3>Click simulation</h3>
- * Uses {@link Robot#mousePress} / {@link Robot#mouseRelease} (backed by
- * Win32 {@code SendInput} on Windows) — no custom JNI, no extra DLLs.
+ *
+ * <p>Fires a left-click when the crosshair overlaps an enemy's hitbox.
+ * Hitboxes are computed from real bone screen-positions (from the skeleton ESP)
+ * rather than a configurable pixel radius, giving pixel-accurate targeting.
+ *
+ * <h3>Targeting modes</h3>
+ * <ul>
+ *   <li><b>Head</b>   – bone 7 (head bone), ±radius derived from box height/12</li>
+ *   <li><b>Body</b>   – bones 4, 2, 6 (chest, stomach, neck)</li>
+ *   <li><b>Legs</b>   – bones 17, 18, 19, 20, 21, 22 (hips to feet)</li>
+ *   <li><b>All</b>    – any of the above</li>
+ * </ul>
+ *
+ * <h3>One-shot mode</h3>
+ * After firing, the bot enters a cooldown during which it ignores the same
+ * target (tracked by player index).  This prevents burst-fire on a single
+ * target when the crosshair stays on them after the shot.
  */
 public class TriggerBotModule extends CheatModule {
 
-    /**
-     * Acceptable crosshair-to-head distance in screen pixels.
-     * Increase if the bot misses; decrease to require more precise aim.
-     */
-    public final FloatSetting headRadius = new FloatSetting(
-            "Head Hitbox (px)", 18.0f, 4.0f, 60.0f);
+    // ── Bone index constants (must match ESPModule / PositionReader) ───────────
+    private static final int BONE_HEAD       = 7;
+    private static final int BONE_NECK       = 6;
+    private static final int BONE_CHEST      = 4;   // Spine2
+    private static final int BONE_STOMACH    = 2;   // Spine0
+    private static final int BONE_PELVIS     = 1;
+    private static final int BONE_L_HIP      = 17;
+    private static final int BONE_L_KNEE     = 18;
+    private static final int BONE_L_FOOT     = 19;
+    private static final int BONE_R_HIP      = 20;
+    private static final int BONE_R_KNEE     = 21;
+    private static final int BONE_R_FOOT     = 22;
+
+    /** Bones checked for each targeting mode. */
+    private static final int[][] MODE_BONES = {
+        { BONE_HEAD },                                                              // 0 = Head
+        { BONE_NECK, BONE_CHEST, BONE_STOMACH },                                   // 1 = Body
+        { BONE_PELVIS, BONE_L_HIP, BONE_L_KNEE, BONE_L_FOOT,
+          BONE_R_HIP, BONE_R_KNEE, BONE_R_FOOT },                                  // 2 = Legs
+        { BONE_HEAD, BONE_NECK, BONE_CHEST, BONE_STOMACH, BONE_PELVIS,
+          BONE_L_HIP, BONE_L_KNEE, BONE_L_FOOT,
+          BONE_R_HIP, BONE_R_KNEE, BONE_R_FOOT }                                   // 3 = All
+    };
+
+    // ── Settings ───────────────────────────────────────────────────────────────
+
+    /** Which body region triggers a shot. */
+    public final ModeSetting targetMode = new ModeSetting(
+            "Target Zone##triggerbot", 0, "Head", "Body", "Legs", "All");
 
     /**
-     * Pause between detecting a target and firing the click, in milliseconds.
-     * A small value (10–30 ms) adds human-like latency.  Set to 0 for instant.
+     * When enabled: after a shot the module ignores the shot player for
+     * {@code cooldown} ms and will not shoot again until the crosshair leaves
+     * and re-enters a target.  Ideal for AWP / Scout.
      */
+    public final BooleanSetting oneShotMode = new BooleanSetting("One-Shot Mode##triggerbot", false);
+
+    /** Pause between crosshair-on-target detection and click, in milliseconds. */
     public final FloatSetting reactionDelay = new FloatSetting(
-            "Reaction Delay (ms)", 10.0f, 0.0f, 100.0f);
+            "Reaction Delay (ms)##triggerbot", 10.0f, 0.0f, 150.0f);
 
-    /**
-     * How long the left mouse button is held down, in milliseconds.
-     * Shorter values result in a quicker tap; longer values simulate a held shot.
-     */
+    /** Duration the mouse button is held down, in milliseconds. */
     public final FloatSetting clickDuration = new FloatSetting(
-            "Click Duration (ms)", 40.0f, 10.0f, 200.0f);
+            "Click Duration (ms)##triggerbot", 40.0f, 5.0f, 200.0f);
 
-    /**
-     * Post-click cooldown in milliseconds before the next trigger is checked.
-     * Prevents rapid-fire double-shots.
-     */
+    /** Post-click cooldown before the next shot is allowed, in milliseconds. */
     public final FloatSetting cooldown = new FloatSetting(
-            "Cooldown (ms)", 80.0f, 20.0f, 500.0f);
+            "Cooldown (ms)##triggerbot", 100.0f, 20.0f, 1000.0f);
 
     /**
-     * When {@code true}, the triggerbot only fires at players on the opposing team.
-     * Set {@code false} to fire at any player (including teammates — use carefully).
+     * Per-bone hit radius as a fraction of the player's screen box height.
+     * 0.06 = 6 % of box height — matches the visual bone circle size in the ESP.
+     * Only used for body/leg bones; the head radius comes from ESPModule's formula.
      */
-    public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only", true);
+    public final FloatSetting boneRadiusFrac = new FloatSetting(
+            "Bone Radius (% box)##triggerbot", 0.06f, 0.02f, 0.20f);
+
+    /** Only fire at opponents. */
+    public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only##triggerbot", true);
+
+    /** Require VisCheck line-of-sight before firing. */
+    public final BooleanSetting useVisCheck = new BooleanSetting("VisCheck Filter##triggerbot", true);
 
     /**
-     * When {@code true}, the triggerbot will only fire if the target's head is visible via VisCheck.
+     * When enabled, the triggerbot will NOT fire if the local player is moving
+     * faster than {@link #maxMoveSpeed} units/sec.  Useful for rifles where
+     * accuracy is penalised while moving.
      */
-    public final BooleanSetting useVisCheck = new BooleanSetting("Use VisCheck Filter", true);
+    public final BooleanSetting stopWhenMoving = new BooleanSetting("Stop When Moving##triggerbot", false);
+
+    /**
+     * Maximum local-player ground speed (units/sec) allowed while firing.
+     * At 64-tick CS2: walking ≈ 130, running ≈ 250.  Default 50 = essentially
+     * stationary (allows the tiny drift while standing).
+     */
+    public final FloatSetting maxMoveSpeed = new FloatSetting(
+            "Max Move Speed (u/s)##triggerbot", 50.0f, 0.0f, 300.0f);
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
     private volatile boolean triggerThreadRunning = false;
     private Thread triggerThread;
+    private Robot  robot;
 
-    /**
-     * Shared {@link Robot} instance. Created once on first enable and reused to
-     * avoid OS-level initialisation overhead on every click.
-     */
-    private Robot robot;
+    /** Index of the last player shot (one-shot mode: skip until crosshair leaves). */
+    private volatile int lastShotIndex = -1;
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Constructor ───────────────────────────────────────────────────────────
 
-    /**
-     * Constructs the TriggerBot module and registers its settings.
-     * Disabled by default — the user must enable it in the overlay menu.
-     */
     public TriggerBotModule() {
         super("TriggerBot", false);
-        addSetting(headRadius);
+        addSetting(targetMode);
+        addSetting(oneShotMode);
         addSetting(reactionDelay);
         addSetting(clickDuration);
         addSetting(cooldown);
+        addSetting(boneRadiusFrac);
         addSetting(enemyOnly);
         addSetting(useVisCheck);
+        addSetting(stopWhenMoving);
+        addSetting(maxMoveSpeed);
     }
 
-    /**
-     * Called by the slow data thread at ~10 Hz.
-     * Manages the lifecycle of the dedicated trigger thread in response to the
-     * module's enabled state.
-     */
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
     @Override
     public void onTick() {
         if (isEnabled() && !triggerThreadRunning) {
             startTriggerThread();
         } else if (!isEnabled() && triggerThreadRunning) {
-            triggerThreadRunning = false;   // thread exits on next iteration
+            triggerThreadRunning = false;
         }
     }
 
@@ -120,101 +157,110 @@ public class TriggerBotModule extends CheatModule {
     private void startTriggerThread() {
         if (triggerThread != null && triggerThread.isAlive()) return;
 
-        // Initialise Robot here on the first start so any AWTException is logged
-        // rather than silently swallowed during module construction.
         if (robot == null) {
             try {
                 robot = new Robot();
             } catch (Exception e) {
-                System.err.println("[TriggerBot] Failed to create Robot: " + e.getMessage());
+                System.err.println("[TriggerBot] Robot init failed: " + e.getMessage());
                 return;
             }
         }
 
         triggerThreadRunning = true;
         triggerThread = new Thread(() -> {
-            System.out.println("[TriggerBot] Trigger thread started.");
+            System.out.println("[TriggerBot] Thread started.");
 
             while (triggerThreadRunning && isEnabled()) {
                 try {
-                    if (!PlayerCache.tracking) {
-                        Thread.sleep(100);
-                        continue;
-                    }
+                    if (!PlayerCache.tracking) { Thread.sleep(100); continue; }
 
                     List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                    if (players.isEmpty()) {
-                        Thread.yield();
-                        continue;
-                    }
+                    if (players.isEmpty()) { Thread.yield(); continue; }
 
-                    // Crosshair is at the exact centre of the game viewport in
-                    // screen-projection space (same coordinate system as headX/Y).
                     float cx = PlayerCache.screenWidth  * 0.5f;
                     float cy = PlayerCache.screenHeight * 0.5f;
 
-                    float r  = headRadius.getValue();
-                    float r2 = r * r;   // compare squared distances — no sqrt needed
-
-                    boolean onHead = false;
-
-                    // Read local camera position once per tick
-                    Vector3 localCamera = null;
-                    VisCheck visCheck = VisCheckAdapter.getVisCheck();
-                    if (useVisCheck.getValue() && visCheck != null) {
-                        long localPawn = PlayerCache.localPlayerPawnAddress;
-                        if (localPawn != 0) {
-                            Vector3 localOrigin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-                            if (localOrigin != null) {
-                                localCamera = new Vector3(localOrigin.x, localOrigin.y, localOrigin.z + 64.0f);
-                            }
+                    // ── Velocity check: skip if local player is moving too fast ────
+                    if (stopWhenMoving.getValue()) {
+                        float threshold = maxMoveSpeed.getValue();
+                        // Approximate local speed from the local player snapshot
+                        float localSpeed = 0f;
+                        for (PlayerSnapshot lp : players) {
+                            if (!lp.isLocal) continue;
+                            float vx = lp.velX, vy = lp.velY; // horizontal only
+                            localSpeed = (float) Math.sqrt(vx * vx + vy * vy);
+                            break;
+                        }
+                        if (localSpeed > threshold) {
+                            Thread.yield();
+                            continue;
                         }
                     }
 
+                    // Build VisCheck camera once per iteration
+                    Vector3 localCamera = buildLocalCamera();
+
+                    // Snapshot current settings (avoid re-reading volatile fields in loop)
+                    int   modeIdx   = targetMode.getValue();
+                    int[] bones     = MODE_BONES[modeIdx];
+                    float radFrac   = boneRadiusFrac.getValue();
+                    boolean oneShot = oneShotMode.getValue();
+
+                    int hitPlayerIndex = -1;
+
+                    outer:
                     for (PlayerSnapshot p : players) {
                         if (p.isLocal || !p.onScreen) continue;
                         if (enemyOnly.getValue() && p.team == ESPModule.localTeam) continue;
-                        if (useVisCheck.getValue() && visCheck != null && localCamera != null) {
-                            Vector3 targetHead = new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f);
-                            if (!visCheck.isPointVisible(localCamera, targetHead)) {
-                                continue;
-                            }
-                        }
 
-                        // Distance from crosshair to projected head position.
-                        // headX/headY are the top-of-box projection; the visual head
-                        // centre is a few pixels below — add a small Y bias.
-                        float biasPx = (p.feetY - p.headY) * 0.05f;  // ~5% of box height
-                        float dx = cx - p.headX;
-                        float dy = cy - (p.headY + biasPx);
+                        // One-shot: skip the last-shot player until crosshair leaves
+                        if (oneShot && p.index == lastShotIndex) continue;
 
-                        if (dx * dx + dy * dy <= r2) {
-                            onHead = true;
+                        // VisCheck
+                        if (useVisCheck.getValue() && !isVisible(p, localCamera)) continue;
+
+                        // Check each bone for this targeting mode
+                        if (isAimingAtBones(p, cx, cy, bones, radFrac)) {
+                            hitPlayerIndex = p.index;
                             break;
                         }
                     }
 
-                    if (onHead) {
-                        // ── Reaction delay ────────────────────────────────────
+                    // One-shot: clear lastShotIndex when crosshair leaves all targets
+                    if (oneShot && hitPlayerIndex == -1) {
+                        lastShotIndex = -1;
+                    }
+
+                    if (hitPlayerIndex != -1) {
+                        // Reaction delay
                         int delay = reactionDelay.getValue().intValue();
                         if (delay > 0) Thread.sleep(delay);
 
-                        // Re-check: target may have moved during reaction delay.
-                        if (!stillOnHead(cx, cy, r2)) {
-                            Thread.yield();
-                            continue;
+                        // Re-verify after delay
+                        int modeIdx2 = targetMode.getValue();
+                        int[] bones2 = MODE_BONES[modeIdx2];
+                        float radFrac2 = boneRadiusFrac.getValue();
+                        boolean stillOn = false;
+                        for (PlayerSnapshot p : PlayerCache.renderPlayers) {
+                            if (p.index != hitPlayerIndex || p.isLocal || !p.onScreen) continue;
+                            if (useVisCheck.getValue() && !isVisible(p, buildLocalCamera())) continue;
+                            if (isAimingAtBones(p, cx, cy, bones2, radFrac2)) {
+                                stillOn = true;
+                                break;
+                            }
                         }
 
-                        // ── Fire click ────────────────────────────────────────
-                        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                        Thread.sleep((long) clickDuration.getValue().floatValue());
-                        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+                        if (stillOn) {
+                            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+                            Thread.sleep((long) clickDuration.getValue().floatValue());
+                            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-                        // ── Post-click cooldown ───────────────────────────────
-                        Thread.sleep((long) cooldown.getValue().floatValue());
+                            if (oneShot) lastShotIndex = hitPlayerIndex;
+
+                            Thread.sleep((long) cooldown.getValue().floatValue());
+                        }
                     }
 
-                    // Yield-only — no sleep when idle so detection latency is minimal.
                     Thread.yield();
 
                 } catch (InterruptedException e) {
@@ -226,7 +272,7 @@ public class TriggerBotModule extends CheatModule {
             }
 
             triggerThreadRunning = false;
-            System.out.println("[TriggerBot] Trigger thread stopped.");
+            System.out.println("[TriggerBot] Thread stopped.");
         }, "Athenis-TriggerBot");
 
         triggerThread.setDaemon(true);
@@ -234,44 +280,63 @@ public class TriggerBotModule extends CheatModule {
         triggerThread.start();
     }
 
-    /**
-     * Re-checks whether the crosshair is still on an enemy head after the
-     * reaction delay has elapsed.  Called just before firing to avoid wasting
-     * a shot on a target that has already moved away.
-     *
-     * @param cx Crosshair X (screen centre).
-     * @param cy Crosshair Y (screen centre).
-     * @param r2 Squared hit-radius threshold.
-     * @return {@code true} if at least one enemy head is still within range.
-     */
-    private boolean stillOnHead(float cx, float cy, float r2) {
-        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-        VisCheck visCheck = VisCheckAdapter.getVisCheck();
-        Vector3 localCamera = null;
-        if (useVisCheck.getValue() && visCheck != null) {
-            long localPawn = PlayerCache.localPlayerPawnAddress;
-            if (localPawn != 0) {
-                Vector3 localOrigin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-                if (localOrigin != null) {
-                    localCamera = new Vector3(localOrigin.x, localOrigin.y, localOrigin.z + 64.0f);
-                }
-            }
-        }
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-        for (PlayerSnapshot p : players) {
-            if (p.isLocal || !p.onScreen) continue;
-            if (enemyOnly.getValue() && p.team == ESPModule.localTeam) continue;
-            if (useVisCheck.getValue() && visCheck != null && localCamera != null) {
-                Vector3 targetHead = new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f);
-                if (!visCheck.isPointVisible(localCamera, targetHead)) {
-                    continue;
-                }
+    /**
+     * Returns true if the crosshair {@code (cx, cy)} overlaps any of the
+     * specified bones of player {@code p}.
+     *
+     * <p>For the head bone the hit radius matches the visual head-circle drawn
+     * by ESPModule: {@code max(3, min(12, boxHeight/12))}.
+     * For all other bones a configurable fraction of box-height is used.
+     */
+    private boolean isAimingAtBones(PlayerSnapshot p,
+                                    float cx, float cy,
+                                    int[] bones, float radFrac) {
+        if (p.boneX.length == 0) return false;
+
+        float boxHeight = p.feetY - p.headY;
+
+        for (int bone : bones) {
+            if (bone >= p.boneX.length) continue;
+            if (!p.boneVisible[bone])   continue;
+
+            float bx  = p.boneX[bone];
+            float by  = p.boneY[bone];
+
+            float r;
+            if (bone == BONE_HEAD) {
+                // Mirror exactly the visual head-circle radius from ESPModule
+                r = Math.max(3.0f, Math.min(12.0f, boxHeight / 12.0f));
+            } else {
+                r = boxHeight * radFrac;
             }
-            float biasPx = (p.feetY - p.headY) * 0.05f;
-            float dx = cx - p.headX;
-            float dy = cy - (p.headY + biasPx);
-            if (dx * dx + dy * dy <= r2) return true;
+
+            float dx = cx - bx;
+            float dy = cy - by;
+            if (dx * dx + dy * dy <= r * r) return true;
         }
         return false;
+    }
+
+    /** Reads the local player's eye camera position for VisCheck, or null if unavailable. */
+    private Vector3 buildLocalCamera() {
+        VisCheck vc = VisCheckAdapter.getVisCheck();
+        if (!useVisCheck.getValue() || vc == null) return null;
+        long pawn = PlayerCache.localPlayerPawnAddress;
+        if (pawn == 0) return null;
+        Vector3 origin = CS2Memory.readVector(pawn + CS2Offsets.m_vOldOrigin);
+        if (origin == null) return null;
+        return new Vector3(origin.x, origin.y, origin.z + 64.0f);
+    }
+
+    /** Returns true if the target player passes the VisCheck from the local camera. */
+    private boolean isVisible(PlayerSnapshot p, Vector3 localCamera) {
+        if (!useVisCheck.getValue()) return true;
+        VisCheck vc = VisCheckAdapter.getVisCheck();
+        if (vc == null || localCamera == null) return true;
+        // Use world origin + eye height as the target point
+        Vector3 targetEye = new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f);
+        return vc.isPointVisible(localCamera, targetEye);
     }
 }

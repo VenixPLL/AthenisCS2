@@ -4,6 +4,7 @@ import imgui.app.Application;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.MemoryLoop;
 import me.venixpll.cheat.module.ModuleManager;
+import me.venixpll.cheat.module.impl.AimbotModule;
 import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.cheat.module.impl.RadarHackModule;
 import me.venixpll.cheat.module.impl.TriggerBotModule;
@@ -107,6 +108,7 @@ public class LauncherWindow extends JFrame {
         if (ModuleManager.getModules().isEmpty()) {
             ModuleManager.registerModule(new ESPModule());
             ModuleManager.registerModule(new RadarHackModule());
+            ModuleManager.registerModule(new AimbotModule());
             ModuleManager.registerModule(new TriggerBotModule());
             ModuleManager.registerModule(new BunnyHopModule());
             ModuleManager.registerModule(new BombTimerModule());
@@ -632,6 +634,7 @@ public class LauncherWindow extends JFrame {
                 if (ModuleManager.getModules().isEmpty()) {
                     ModuleManager.registerModule(new ESPModule());
                     ModuleManager.registerModule(new RadarHackModule());
+                    ModuleManager.registerModule(new AimbotModule());
                     ModuleManager.registerModule(new TriggerBotModule());
                     ModuleManager.registerModule(new BunnyHopModule());
                     ModuleManager.registerModule(new BombTimerModule());
