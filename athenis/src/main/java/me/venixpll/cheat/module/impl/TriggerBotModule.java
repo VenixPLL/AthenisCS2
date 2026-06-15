@@ -11,6 +11,7 @@ import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
+import me.venixpll.overlay.OverlayWindow;
 
 import java.awt.Robot;
 import java.awt.event.InputEvent;
@@ -173,6 +174,9 @@ public class TriggerBotModule extends CheatModule {
             while (triggerThreadRunning && isEnabled()) {
                 try {
                     if (!PlayerCache.tracking) { Thread.sleep(100); continue; }
+
+                    // Pause while overlay menu is open
+                    if (OverlayWindow.isMenuOpen()) { Thread.sleep(50); continue; }
 
                     List<PlayerSnapshot> players = PlayerCache.renderPlayers;
                     if (players.isEmpty()) { Thread.yield(); continue; }

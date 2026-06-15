@@ -13,6 +13,7 @@ import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
+import me.venixpll.overlay.OverlayWindow;
 
 import java.util.List;
 import java.util.Random;
@@ -129,6 +130,9 @@ public class AimbotModule extends CheatModule {
                 try {
                     // 1. Wait for CS2 attachment
                     if (!PlayerCache.tracking) { Thread.sleep(100); continue; }
+
+                    // 1a. Pause while overlay menu is open
+                    if (OverlayWindow.isMenuOpen()) { resetState(); Thread.sleep(50); continue; }
 
                     // 2. Hold-key guard
                     if (activationMode.getValue() == 0 && !isAimKeyHeld()) {
