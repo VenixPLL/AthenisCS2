@@ -8,6 +8,7 @@ import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
+import me.venixpll.cheat.setting.ModeSetting;
 import me.venixpll.cheat.setting.Setting;
 import me.venixpll.overlay.OverlayWindow;
 
@@ -86,6 +87,8 @@ public final class ConfigManager {
                         settingObj.addProperty(setting.getName(), ((FloatSetting) setting).getValue());
                     } else if (setting instanceof BooleanSetting) {
                         settingObj.addProperty(setting.getName(), ((BooleanSetting) setting).getValue());
+                    } else if (setting instanceof ModeSetting) {
+                        settingObj.addProperty(setting.getName(), ((ModeSetting) setting).getValue());
                     }
                 }
 
@@ -154,6 +157,8 @@ public final class ConfigManager {
                             ((FloatSetting) setting).setValue(el.getAsFloat());
                         } else if (setting instanceof BooleanSetting) {
                             ((BooleanSetting) setting).setValue(el.getAsBoolean());
+                        } else if (setting instanceof ModeSetting) {
+                            ((ModeSetting) setting).setValue(el.getAsInt());
                         }
                     }
                 }
