@@ -14,6 +14,7 @@ import me.venixpll.cheat.module.impl.SilentAimbotModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
+import me.venixpll.Main;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -279,7 +280,7 @@ public class LauncherWindow extends JFrame {
         left.add(pulseDot);
         left.add(statusLabel);
 
-        JLabel ver = new JLabel("build 1.0.0");
+        JLabel ver = new JLabel("build " + Main.VERSION);
         ver.setFont(F_SMALL);
         ver.setForeground(C_TEXT_DIM);
 
