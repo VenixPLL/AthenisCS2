@@ -17,8 +17,12 @@
 |--------|-------------|
 | **ESP Overlay** | 2D bounding boxes with health bars and player names. Enemy-only filter, configurable colors, forward position extrapolation to compensate for server tick lag. Integrates **VisCheck** to highlight visible players. |
 | **Radar Hack** | Minimap radar with per-map auto-alignment, zoom, rotation, C4 carrier highlight. |
-| **TriggerBot** | Auto-fires a left click when the crosshair lands on an enemy's head hitbox. Configurable reaction delay, click duration, post-shot cooldown, and hitbox radius. |
-| **VisCheck Map Physics** | Real-time raycasting collision detection using a custom Bounding Volume Hierarchy (BVH) tree. Resolves map-specific `.opt` files from `/physics/` resources to check line-of-sight between the local player and target pawn. Highlights visible enemies in **yellow** on ESP. Disables itself when the map's `.opt` file is missing. |
+| **Aimbot** | Screen-space aim assist using player bone projections. Features custom target bones (Head, Neck, Chest, Stomach, Closest), dynamic FOV, smoothing, sensitivity settings, randomized mouse drift humanization, enemy-only/VisCheck filtering, and overlay menu open protection. |
+| **Silent Aimbot** | External silent aim. Temporarily patches view angles (`dwViewAngles`) during shooting ticks and restores them within a microsecond-level delay. Features customizable FOV, target bone, smoothing, restore delay, and overlay menu open protection. |
+| **TriggerBot** | Auto-fires a left click when the crosshair lands on an enemy's hitbox. Configurable reaction delay, click duration, post-shot cooldown, and hitbox radius. Integrates local velocity check (Stop When Moving) and overlay menu open protection. |
+| **BunnyHop** | Automatically sends jump signals to CS2 when Space is held down. Adjusts jump/release delays and checks player flags (standing/crouching) to jump precisely when hitting the ground. |
+| **Bomb Timer** | Renders a countdown above the planted C4. When off-screen, displays a fixed top-center banner with a pulsing alert bar and warning indicator. |
+| **VisCheck Map Physics** | Real-time raycasting collision detection using a custom Bounding Volume Hierarchy (BVH) tree. Resolves map-specific `.opt` files from `/physics/` resources to check line-of-sight between the local player and target pawn. Highlights visible enemies in **yellow** on ESP. Includes real-time debug controls, logging throttle adjustments, and runtime performance stats directly in the menu. |
 
 ### Architecture highlights
 
@@ -98,12 +102,61 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Head Hitbox (px) | `18` | Crosshair-to-head detection radius in screen pixels |
-| Reaction Delay (ms) | `10` | Pause before clicking (adds human-like latency) |
-| Click Duration (ms) | `40` | LMB hold duration |
-| Cooldown (ms) | `80` | Minimum time between shots |
-| Enemy Only | ✅ | Only fire at opponents |
-| Use VisCheck Filter | ✅ | Only fire if the target's head is visible via VisCheck |
+| Target Zone | `Head` | Body region that triggers a shot (Head, Body, Legs, All) |
+| One-Shot Mode | ❌ | Ignore target after shot until crosshair leaves and re-enters |
+| Reaction Delay (ms) | `10.0` | Pause between target detection and simulated mouse click |
+| Click Duration (ms) | `40.0` | Mouse button down duration |
+| Cooldown (ms) | `100.0` | Cooldown period before allowing the next shot |
+| Bone Radius (% box) | `0.06` | Hitbox radius as a fraction of the player's screen box height |
+| Enemy Only | ✅ | Ignore teammates |
+| VisCheck Filter | ✅ | Require geometric line-of-sight visibility before firing |
+| Stop When Moving | ❌ | Disable firing if local player velocity exceeds threshold |
+| Max Move Speed (u/s) | `50.0` | Velocity threshold for the movement check |
+
+### Aimbot
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Target Bone | `Head` | Bone to target (Head, Neck, Chest, Stomach, Closest) |
+| Activation | `Hold Key` | Activation behavior (Hold Key / Toggle) |
+| Aim Key | `Right Mouse` | Hotkey to trigger aimbot (Right Mouse, Middle Mouse, Left Alt, Left Shift, X Key, Z Key, Ctrl) |
+| FOV (degrees) | `8.0` | Field of view limit |
+| FOV Min | `0.3` | Minimum field of view threshold to prevent jitter near center |
+| Smooth | `6.0` | Smoothing factor (1.0 = instant snap, higher = slower movement) |
+| Sensitivity | `1.0` | Game mouse sensitivity modifier |
+| Humanize | ❌ | Introduce randomized human-like mouse offset noise |
+| Humanize Strength | `20.0` | Scaling factor for humanized mouse drift |
+| Enemy Only | ✅ | Filter targeting to opponents only |
+| VisCheck | ✅ | Ensure line-of-sight visibility before locking onto a bone |
+| Spotted Fallback | ✅ | Fall back to client `m_bSpotted` flag if map geometry is missing |
+
+### Silent Aimbot
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| FOV (degrees) | `12.0` | Engagement field of view |
+| Target Bone | `Head` | Aim destination (Head, Neck, Chest, Stomach) |
+| Aim Key | `Right Mouse` | Hotkey to engage silent aim |
+| Activation | `Hold Key` | Activation type (Hold Key / Toggle) |
+| Smooth | `1.0` | Angle smoothing factor (1.0 = instant silent snap) |
+| Enemy Only | ✅ | Target enemies only |
+| VisCheck | ✅ | Require line-of-sight visibility |
+| Spotted Fallback | ✅ | Fall back to spotted flag |
+| Restore Delay (µs) | `1000.0` | Delay in microseconds before restoring the original camera angle |
+
+### BunnyHop
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Plus Jump Delay (ms) | `10.0` | Delay before sending the jump command |
+| Minus Jump Delay (ms)| `10.0` | Release loop/cooldown delay |
+
+### VisCheck Debug
+
+Adjustable in the bottom section of the configuration menu:
+- **Enable Ray Debug Logging**: Print ray-cast collision debugging directly to console.
+- **Log Throttle (ms)**: Throttle console print frequency (0 = print every raycast).
+- **Print Stats / Reset Stats**: Dump or clear lifetime map raycast statistics in console.
 
 ---
 
@@ -139,7 +192,11 @@ athenis/
 │   │   │   └── impl/
 │   │   │       ├── ESPModule.java       # ESP renderer
 │   │   │       ├── RadarHackModule.java # Minimap radar
-│   │   │       └── TriggerBotModule.java# Head triggerbot
+│   │   │       ├── AimbotModule.java    # Screen-space aimbot
+│   │   │       ├── SilentAimbotModule.java # Silent view-angle aimbot
+│   │   │       ├── TriggerBotModule.java# Hitbox-accurate triggerbot
+│   │   │       ├── BunnyHopModule.java  # Auto-jump module
+│   │   │       └── BombTimerModule.java # Planted C4 timer
 │   │   ├── reader/
 │   │   │   ├── EntityDataReader.java    # Slow entity list traversal
 │   │   │   ├── PositionReader.java      # Fast origin + velocity reader
@@ -150,7 +207,8 @@ athenis/
 │   │       ├── Setting.java             # Abstract setting base
 │   │       ├── BooleanSetting.java      # Checkbox
 │   │       ├── FloatSetting.java        # Slider
-│   │       └── ColorSetting.java        # Color picker
+│   │       ├── ColorSetting.java        # Color picker
+│   │       └── ModeSetting.java         # Multi-option selector (dropdown/radio)
 │   └── config/
 │       └── ConfigManager.java           # JSON config persistence (Gson)
 └── pom.xml
