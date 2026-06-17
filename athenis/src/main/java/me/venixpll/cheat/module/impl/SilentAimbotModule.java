@@ -318,11 +318,6 @@ public class SilentAimbotModule extends CheatModule {
 
         if (eyePos == null) return null;
 
-        // Back-project the bone screen coordinate into approximate world space
-        // by lerping between the feet and head world position.
-        // Feet → head world Z span derived from typical player height (~72 units eye).
-        float screenH = PlayerCache.screenHeight;
-        float screenW = PlayerCache.screenWidth;
 
         // Vertical fraction: 0 = feet, 1 = head (approximately)
         float feetSY = p.feetY;
