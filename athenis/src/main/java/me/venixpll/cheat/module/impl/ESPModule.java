@@ -11,6 +11,7 @@ import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.reader.PositionReader;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.ColorSetting;
@@ -107,7 +108,7 @@ public class ESPModule extends CheatModule {
      * Instantiates the ESP module and registers settings.
      */
     public ESPModule() {
-        super("ESP Overlay", true);
+        super("ESP Overlay", ModuleCategory.EXTERNAL, true);
         addSetting(boxEsp);
         addSetting(skeletonEsp);
         addSetting(healthEsp);

@@ -7,6 +7,7 @@ import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
@@ -125,7 +126,7 @@ public class SilentAimbotModule extends CheatModule {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public SilentAimbotModule() {
-        super("Silent Aimbot", false);
+        super("Silent Aimbot", ModuleCategory.INTERNAL, false);
         addSetting(fov);
         addSetting(targetBone);
         addSetting(aimKey);

@@ -1,10 +1,12 @@
 package me.venixpll.overlay;
 
 import imgui.ImGui;
+import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.Setting;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.vischeck.VisCheck;
@@ -24,40 +26,16 @@ public class OverlayMenu {
      * Constructs and draws the configurations GUI panel on screen dynamically.
      */
     public static void render() {
-        ImGui.begin("Athenis CS2 Menu",
+        // Window 1: External Menu
+        ImGui.setNextWindowPos(100f, 100f, ImGuiCond.FirstUseEver);
+        ImGui.begin("External",
                 ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
 
-        // Dynamically loop over all registered modules
+        // Dynamically loop over all registered modules matching category EXTERNAL
         for (CheatModule module : ModuleManager.getModules()) {
-            // Render enabled state checkbox for the module itself
-            ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper());
-
-            // If module is enabled and exposes registered settings, render them
-            if (module.isEnabled() && !module.getSettings().isEmpty()) {
-                ImGui.indent();
-                for (Setting<?> setting : module.getSettings()) {
-                    boolean disabled = false;
-                    if (module instanceof me.venixpll.cheat.module.impl.RadarHackModule) {
-                        me.venixpll.cheat.module.impl.RadarHackModule radarMod = (me.venixpll.cheat.module.impl.RadarHackModule) module;
-                        if (radarMod.squareRadar.getValue() && radarMod.autoMapRadar.getValue()) {
-                            String sName = setting.getName();
-                            if (sName.equals("Map Center X") || sName.equals("Map Center Y") || sName.equals("Radar Scale (Zoom)")) {
-                                disabled = true;
-                            }
-                        }
-                    }
-
-                    if (disabled) {
-                        ImGui.beginDisabled(true);
-                    }
-                    setting.renderImGui();
-                    if (disabled) {
-                        ImGui.endDisabled();
-                    }
-                }
-                ImGui.unindent();
+            if (module.getCategory() == ModuleCategory.EXTERNAL) {
+                renderModule(module);
             }
-            ImGui.spacing();
         }
 
         ImGui.separator();
@@ -112,6 +90,51 @@ public class OverlayMenu {
         // ─────────────────────────────────────────────────────────────────────
 
         ImGui.end();
+
+        // Window 2: Internal Menu (Danger)
+        ImGui.setNextWindowPos(380f, 100f, ImGuiCond.FirstUseEver);
+        ImGui.begin("Internal (Danger)",
+                ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
+
+        // Dynamically loop over all registered modules matching category INTERNAL
+        for (CheatModule module : ModuleManager.getModules()) {
+            if (module.getCategory() == ModuleCategory.INTERNAL) {
+                renderModule(module);
+            }
+        }
+
+        ImGui.end();
+    }
+
+    private static void renderModule(CheatModule module) {
+        // Render enabled state checkbox for the module itself
+        ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper());
+
+        // If module is enabled and exposes registered settings, render them
+        if (module.isEnabled() && !module.getSettings().isEmpty()) {
+            ImGui.indent();
+            for (Setting<?> setting : module.getSettings()) {
+                boolean disabled = false;
+                if (module instanceof me.venixpll.cheat.module.impl.RadarHackModule) {
+                    me.venixpll.cheat.module.impl.RadarHackModule radarMod = (me.venixpll.cheat.module.impl.RadarHackModule) module;
+                    if (radarMod.squareRadar.getValue() && radarMod.autoMapRadar.getValue()) {
+                        String sName = setting.getName();
+                        if (sName.equals("Map Center X") || sName.equals("Map Center Y") || sName.equals("Radar Scale (Zoom)")) {
+                            disabled = true;
+                        }
+                    }
+                }
+
+                if (disabled) {
+                    ImGui.beginDisabled(true);
+                }
+                setting.renderImGui();
+                if (disabled) {
+                    ImGui.endDisabled();
+                }
+            }
+            ImGui.unindent();
+        }
+        ImGui.spacing();
     }
 }
-

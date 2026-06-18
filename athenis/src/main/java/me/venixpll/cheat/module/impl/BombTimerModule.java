@@ -8,6 +8,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
 
 /**
@@ -39,7 +40,7 @@ public class BombTimerModule extends CheatModule {
     private final float[] screenOut = new float[2];
 
     public BombTimerModule() {
-        super("Bomb Timer", false);
+        super("Bomb Timer", ModuleCategory.EXTERNAL, false);
     }
 
     @Override

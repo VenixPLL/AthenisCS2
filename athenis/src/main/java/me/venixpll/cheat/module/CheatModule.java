@@ -13,6 +13,7 @@ import java.util.List;
  */
 public abstract class CheatModule {
     private final String name;
+    private final ModuleCategory category;
     private final ImBoolean enabledWrapper;
     private final List<Setting<?>> settings = new ArrayList<>();
 
@@ -20,10 +21,12 @@ public abstract class CheatModule {
      * Constructs a new CheatModule.
      *
      * @param name           Unique user-friendly name of the module.
+     * @param category       The safety/execution category (External/Internal).
      * @param defaultEnabled Initial state of the module.
      */
-    public CheatModule(String name, boolean defaultEnabled) {
+    public CheatModule(String name, ModuleCategory category, boolean defaultEnabled) {
         this.name = name;
+        this.category = category;
         this.enabledWrapper = new ImBoolean(defaultEnabled);
     }
 
@@ -34,6 +37,15 @@ public abstract class CheatModule {
      */
     public String getName() {
         return name;
+    }
+
+    /**
+     * Gets the category of this module.
+     *
+     * @return The module category.
+     */
+    public ModuleCategory getCategory() {
+        return category;
     }
 
     /**

@@ -8,6 +8,7 @@ import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
@@ -91,7 +92,7 @@ public class AimbotModule extends CheatModule {
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public AimbotModule() {
-        super("Aimbot", false);
+        super("Aimbot", ModuleCategory.EXTERNAL, false);
         addSetting(targetBone);
         addSetting(activationMode);
         addSetting(aimKey);
