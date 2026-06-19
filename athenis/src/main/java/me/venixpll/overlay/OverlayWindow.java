@@ -215,17 +215,95 @@ public class OverlayWindow extends Application {
     protected void initImGui(final Configuration config) {
         super.initImGui(config);
 
-        // Styling configuration
+        // ── Base dark style ───────────────────────────────────────────────────
         ImGui.styleColorsDark();
         imgui.ImGuiStyle style = ImGui.getStyle();
-        style.setWindowRounding(8.0f);
-        style.setFrameRounding(4.0f);
-        style.setGrabRounding(4.0f);
 
-        // Transparency clear color setting
+        // Rounding
+        style.setWindowRounding(10.0f);
+        style.setChildRounding(8.0f);
+        style.setFrameRounding(5.0f);
+        style.setGrabRounding(4.0f);
+        style.setPopupRounding(6.0f);
+        style.setScrollbarRounding(4.0f);
+        style.setTabRounding(4.0f);
+
+        // Spacing / padding
+        style.setWindowPadding(10.0f, 10.0f);
+        style.setFramePadding(8.0f, 5.0f);
+        style.setItemSpacing(6.0f, 5.0f);
+        style.setScrollbarSize(10.0f);
+
+        // ── Orange-on-dark color palette ──────────────────────────────────────
+        // Accent: #EA6E14  →  (0.918, 0.431, 0.078)
+        final float aR = 0.918f, aG = 0.431f, aB = 0.078f;
+        // Dark BG: ~#1C1C1D
+        final float bg1R = 0.110f, bg1G = 0.110f, bg1B = 0.114f;
+        // Slightly lighter: ~#212123
+        final float bg2R = 0.130f, bg2G = 0.130f, bg2B = 0.135f;
+        // Sidebar/topbar: ~#171719
+        final float bg3R = 0.090f, bg3G = 0.090f, bg3B = 0.094f;
+
+        // Window background (transparent — the per-window color is set by OverlayMenu)
+        style.setColor(imgui.flag.ImGuiCol.WindowBg,       bg1R, bg1G, bg1B, 0.97f);
+        style.setColor(imgui.flag.ImGuiCol.ChildBg,        bg2R, bg2G, bg2B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.PopupBg,        bg3R, bg3G, bg3B, 0.98f);
+
+        // Borders
+        style.setColor(imgui.flag.ImGuiCol.Border,         0.22f, 0.22f, 0.22f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.BorderShadow,   0.00f, 0.00f, 0.00f, 0.00f);
+
+        // Frame (checkboxes, sliders, inputs)
+        style.setColor(imgui.flag.ImGuiCol.FrameBg,        0.18f, 0.18f, 0.18f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.22f, 0.22f, 0.22f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.FrameBgActive,  aR*0.5f, aG*0.5f, aB*0.5f, 1.00f);
+
+        // Title bar (unused — menu has NoTitleBar, but keep for any sub-windows)
+        style.setColor(imgui.flag.ImGuiCol.TitleBg,        bg3R, bg3G, bg3B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TitleBgActive,  bg3R, bg3G, bg3B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TitleBgCollapsed, bg3R, bg3G, bg3B, 0.75f);
+
+        // Scrollbar
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarBg,    bg3R, bg3G, bg3B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrab,        0.28f, 0.28f, 0.28f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrabHovered, 0.35f, 0.35f, 0.35f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrabActive,  aR, aG, aB, 1.00f);
+
+        // Checkmark & slider grab — orange accent
+        style.setColor(imgui.flag.ImGuiCol.CheckMark,      aR, aG, aB, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.SliderGrab,     aR, aG, aB, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.SliderGrabActive, Math.min(aR*1.15f,1f), Math.min(aG*1.15f,1f), Math.min(aB*1.15f,1f), 1.00f);
+
+        // Buttons
+        style.setColor(imgui.flag.ImGuiCol.Button,         0.18f, 0.18f, 0.18f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ButtonHovered,  0.24f, 0.24f, 0.24f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ButtonActive,   aR, aG, aB, 1.00f);
+
+        // Header (selectables)
+        style.setColor(imgui.flag.ImGuiCol.Header,         0.15f, 0.15f, 0.155f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.HeaderHovered,  0.20f, 0.20f, 0.205f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.HeaderActive,   aR*0.6f, aG*0.6f, aB*0.6f, 1.00f);
+
+        // Separator
+        style.setColor(imgui.flag.ImGuiCol.Separator,      0.22f, 0.22f, 0.22f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.SeparatorHovered, aR, aG, aB, 0.78f);
+        style.setColor(imgui.flag.ImGuiCol.SeparatorActive,  aR, aG, aB, 1.00f);
+
+        // Tab bar
+        style.setColor(imgui.flag.ImGuiCol.Tab,            0.15f, 0.15f, 0.155f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabHovered,     0.20f, 0.20f, 0.205f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabActive,      aR*0.7f, aG*0.7f, aB*0.7f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabUnfocused,   0.13f, 0.13f, 0.135f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabUnfocusedActive, 0.18f, 0.18f, 0.185f, 1.00f);
+
+        // Text
+        style.setColor(imgui.flag.ImGuiCol.Text,           0.92f, 0.92f, 0.92f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TextDisabled,   0.50f, 0.50f, 0.50f, 1.00f);
+
+        // Transparency clear color — must stay fully transparent so the overlay is see-through
         getColorBg().set(0.0f, 0.0f, 0.0f, 0.0f);
 
-        // Load custom font to support Cyrillic/Russian characters
+        // ── Load custom font (Segoe UI with Cyrillic range) ───────────────────
         final ImFontAtlas fontAtlas = ImGui.getIO().getFonts();
         final ImFontConfig fontConfig = new ImFontConfig();
         java.io.File fontFile = new java.io.File("C:/Windows/Fonts/segoeui.ttf");
@@ -233,11 +311,12 @@ public class OverlayWindow extends Application {
             fontFile = new java.io.File("C:/Windows/Fonts/arial.ttf");
         }
         if (fontFile.exists()) {
-            fontAtlas.addFontFromFileTTF(fontFile.getAbsolutePath(), 16.0f, fontConfig, fontAtlas.getGlyphRangesCyrillic());
+            fontAtlas.addFontFromFileTTF(fontFile.getAbsolutePath(), 15.0f, fontConfig,
+                    fontAtlas.getGlyphRangesCyrillic());
         }
         fontConfig.destroy();
 
-        // Disable saving configuration files to current workspace
+        // Disable ImGui ini file persistence
         ImGui.getIO().setIniFilename(null);
         ImGui.getIO().addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);
     }
