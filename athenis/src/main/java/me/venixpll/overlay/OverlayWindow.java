@@ -258,6 +258,31 @@ public class OverlayWindow extends Application {
         if (menuOpen) {
             OverlayMenu.render();
         }
+
+        // Draw Watermark in top-left corner
+        drawWatermark();
+    }
+
+    /**
+     * Renders a styled watermark "Athenis v(version)" in the top-left corner
+     * of the screen with a clean drop shadow and anti-aliased look.
+     */
+    private void drawWatermark() {
+        imgui.ImDrawList drawList = ImGui.getForegroundDrawList();
+        
+        // Coordinates for the watermark: 15px margin from top-left
+        float posX = 10.0f;
+        float posY = 10.0f;
+        
+        String text = "Athenis v" + me.venixpll.Main.VERSION;
+        
+        // Draw drop shadow: offset by 1.5px on X and Y, semi-transparent black
+        int shadowColor = ImGui.getColorU32(0.0f, 0.0f, 0.0f, 0.75f);
+        drawList.addText(posX + 1.5f, posY + 1.5f, shadowColor, text);
+        
+        // Draw main text: primary bright cyan accent color (0.0f, 0.7f, 1.0f, 1.0f)
+        int mainColor = ImGui.getColorU32(0.0f, 0.7f, 1.0f, 1.0f);
+        drawList.addText(posX, posY, mainColor, text);
     }
 
     /**
