@@ -22,28 +22,36 @@ import java.util.List;
  *
  * <h2>How it works</h2>
  * Based on reverse engineering research by TKazer
- * (<a href="https://github.com/TKazer/CS2-External-Silent-AimBot">CS2-External-Silent-AimBot</a>):
+ * (<a href=
+ * "https://github.com/TKazer/CS2-External-Silent-AimBot">CS2-External-Silent-AimBot</a>):
  * <ol>
- *   <li>The game's {@code CreateMove} function reads the player's view-angle from
- *       {@code dwViewAngles} in {@code client.dll} to determine the shooting direction.</li>
- *   <li>By <em>briefly</em> overwriting {@code dwViewAngles} with the angle aimed at
- *       the target, we redirect where the bullet travels without moving the camera.</li>
- *   <li>The original angles are restored immediately after the write (within ~1 ms),
- *       so the camera never visually moves and the change is imperceptible to the
- *       local player.</li>
+ * <li>The game's {@code CreateMove} function reads the player's view-angle from
+ * {@code dwViewAngles} in {@code client.dll} to determine the shooting
+ * direction.</li>
+ * <li>By <em>briefly</em> overwriting {@code dwViewAngles} with the angle aimed
+ * at
+ * the target, we redirect where the bullet travels without moving the
+ * camera.</li>
+ * <li>The original angles are restored immediately after the write (within ~1
+ * ms),
+ * so the camera never visually moves and the change is imperceptible to the
+ * local player.</li>
  * </ol>
  *
  * <h2>Settings</h2>
  * <ul>
- *   <li><b>FOV</b> — how wide (in degrees) the module looks for targets.</li>
- *   <li><b>Target Bone</b> — which bone to aim at (Head / Neck / Chest / Stomach).</li>
- *   <li><b>Aim Key</b> — hold key that enables the module.</li>
- *   <li><b>Activation</b> — Hold or Toggle mode.</li>
- *   <li><b>Smooth</b> — interpolation factor; 1 = instant snap, higher = progressive.</li>
- *   <li><b>Enemy Only</b> — skip teammates.</li>
- *   <li><b>VisCheck</b> — only aim at visible targets.</li>
- *   <li><b>Restore Delay µs</b> — how long (microseconds) to hold the patched angle
- *       before restoring. Increase only if bullets still miss at high ping.</li>
+ * <li><b>FOV</b> — how wide (in degrees) the module looks for targets.</li>
+ * <li><b>Target Bone</b> — which bone to aim at (Head / Neck / Chest /
+ * Stomach).</li>
+ * <li><b>Aim Key</b> — hold key that enables the module.</li>
+ * <li><b>Activation</b> — Hold or Toggle mode.</li>
+ * <li><b>Smooth</b> — interpolation factor; 1 = instant snap, higher =
+ * progressive.</li>
+ * <li><b>Enemy Only</b> — skip teammates.</li>
+ * <li><b>VisCheck</b> — only aim at visible targets.</li>
+ * <li><b>Restore Delay µs</b> — how long (microseconds) to hold the patched
+ * angle
+ * before restoring. Increase only if bullets still miss at high ping.</li>
  * </ul>
  *
  * <h2>Thread model</h2>
@@ -54,18 +62,21 @@ import java.util.List;
 public class SilentAimbotModule extends CheatModule {
 
     // ── Bone indices (same as AimbotModule / ESPModule) ───────────────────────
-    private static final int BONE_HEAD    = 7;
-    private static final int BONE_NECK    = 6;
-    private static final int BONE_CHEST   = 4;
+    private static final int BONE_HEAD = 7;
+    private static final int BONE_NECK = 6;
+    private static final int BONE_CHEST = 4;
     private static final int BONE_STOMACH = 2;
-    private static final int[] MODE_BONE  = { BONE_HEAD, BONE_NECK, BONE_CHEST, BONE_STOMACH };
+    private static final int[] MODE_BONE = { BONE_HEAD, BONE_NECK, BONE_CHEST, BONE_STOMACH };
 
     /** Windows VK codes for the aim-key options (mirrors AimbotModule). */
     private static final int[] AIM_KEY_VK = { 0x02, 0x04, 0xA4, 0xA0, 0x58, 0x5A, 0x11 };
 
     // ── Settings ──────────────────────────────────────────────────────────────
 
-    /** Maximum angular distance (degrees) from crosshair to target for the aim to engage. */
+    /**
+     * Maximum angular distance (degrees) from crosshair to target for the aim to
+     * engage.
+     */
     public final FloatSetting fov = new FloatSetting(
             "FOV (degrees)##silentaimbot", 12.0f, 0.5f, 60.0f);
 
@@ -99,14 +110,16 @@ public class SilentAimbotModule extends CheatModule {
     public final BooleanSetting useVisCheck = new BooleanSetting(
             "VisCheck##silentaimbot", true);
 
-    /** Fall back to the m_bSpotted flag when the geometric VisCheck is unavailable. */
+    /**
+     * Fall back to the m_bSpotted flag when the geometric VisCheck is unavailable.
+     */
     public final BooleanSetting spottedFallback = new BooleanSetting(
             "Spotted Fallback##silentaimbot", true);
 
     /**
      * How long (in microseconds) to hold the patched angle before restoring.
      * At 64-tick the server reads input every ~15 600 µs, so 1 000 µs is more
-     * than enough.  Increase only if bullets still miss at very high ping.
+     * than enough. Increase only if bullets still miss at very high ping.
      */
     public final FloatSetting restoreDelayUs = new FloatSetting(
             "Restore Delay (µs)##silentaimbot", 1000.0f, 100.0f, 15000.0f);
@@ -119,9 +132,9 @@ public class SilentAimbotModule extends CheatModule {
     /** Current interpolated pitch toward the locked target (degrees). */
     private float currentPitch = 0f;
     /** Current interpolated yaw toward the locked target (degrees). */
-    private float currentYaw   = 0f;
+    private float currentYaw = 0f;
     /** Whether we have an active interpolation target. */
-    private boolean hasTarget  = false;
+    private boolean hasTarget = false;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -142,14 +155,19 @@ public class SilentAimbotModule extends CheatModule {
 
     @Override
     public void onTick() {
-        if (isEnabled() && !silentThreadRunning)        startSilentThread();
-        else if (!isEnabled() && silentThreadRunning) { silentThreadRunning = false; hasTarget = false; }
+        if (isEnabled() && !silentThreadRunning)
+            startSilentThread();
+        else if (!isEnabled() && silentThreadRunning) {
+            silentThreadRunning = false;
+            hasTarget = false;
+        }
     }
 
     // ── Silent aim thread ─────────────────────────────────────────────────────
 
     private void startSilentThread() {
-        if (silentThread != null && silentThread.isAlive()) return;
+        if (silentThread != null && silentThread.isAlive())
+            return;
         silentThreadRunning = true;
 
         silentThread = new Thread(() -> {
@@ -158,10 +176,17 @@ public class SilentAimbotModule extends CheatModule {
             while (silentThreadRunning && isEnabled()) {
                 try {
                     // 1. Wait for CS2 to be attached and tracking
-                    if (!PlayerCache.tracking) { Thread.sleep(100); continue; }
+                    if (!PlayerCache.tracking) {
+                        Thread.sleep(100);
+                        continue;
+                    }
 
                     // 2. Pause while the overlay menu is open
-                    if (OverlayWindow.isMenuOpen()) { hasTarget = false; Thread.sleep(50); continue; }
+                    if (OverlayWindow.isMenuOpen()) {
+                        hasTarget = false;
+                        Thread.sleep(50);
+                        continue;
+                    }
 
                     // 3. Hold-key guard (if in Hold mode)
                     if (activationMode.getValue() == 0 && !isAimKeyHeld()) {
@@ -172,7 +197,10 @@ public class SilentAimbotModule extends CheatModule {
 
                     // 4. Read local pawn and view-angle address
                     long localPawn = PlayerCache.localPlayerPawnAddress;
-                    if (localPawn == 0) { Thread.yield(); continue; }
+                    if (localPawn == 0) {
+                        Thread.yield();
+                        continue;
+                    }
 
                     long viewAnglesAddr = CS2Memory.getClientBase() + CS2Offsets.dwViewAngles;
                     if (viewAnglesAddr == CS2Offsets.dwViewAngles) {
@@ -183,22 +211,26 @@ public class SilentAimbotModule extends CheatModule {
 
                     // 5. Read the current view angles (we need to restore these)
                     float origPitch = CS2Memory.readFloat(viewAnglesAddr);
-                    float origYaw   = CS2Memory.readFloat(viewAnglesAddr + 4);
+                    float origYaw = CS2Memory.readFloat(viewAnglesAddr + 4);
 
                     // 6. Build local camera eye position for VisCheck
                     Vector3 foot = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
                     Vector3 eyePos = (foot != null)
-                            ? new Vector3(foot.x, foot.y, foot.z + 64.0f) : null;
+                            ? new Vector3(foot.x, foot.y, foot.z + 64.0f)
+                            : null;
 
                     // 7. Settings snapshot
                     List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                    if (players.isEmpty()) { Thread.yield(); continue; }
+                    if (players.isEmpty()) {
+                        Thread.yield();
+                        continue;
+                    }
 
-                    int   boneMode  = targetBone.getValue();
-                    float fovDeg    = fov.getValue();
+                    int boneMode = targetBone.getValue();
+                    float fovDeg = fov.getValue();
                     boolean chkEnemy = enemyOnly.getValue();
-                    boolean chkVis   = useVisCheck.getValue();
-                    boolean chkSpot  = spottedFallback.getValue();
+                    boolean chkVis = useVisCheck.getValue();
+                    boolean chkSpot = spottedFallback.getValue();
 
                     // 8. Find the best target within FOV
                     float bestAngularDist = Float.MAX_VALUE;
@@ -206,13 +238,18 @@ public class SilentAimbotModule extends CheatModule {
                     boolean foundTarget = false;
 
                     for (PlayerSnapshot p : players) {
-                        if (p.isLocal || !p.onScreen)                        continue;
-                        if (chkEnemy && p.team == ESPModule.localTeam)       continue;
-                        if (p.health <= 0)                                   continue;
-                        if (chkVis && !isVisible(p, eyePos, localPawn, chkSpot)) continue;
+                        if (p.isLocal || !p.onScreen)
+                            continue;
+                        if (chkEnemy && p.team == ESPModule.localTeam)
+                            continue;
+                        if (p.health <= 0)
+                            continue;
+                        if (chkVis && !isVisible(p, eyePos, localPawn, chkSpot))
+                            continue;
 
                         int bone = resolveBoneIndex(boneMode);
-                        if (bone < 0 || bone >= p.boneX.length || !p.boneVisible[bone]) continue;
+                        if (bone < 0 || bone >= p.boneX.length || !p.boneVisible[bone])
+                            continue;
 
                         // Compute 3D world-space target position for the chosen bone.
                         // We use the screen-projected bone coordinates to back-calculate
@@ -222,22 +259,24 @@ public class SilentAimbotModule extends CheatModule {
                                 p.boneX[bone], p.boneY[bone],
                                 origPitch, origYaw,
                                 eyePos, p, bone);
-                        if (angles == null) continue;
+                        if (angles == null)
+                            continue;
 
                         float targetPitch = angles[0];
-                        float targetYaw   = angles[1];
+                        float targetYaw = angles[1];
 
                         // Angular distance from current view (decides who to target)
-                        float dP  = normalizeAngle(targetPitch - origPitch);
-                        float dY  = normalizeAngle(targetYaw   - origYaw);
+                        float dP = normalizeAngle(targetPitch - origPitch);
+                        float dY = normalizeAngle(targetYaw - origYaw);
                         float ang = (float) Math.sqrt(dP * dP + dY * dY);
 
-                        if (ang > fovDeg) continue;
+                        if (ang > fovDeg)
+                            continue;
 
                         if (ang < bestAngularDist) {
                             bestAngularDist = ang;
                             bestPitch = targetPitch;
-                            bestYaw   = targetYaw;
+                            bestYaw = targetYaw;
                             foundTarget = true;
                         }
                     }
@@ -254,28 +293,28 @@ public class SilentAimbotModule extends CheatModule {
                     if (!hasTarget || sf <= 1.0f) {
                         // First frame or instant snap: jump directly
                         patchPitch = bestPitch;
-                        patchYaw   = bestYaw;
+                        patchYaw = bestYaw;
                     } else {
                         float dP = normalizeAngle(bestPitch - currentPitch);
-                        float dY = normalizeAngle(bestYaw   - currentYaw);
+                        float dY = normalizeAngle(bestYaw - currentYaw);
                         patchPitch = currentPitch + dP / sf;
-                        patchYaw   = currentYaw   + dY / sf;
+                        patchYaw = currentYaw + dY / sf;
                     }
                     currentPitch = patchPitch;
-                    currentYaw   = patchYaw;
-                    hasTarget    = true;
+                    currentYaw = patchYaw;
+                    hasTarget = true;
 
                     // 10. ── SILENT PATCH ──────────────────────────────────────────
-                    //   Write the aimed angles to dwViewAngles so the *shot* travels
-                    //   toward the target while the camera visually stays put.
+                    // Write the aimed angles to dwViewAngles so the *shot* travels
+                    // toward the target while the camera visually stays put.
                     CS2Memory.writeAngles(viewAnglesAddr, patchPitch, patchYaw);
 
                     // 11. Hold for the configured restore delay so the game tick picks
-                    //     it up before we overwrite again.
+                    // it up before we overwrite again.
                     busyWaitMicros((long) restoreDelayUs.getValue().floatValue());
 
                     // 12. ── RESTORE ────────────────────────────────────────────────
-                    //   Put the original view angles back so the camera doesn't jump.
+                    // Put the original view angles back so the camera doesn't jump.
                     CS2Memory.writeAngles(viewAnglesAddr, origPitch, origYaw);
 
                     Thread.yield();
@@ -304,10 +343,13 @@ public class SilentAimbotModule extends CheatModule {
      * Computes the Euler angles (pitch, yaw) needed to look from the local eye
      * position directly at the specified bone world-space position.
      *
-     * <p>The bone's world position is reconstructed by back-projecting through the
-     * current view-projection matrix.  For greatest precision we use the world-space
-     * position stored in {@link PlayerSnapshot} for foot origin, then add the bone's
-     * relative vertical offset approximated from bone screen Y vs. feet screen Y.</p>
+     * <p>
+     * The bone's world position is reconstructed by back-projecting through the
+     * current view-projection matrix. For greatest precision we use the world-space
+     * position stored in {@link PlayerSnapshot} for foot origin, then add the
+     * bone's
+     * relative vertical offset approximated from bone screen Y vs. feet screen Y.
+     * </p>
      *
      * @return {@code float[]{pitch, yaw}} in degrees, or {@code null} if the eye
      *         position is unavailable.
@@ -317,8 +359,8 @@ public class SilentAimbotModule extends CheatModule {
             float currentPitch, float currentYaw,
             Vector3 eyePos, PlayerSnapshot p, int bone) {
 
-        if (eyePos == null) return null;
-
+        if (eyePos == null)
+            return null;
 
         // Vertical fraction: 0 = feet, 1 = head (approximately)
         float feetSY = p.feetY;
@@ -338,9 +380,9 @@ public class SilentAimbotModule extends CheatModule {
         float xyDist = (float) Math.sqrt(dx * dx + dy * dy);
 
         float pitch = -(float) Math.toDegrees(Math.atan2(dz, xyDist));
-        float yaw   =  (float) Math.toDegrees(Math.atan2(dy, dx));
+        float yaw = (float) Math.toDegrees(Math.atan2(dy, dx));
 
-        return new float[]{ pitch, yaw };
+        return new float[] { pitch, yaw };
     }
 
     /**
@@ -350,8 +392,10 @@ public class SilentAimbotModule extends CheatModule {
      * @return Clamped angle in degrees.
      */
     private static float normalizeAngle(float angle) {
-        while (angle >  180f) angle -= 360f;
-        while (angle < -180f) angle += 360f;
+        while (angle > 180f)
+            angle -= 360f;
+        while (angle < -180f)
+            angle += 360f;
         return angle;
     }
 
@@ -362,7 +406,8 @@ public class SilentAimbotModule extends CheatModule {
      * @return CS2 bone index.
      */
     private static int resolveBoneIndex(int mode) {
-        if (mode >= 0 && mode < MODE_BONE.length) return MODE_BONE[mode];
+        if (mode >= 0 && mode < MODE_BONE.length)
+            return MODE_BONE[mode];
         return BONE_HEAD;
     }
 
@@ -387,7 +432,9 @@ public class SilentAimbotModule extends CheatModule {
         try {
             short r = User32.INSTANCE.GetAsyncKeyState(AIM_KEY_VK[aimKey.getValue()]);
             return (r & 0x8000) != 0;
-        } catch (Exception ignored) { return false; }
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     /**
@@ -399,7 +446,7 @@ public class SilentAimbotModule extends CheatModule {
      */
     private static void busyWaitMicros(long micros) {
         long start = System.nanoTime();
-        long end   = start + micros * 1_000L;
+        long end = start + micros * 1_000L;
         while (System.nanoTime() < end) {
             Thread.onSpinWait();
         }

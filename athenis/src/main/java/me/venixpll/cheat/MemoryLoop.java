@@ -16,46 +16,59 @@ import me.venixpll.overlay.OverlayWindow;
  * <h3>Design: two loops at different rates</h3>
  * Player positions and the view matrix must be as fresh as the current render
  * frame to prevent the ESP boxes from visually lagging behind fast-moving
- * players.  Health bars, team colours, and names, on the other hand, change at
- * human reaction speeds — re-reading them every frame wastes kernel call budget.
+ * players. Health bars, team colours, and names, on the other hand, change at
+ * human reaction speeds — re-reading them every frame wastes kernel call
+ * budget.
  * <p>
  * <table border="1">
- *   <tr><th>Thread</th><th>Rate</th><th>Reads</th></tr>
- *   <tr>
- *     <td><b>Fast Position Loop</b></td>
- *     <td>Uncapped (yield-only)</td>
- *     <td>View matrix + {@code m_vOldOrigin} per player → screen projection</td>
- *   </tr>
- *   <tr>
- *     <td><b>Slow Data Loop</b></td>
- *     <td>~10 Hz (100 ms sleep)</td>
- *     <td>Full entity list traversal: health, team, name, pawn address</td>
- *   </tr>
+ * <tr>
+ * <th>Thread</th>
+ * <th>Rate</th>
+ * <th>Reads</th>
+ * </tr>
+ * <tr>
+ * <td><b>Fast Position Loop</b></td>
+ * <td>Uncapped (yield-only)</td>
+ * <td>View matrix + {@code m_vOldOrigin} per player → screen projection</td>
+ * </tr>
+ * <tr>
+ * <td><b>Slow Data Loop</b></td>
+ * <td>~10 Hz (100 ms sleep)</td>
+ * <td>Full entity list traversal: health, team, name, pawn address</td>
+ * </tr>
  * </table>
  * <p>
- * The fast loop publishes results to {@link PlayerCache#players} (read by the renderer).
- * The slow loop publishes to {@link PlayerCache#rawPlayers} (read by the fast loop for
- * pawn addresses).  Both fields are {@code volatile}, so reference swaps are visible
+ * The fast loop publishes results to {@link PlayerCache#players} (read by the
+ * renderer).
+ * The slow loop publishes to {@link PlayerCache#rawPlayers} (read by the fast
+ * loop for
+ * pawn addresses). Both fields are {@code volatile}, so reference swaps are
+ * visible
  * across threads without additional synchronization.
  */
 public class MemoryLoop {
 
     private static volatile boolean running = true;
 
-    /** Slow loop target interval in milliseconds — ~10 Hz refresh for entity metadata. */
+    /**
+     * Slow loop target interval in milliseconds — ~10 Hz refresh for entity
+     * metadata.
+     */
     private static final long SLOW_LOOP_INTERVAL_MS = 100L;
 
     /**
      * Launches both background daemon threads.
      * <p>
      * Resets the {@code running} flag to {@code true} before spawning threads so
-     * that the engine can be cleanly restarted after a previous {@link #stop()} call.
+     * that the engine can be cleanly restarted after a previous {@link #stop()}
+     * call.
      * The fast position thread is given {@link Thread#MAX_PRIORITY} so the OS
      * scheduler favours it over lower-priority work, keeping latency minimal.
-     * Call this after {@link CS2Memory} is configured and {@link CS2Offsets} are loaded.
+     * Call this after {@link CS2Memory} is configured and {@link CS2Offsets} are
+     * loaded.
      */
     public static void start() {
-        running = true;   // reset so restart after stop() works correctly
+        running = true; // reset so restart after stop() works correctly
         startFastPositionThread();
         startSlowDataThread();
     }
@@ -75,19 +88,20 @@ public class MemoryLoop {
      * <p>
      * This thread runs without any artificial sleep — only {@link Thread#yield()}
      * is called at the end of each iteration as a minimal concession to the OS
-     * scheduler.  In practice, the kernel overhead of issuing one
+     * scheduler. In practice, the kernel overhead of issuing one
      * {@code ReadProcessMemory} call per tracked player naturally limits the loop
      * rate to a few hundred to a thousand iterations per second, which is always
      * faster than any realistic display refresh rate.
      * <p>
      * Each iteration:
      * <ol>
-     *   <li>Read the current 4×4 view-projection matrix via {@link ViewMatrixReader}.</li>
-     *   <li>For every player in {@link PlayerCache#rawPlayers}, read
-     *       {@code m_vOldOrigin} (12 bytes, one RPM call) and project to screen via
-     *       {@link PositionReader}.</li>
-     *   <li>Atomically publish the updated list to {@link PlayerCache#players} for
-     *       the render thread.</li>
+     * <li>Read the current 4×4 view-projection matrix via
+     * {@link ViewMatrixReader}.</li>
+     * <li>For every player in {@link PlayerCache#rawPlayers}, read
+     * {@code m_vOldOrigin} (12 bytes, one RPM call) and project to screen via
+     * {@link PositionReader}.</li>
+     * <li>Atomically publish the updated list to {@link PlayerCache#players} for
+     * the render thread.</li>
      * </ol>
      */
     private static void startFastPositionThread() {
@@ -106,7 +120,8 @@ public class MemoryLoop {
                             }
                             PlayerCache.tracking = true;
                         } else {
-                            if (statusState != 0) statusState = 0;
+                            if (statusState != 0)
+                                statusState = 0;
                             PlayerCache.tracking = false;
                             Thread.sleep(1000);
                             continue;
@@ -149,14 +164,13 @@ public class MemoryLoop {
                     // ── 4. Publish both new and legacy lists atomically ────────
                     // volatile writes — render thread and legacy modules see the new
                     // reference on their next read without needing a lock.
-                    PlayerCache.renderPlayers = snapshots;   // immutable; used by ESPModule
-                    PlayerCache.players = raw;                // mutable; used by RadarHack etc.
+                    PlayerCache.renderPlayers = snapshots; // immutable; used by ESPModule
+                    PlayerCache.players = raw; // mutable; used by RadarHack etc.
 
                     // Yield the remainder of the time slice so other threads can run.
                     // We do NOT sleep — any sleep granularity (typically 15 ms on
                     // Windows) would cap us well below high-refresh-rate displays.
                     Thread.yield();
-
 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -180,14 +194,15 @@ public class MemoryLoop {
      * Starts the slow entity-data daemon thread.
      * <p>
      * Runs at {@link #SLOW_LOOP_INTERVAL_MS} (100 ms, ~10 Hz) to perform the
-     * full CS2 entity list traversal.  At each tick it:
+     * full CS2 entity list traversal. At each tick it:
      * <ol>
-     *   <li>Resolves the local player pawn and reads their team number.</li>
-     *   <li>Delegates the full entity scan to {@link EntityDataReader#readAll},
-     *       which batch-reads health + team per player in one RPM call each.</li>
-     *   <li>Atomically publishes the fresh list to {@link PlayerCache#rawPlayers}
-     *       so the fast loop picks up new pawn addresses on its next iteration.</li>
-     *   <li>Ticks all registered {@link CheatModule} instances (logic, not rendering).</li>
+     * <li>Resolves the local player pawn and reads their team number.</li>
+     * <li>Delegates the full entity scan to {@link EntityDataReader#readAll},
+     * which batch-reads health + team per player in one RPM call each.</li>
+     * <li>Atomically publishes the fresh list to {@link PlayerCache#rawPlayers}
+     * so the fast loop picks up new pawn addresses on its next iteration.</li>
+     * <li>Ticks all registered {@link CheatModule} instances (logic, not
+     * rendering).</li>
      * </ol>
      * <p>
      * 100 ms is more than adequate for health bar updates — a player losing health
@@ -217,15 +232,14 @@ public class MemoryLoop {
                     long localPlayerPawn = CS2Memory.readLong(clientBase + CS2Offsets.dwLocalPlayerPawn);
                     if (localPlayerPawn != 0) {
                         int localTeam = CS2Memory.readInt(localPlayerPawn + CS2Offsets.m_iTeamNum);
-                        ESPModule.localTeam                 = localTeam;
-                        PlayerCache.localPlayerPawnAddress  = localPlayerPawn;
+                        ESPModule.localTeam = localTeam;
+                        PlayerCache.localPlayerPawnAddress = localPlayerPawn;
                     }
 
                     // ── 2. Full entity list traversal ─────────────────────────
                     // Reads health, team, name, and pawn address for each living player.
                     // Screen coordinates are left at zero — PositionReader fills them.
-                    List<PlayerCache.PlayerData> freshData =
-                            EntityDataReader.readAll(clientBase, localPlayerPawn);
+                    List<PlayerCache.PlayerData> freshData = EntityDataReader.readAll(clientBase, localPlayerPawn);
 
                     // ── 3. Publish raw metadata for the fast loop ─────────────
                     // The fast loop reads rawPlayers to get pawn addresses; the volatile
@@ -234,7 +248,7 @@ public class MemoryLoop {
 
                     // ── 4. Tick cheat module logic ────────────────────────────
                     // onTick() is for background logic (aim assist, trigger checks etc.),
-                    // not for rendering.  Running it here at 10 Hz is appropriate.
+                    // not for rendering. Running it here at 10 Hz is appropriate.
                     for (CheatModule module : ModuleManager.getModules()) {
                         module.onTick();
                     }
@@ -254,7 +268,10 @@ public class MemoryLoop {
                     break;
                 } catch (Exception e) {
                     System.err.println("[MemoryLoop/Slow] Error: " + e.getMessage());
-                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ignored) {
+                    }
                 }
             }
 

@@ -81,6 +81,7 @@ public final class ConfigManager {
                 JsonObject settingObj = new JsonObject();
 
                 moduleObj.addProperty("enabled", module.isEnabled());
+                moduleObj.addProperty("expanded", module.isSettingsExpanded());
 
                 for (Setting<?> setting : module.getSettings()) {
                     if (setting instanceof FloatSetting) {
@@ -143,6 +144,11 @@ public final class ConfigManager {
                     // Restore enabled state
                     if (moduleObj.has("enabled")) {
                         module.setEnabled(moduleObj.get("enabled").getAsBoolean());
+                    }
+
+                    // Restore expanded state
+                    if (moduleObj.has("expanded")) {
+                        module.setSettingsExpanded(moduleObj.get("expanded").getAsBoolean());
                     }
 
                     // Restore individual settings

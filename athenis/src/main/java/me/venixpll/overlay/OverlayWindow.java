@@ -21,7 +21,8 @@ import org.lwjgl.glfw.GLFWWindowSizeCallback;
 
 /**
  * Overlay window container extending the ImGui Application lifecycle wrapper.
- * Configures the undecorated transparent overlay and maps window alignments to the target game instance.
+ * Configures the undecorated transparent overlay and maps window alignments to
+ * the target game instance.
  */
 public class OverlayWindow extends Application {
     private boolean lastInsertDown = false;
@@ -43,7 +44,10 @@ public class OverlayWindow extends Application {
     private int cachedGameX = 0, cachedGameY = 0, cachedGameW = 1920, cachedGameH = 1080;
     private boolean cachedGameFound = false;
 
-    /** Configurable Java keycode to toggle the menu, default is KeyEvent.VK_INSERT (155) */
+    /**
+     * Configurable Java keycode to toggle the menu, default is KeyEvent.VK_INSERT
+     * (155)
+     */
     public static int toggleKeyJava = KeyEvent.VK_INSERT;
 
     /**
@@ -63,37 +67,68 @@ public class OverlayWindow extends Application {
             return javaKey - KeyEvent.VK_NUMPAD0 + 0x60; // Numpad 0-9
         }
         switch (javaKey) {
-            case KeyEvent.VK_INSERT: return 0x2D;
-            case KeyEvent.VK_DELETE: return 0x2E;
-            case KeyEvent.VK_BACK_SPACE: return 0x08;
-            case KeyEvent.VK_TAB: return 0x09;
-            case KeyEvent.VK_ENTER: return 0x0D;
-            case KeyEvent.VK_SHIFT: return 0x10;
-            case KeyEvent.VK_CONTROL: return 0x11;
-            case KeyEvent.VK_ALT: return 0x12;
-            case KeyEvent.VK_PAUSE: return 0x13;
-            case KeyEvent.VK_CAPS_LOCK: return 0x14;
-            case KeyEvent.VK_ESCAPE: return 0x1B;
-            case KeyEvent.VK_SPACE: return 0x20;
-            case KeyEvent.VK_PAGE_UP: return 0x21;
-            case KeyEvent.VK_PAGE_DOWN: return 0x22;
-            case KeyEvent.VK_END: return 0x23;
-            case KeyEvent.VK_HOME: return 0x24;
-            case KeyEvent.VK_LEFT: return 0x25;
-            case KeyEvent.VK_UP: return 0x26;
-            case KeyEvent.VK_RIGHT: return 0x27;
-            case KeyEvent.VK_DOWN: return 0x28;
-            case KeyEvent.VK_COMMA: return 0xBC;
-            case KeyEvent.VK_PERIOD: return 0xBE;
-            case KeyEvent.VK_SLASH: return 0xBF;
-            case KeyEvent.VK_SEMICOLON: return 0xBA;
-            case KeyEvent.VK_EQUALS: return 0xBB;
-            case KeyEvent.VK_OPEN_BRACKET: return 0xDB;
-            case KeyEvent.VK_BACK_SLASH: return 0xDC;
-            case KeyEvent.VK_CLOSE_BRACKET: return 0xDD;
-            case KeyEvent.VK_MINUS: return 0xBD;
-            case KeyEvent.VK_BACK_QUOTE: return 0xC0;
-            default: return javaKey; // fallback
+            case KeyEvent.VK_INSERT:
+                return 0x2D;
+            case KeyEvent.VK_DELETE:
+                return 0x2E;
+            case KeyEvent.VK_BACK_SPACE:
+                return 0x08;
+            case KeyEvent.VK_TAB:
+                return 0x09;
+            case KeyEvent.VK_ENTER:
+                return 0x0D;
+            case KeyEvent.VK_SHIFT:
+                return 0x10;
+            case KeyEvent.VK_CONTROL:
+                return 0x11;
+            case KeyEvent.VK_ALT:
+                return 0x12;
+            case KeyEvent.VK_PAUSE:
+                return 0x13;
+            case KeyEvent.VK_CAPS_LOCK:
+                return 0x14;
+            case KeyEvent.VK_ESCAPE:
+                return 0x1B;
+            case KeyEvent.VK_SPACE:
+                return 0x20;
+            case KeyEvent.VK_PAGE_UP:
+                return 0x21;
+            case KeyEvent.VK_PAGE_DOWN:
+                return 0x22;
+            case KeyEvent.VK_END:
+                return 0x23;
+            case KeyEvent.VK_HOME:
+                return 0x24;
+            case KeyEvent.VK_LEFT:
+                return 0x25;
+            case KeyEvent.VK_UP:
+                return 0x26;
+            case KeyEvent.VK_RIGHT:
+                return 0x27;
+            case KeyEvent.VK_DOWN:
+                return 0x28;
+            case KeyEvent.VK_COMMA:
+                return 0xBC;
+            case KeyEvent.VK_PERIOD:
+                return 0xBE;
+            case KeyEvent.VK_SLASH:
+                return 0xBF;
+            case KeyEvent.VK_SEMICOLON:
+                return 0xBA;
+            case KeyEvent.VK_EQUALS:
+                return 0xBB;
+            case KeyEvent.VK_OPEN_BRACKET:
+                return 0xDB;
+            case KeyEvent.VK_BACK_SLASH:
+                return 0xDC;
+            case KeyEvent.VK_CLOSE_BRACKET:
+                return 0xDD;
+            case KeyEvent.VK_MINUS:
+                return 0xBD;
+            case KeyEvent.VK_BACK_QUOTE:
+                return 0xC0;
+            default:
+                return javaKey; // fallback
         }
     }
 
@@ -103,7 +138,7 @@ public class OverlayWindow extends Application {
     /**
      * When {@code true} the overlay will call
      * {@link GLFW#glfwSetWindowShouldClose} on the next {@link #process()} tick
-     * and cleanly exit the render loop.  Set via {@link #requestClose()}.
+     * and cleanly exit the render loop. Set via {@link #requestClose()}.
      */
     private static volatile boolean closeRequested = false;
 
@@ -123,14 +158,16 @@ public class OverlayWindow extends Application {
      * Used by modules (e.g. {@code RadarHackModule}) to decide whether
      * interactive drag handles should be drawn and processed.
      *
-     * @return {@code true} if the menu is open and the overlay accepts mouse events.
+     * @return {@code true} if the menu is open and the overlay accepts mouse
+     *         events.
      */
     public static boolean isMenuOpen() {
         return menuOpen;
     }
 
     /**
-     * Configures underlying GLFW window properties (transparency, floating status, mouse click-through).
+     * Configures underlying GLFW window properties (transparency, floating status,
+     * mouse click-through).
      *
      * @param config The application Configuration instance.
      */
@@ -141,7 +178,8 @@ public class OverlayWindow extends Application {
         // Native GLFW initialization check
         GLFW.glfwInit();
 
-        // Query primary monitor resolution and size window to match, leaving a 1px vertical gap
+        // Query primary monitor resolution and size window to match, leaving a 1px
+        // vertical gap
         long monitor = GLFW.glfwGetPrimaryMonitor();
         if (monitor != 0) {
             GLFWVidMode vidmode = GLFW.glfwGetVideoMode(monitor);
@@ -191,7 +229,8 @@ public class OverlayWindow extends Application {
     }
 
     /**
-     * Primary rendering hook executed per frame inside the ImGui rendering thread loop.
+     * Primary rendering hook executed per frame inside the ImGui rendering thread
+     * loop.
      */
     @Override
     public void process() {
@@ -199,7 +238,8 @@ public class OverlayWindow extends Application {
         // to close the window on this tick so the render loop exits cleanly.
         if (closeRequested) {
             long handle = GLFW.glfwGetCurrentContext();
-            if (handle != 0) GLFW.glfwSetWindowShouldClose(handle, true);
+            if (handle != 0)
+                GLFW.glfwSetWindowShouldClose(handle, true);
             closeRequested = false;
             return;
         }
@@ -233,11 +273,13 @@ public class OverlayWindow extends Application {
     }
 
     /**
-     * Syncs overlay location with CS2 window, updating click-through state and positioning.
+     * Syncs overlay location with CS2 window, updating click-through state and
+     * positioning.
      */
     private void updateWindowPosition() {
         long windowHandle = GLFW.glfwGetCurrentContext();
-        if (windowHandle == 0) return;
+        if (windowHandle == 0)
+            return;
 
         // Toggle configuration menu via configured key
         int winKey = javaToWindowsKey(toggleKeyJava);
@@ -250,8 +292,7 @@ public class OverlayWindow extends Application {
             GLFW.glfwSetWindowAttrib(
                     windowHandle,
                     GLFW.GLFW_MOUSE_PASSTHROUGH,
-                    menuOpen ? GLFW.GLFW_FALSE : GLFW.GLFW_TRUE
-            );
+                    menuOpen ? GLFW.GLFW_FALSE : GLFW.GLFW_TRUE);
 
             if (menuOpen) {
                 GLFW.glfwFocusWindow(windowHandle);
@@ -262,7 +303,7 @@ public class OverlayWindow extends Application {
         // ── Throttled CS2 window geometry query (every 250 ms) ────────────────
         // FindWindow + GetWindowRect involve Win32 kernel calls; running them at
         // full render rate (60-165+ fps) wastes CPU for data that changes far less
-        // frequently.  Cached geometry is used between checks.
+        // frequently. Cached geometry is used between checks.
         long now = System.currentTimeMillis();
         if (now - lastWindowCheckMs >= WINDOW_CHECK_INTERVAL_MS) {
             lastWindowCheckMs = now;
@@ -273,7 +314,7 @@ public class OverlayWindow extends Application {
                 User32.INSTANCE.GetWindowRect(gameHwnd, rect);
                 cachedGameX = rect.left;
                 cachedGameY = rect.top;
-                cachedGameW = rect.right  - rect.left;
+                cachedGameW = rect.right - rect.left;
                 cachedGameH = rect.bottom - rect.top;
                 cachedGameFound = true;
             } else {
@@ -281,7 +322,8 @@ public class OverlayWindow extends Application {
             }
         }
 
-        if (!cachedGameFound) return;
+        if (!cachedGameFound)
+            return;
 
         {
             int x = cachedGameX;

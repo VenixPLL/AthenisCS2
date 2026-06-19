@@ -9,13 +9,15 @@ import java.util.List;
 
 /**
  * Base abstract class representing a modular cheat feature.
- * Provides Javadocs and hooks for background memory ticks and screen-space overlay drawing.
+ * Provides Javadocs and hooks for background memory ticks and screen-space
+ * overlay drawing.
  */
 public abstract class CheatModule {
     private final String name;
     private final ModuleCategory category;
     private final ImBoolean enabledWrapper;
     private final List<Setting<?>> settings = new ArrayList<>();
+    private boolean settingsExpanded = true;
 
     /**
      * Constructs a new CheatModule.
@@ -46,6 +48,24 @@ public abstract class CheatModule {
      */
     public ModuleCategory getCategory() {
         return category;
+    }
+
+    /**
+     * Checks if the settings section is expanded in the GUI.
+     *
+     * @return True if expanded, false if collapsed.
+     */
+    public boolean isSettingsExpanded() {
+        return settingsExpanded;
+    }
+
+    /**
+     * Sets the expanded state of the settings section in the GUI.
+     *
+     * @param settingsExpanded The new expanded state.
+     */
+    public void setSettingsExpanded(boolean settingsExpanded) {
+        this.settingsExpanded = settingsExpanded;
     }
 
     /**
@@ -97,7 +117,8 @@ public abstract class CheatModule {
      * Invoked periodically by the background memory-reading thread.
      * Use this hook for passive memory manipulation or status checks.
      */
-    public void onTick() {}
+    public void onTick() {
+    }
 
     /**
      * Invoked on the main rendering thread.
@@ -105,5 +126,6 @@ public abstract class CheatModule {
      *
      * @param drawList The ImGui foreground draw list.
      */
-    public void onRender(ImDrawList drawList) {}
+    public void onRender(ImDrawList drawList) {
+    }
 }

@@ -92,7 +92,7 @@ public class OverlayMenu {
         ImGui.end();
 
         // Window 2: Internal Menu (Danger)
-        ImGui.setNextWindowPos(380f, 100f, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowPos(480f, 100f, ImGuiCond.FirstUseEver);
         ImGui.begin("Internal (Danger)",
                 ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
 
@@ -110,8 +110,20 @@ public class OverlayMenu {
         // Render enabled state checkbox for the module itself
         ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper());
 
-        // If module is enabled and exposes registered settings, render them
-        if (module.isEnabled() && !module.getSettings().isEmpty()) {
+        // Dropdown expand/collapse button next to the checkbox if the module has settings
+        if (!module.getSettings().isEmpty()) {
+            ImGui.sameLine();
+            String arrow = module.isSettingsExpanded() ? "v" : ">";
+            if (ImGui.button(arrow + "##expand_" + module.getName())) {
+                module.setSettingsExpanded(!module.isSettingsExpanded());
+            }
+            if (ImGui.isItemHovered()) {
+                ImGui.setTooltip("Show/Hide Settings");
+            }
+        }
+
+        // If module is enabled, expanded, and exposes registered settings, render them
+        if (module.isEnabled() && module.isSettingsExpanded() && !module.getSettings().isEmpty()) {
             ImGui.indent();
             for (Setting<?> setting : module.getSettings()) {
                 boolean disabled = false;
