@@ -4,6 +4,8 @@ import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
 import imgui.ImGui;
+import imgui.ImFontAtlas;
+import imgui.ImFontConfig;
 import imgui.app.Application;
 import imgui.app.Configuration;
 import imgui.flag.ImGuiConfigFlags;
@@ -222,6 +224,18 @@ public class OverlayWindow extends Application {
 
         // Transparency clear color setting
         getColorBg().set(0.0f, 0.0f, 0.0f, 0.0f);
+
+        // Load custom font to support Cyrillic/Russian characters
+        final ImFontAtlas fontAtlas = ImGui.getIO().getFonts();
+        final ImFontConfig fontConfig = new ImFontConfig();
+        java.io.File fontFile = new java.io.File("C:/Windows/Fonts/segoeui.ttf");
+        if (!fontFile.exists()) {
+            fontFile = new java.io.File("C:/Windows/Fonts/arial.ttf");
+        }
+        if (fontFile.exists()) {
+            fontAtlas.addFontFromFileTTF(fontFile.getAbsolutePath(), 16.0f, fontConfig, fontAtlas.getGlyphRangesCyrillic());
+        }
+        fontConfig.destroy();
 
         // Disable saving configuration files to current workspace
         ImGui.getIO().setIniFilename(null);
