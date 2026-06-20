@@ -632,6 +632,9 @@ public class LauncherWindow extends JFrame {
                 log("INFO", "Loading CS2 offset tables...");
                 CS2Offsets.load();
 
+                log("INFO", "Initializing skin database...");
+                me.venixpll.skinchanger.SkinDatabase.initialize();
+
                 // Register modules only once — guard against repeated START clicks.
                 if (ModuleManager.getModules().isEmpty()) {
                     ModuleManager.registerModule(new ESPModule());
@@ -648,6 +651,9 @@ public class LauncherWindow extends JFrame {
 
                 log("INFO", "Starting background memory threads...");
                 MemoryLoop.start();
+
+                log("INFO", "Starting skin changer thread...");
+                me.venixpll.skinchanger.SkinChanger.start();
 
                 SwingUtilities.invokeLater(() -> {
                     overlayRunning = true;
@@ -681,11 +687,12 @@ public class LauncherWindow extends JFrame {
      * once the overlay's blocking {@code Application.launch()} call returns.
      */
     private void onStop() {
-        log("INFO", "Stop requested — halting memory threads...");
+        log("INFO", "Stop requested — halting memory and skinchanger threads...");
         // Persist settings before the overlay is torn down so nothing is lost
         // even if the overlay window closes before postRun() fully executes.
         ConfigManager.save();
         MemoryLoop.stop();
+        me.venixpll.skinchanger.SkinChanger.stop();
         OverlayWindow.requestClose(); // signals the GLFW window to close
         setStatus("Stopping...", C_WARN);
         stopBtn.setEnabled(false);
@@ -697,6 +704,8 @@ public class LauncherWindow extends JFrame {
      * Resets all UI state so the user can press START again.
      */
     private void onStopped() {
+        MemoryLoop.stop();
+        me.venixpll.skinchanger.SkinChanger.stop();
         overlayRunning = false;
         SwingUtilities.invokeLater(() -> {
             startBtn.setEnabled(true);

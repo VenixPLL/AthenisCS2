@@ -316,8 +316,15 @@ public class OverlayWindow extends Application {
         }
         fontConfig.destroy();
 
-        // Disable ImGui ini file persistence
-        ImGui.getIO().setIniFilename(null);
+        // Enable ImGui ini file persistence in Athenis app data directory
+        String appData = System.getenv("APPDATA");
+        java.nio.file.Path dir = appData != null
+                ? java.nio.file.Paths.get(appData, "Athenis")
+                : java.nio.file.Paths.get(System.getProperty("user.home"), ".config", "Athenis");
+        try {
+            java.nio.file.Files.createDirectories(dir);
+        } catch (Exception ignored) {}
+        ImGui.getIO().setIniFilename(dir.resolve("imgui.ini").toAbsolutePath().toString());
         ImGui.getIO().addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);
     }
 
@@ -350,6 +357,7 @@ public class OverlayWindow extends Application {
         // Render GUI Menu
         if (menuOpen) {
             OverlayMenu.render();
+            me.venixpll.skinchanger.SkinChangerWindow.render();
         }
 
         // Draw Watermark in top-left corner

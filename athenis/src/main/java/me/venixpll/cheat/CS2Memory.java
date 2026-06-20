@@ -27,6 +27,7 @@ public class CS2Memory {
 
     // ThreadLocal reused JNA Memory buffers to prevent garbage collection heap/native churn
     private static final ThreadLocal<Memory> MEM_1 = ThreadLocal.withInitial(() -> new Memory(1));
+    private static final ThreadLocal<Memory> MEM_2 = ThreadLocal.withInitial(() -> new Memory(2));
     private static final ThreadLocal<Memory> MEM_4 = ThreadLocal.withInitial(() -> new Memory(4));
     private static final ThreadLocal<Memory> MEM_8 = ThreadLocal.withInitial(() -> new Memory(8));
     private static final ThreadLocal<Memory> MEM_12 = ThreadLocal.withInitial(() -> new Memory(12));
@@ -64,10 +65,10 @@ public class CS2Memory {
         loggedError = false;
         System.out.println("[CS2Memory] Found cs2.exe with PID: " + processId);
 
-        // Open the process with Read, Write and Query access permissions
+        // Open the process with Read, Write, Query and Create Thread access permissions
         processHandle = Kernel32.INSTANCE.OpenProcess(
                 WinNT.PROCESS_VM_READ | WinNT.PROCESS_VM_WRITE | WinNT.PROCESS_VM_OPERATION
-                        | WinNT.PROCESS_QUERY_INFORMATION,
+                        | WinNT.PROCESS_QUERY_INFORMATION | 0x0002 /* PROCESS_CREATE_THREAD */,
                 false,
                 processId);
 
@@ -415,5 +416,155 @@ public class CS2Memory {
             Kernel32.INSTANCE.CloseHandle(snapshot);
         }
         return 0;
+    }
+
+    public static long getModuleSize(String moduleName) {
+        if (processId == 0) return 0;
+        HANDLE snapshot = Kernel32.INSTANCE.CreateToolhelp32Snapshot(
+                new WinDef.DWORD(Tlhelp32.TH32CS_SNAPMODULE.intValue() | Tlhelp32.TH32CS_SNAPMODULE32.intValue()),
+                new WinDef.DWORD(processId));
+        if (snapshot == WinBase.INVALID_HANDLE_VALUE) {
+            return 0;
+        }
+        try {
+            Tlhelp32.MODULEENTRY32W.ByReference entry = new Tlhelp32.MODULEENTRY32W.ByReference();
+            if (Kernel32.INSTANCE.Module32FirstW(snapshot, entry)) {
+                do {
+                    String name = Native.toString(entry.szModule);
+                    if (name.equalsIgnoreCase(moduleName)) {
+                        return entry.modBaseSize.longValue();
+                    }
+                } while (Kernel32.INSTANCE.Module32NextW(snapshot, entry));
+            }
+        } finally {
+            Kernel32.INSTANCE.CloseHandle(snapshot);
+        }
+        return 0;
+    }
+
+    public static long sigScan(String moduleName, String pattern) {
+        long base = getModuleBaseAddress(processId, moduleName);
+        long size = getModuleSize(moduleName);
+        if (base == 0 || size == 0) return 0;
+
+        byte[] moduleBytes = new byte[(int) size];
+        Memory memBuffer = new Memory(size);
+        if (!readInto(base, memBuffer, (int) size)) {
+            return 0;
+        }
+        memBuffer.read(0, moduleBytes, 0, (int) size);
+
+        // Parse pattern
+        String[] parts = pattern.split(" ");
+        byte[] patternBytes = new byte[parts.length];
+        boolean[] wildcards = new boolean[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].equals("?")) {
+                wildcards[i] = true;
+            } else {
+                patternBytes[i] = (byte) Integer.parseInt(parts[i], 16);
+            }
+        }
+
+        // Scan
+        for (int i = 0; i <= moduleBytes.length - patternBytes.length; i++) {
+            boolean found = true;
+            for (int j = 0; j < patternBytes.length; j++) {
+                if (wildcards[j]) continue;
+                if (moduleBytes[i + j] != patternBytes[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return base + i;
+            }
+        }
+        return 0;
+    }
+
+    public static short readShort(long address) {
+        if (processHandle == null || address == 0)
+            return 0;
+        Memory mem = MEM_2.get();
+        if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 2, null)) {
+            return mem.getShort(0);
+        }
+        return 0;
+    }
+
+    public static boolean writeShort(long address, short value) {
+        if (processHandle == null || address == 0)
+            return false;
+        Memory mem = MEM_2.get();
+        mem.setShort(0, value);
+        return Kernel32.INSTANCE.WriteProcessMemory(processHandle, new Pointer(address), mem, 2, null);
+    }
+
+    public static boolean writeLong(long address, long value) {
+        if (processHandle == null || address == 0)
+            return false;
+        Memory mem = MEM_8.get();
+        mem.setLong(0, value);
+        return Kernel32.INSTANCE.WriteProcessMemory(processHandle, new Pointer(address), mem, 8, null);
+    }
+
+    public static boolean writeBytes(long address, byte[] data) {
+        if (processHandle == null || address == 0)
+            return false;
+        Memory mem = new Memory(data.length);
+        mem.write(0, data, 0, data.length);
+        return Kernel32.INSTANCE.WriteProcessMemory(processHandle, new Pointer(address), mem, data.length, null);
+    }
+
+    public static long virtualAllocEx(long size) {
+        if (processHandle == null) return 0;
+        Pointer addr = ExtraKernel32.INSTANCE.VirtualAllocEx(
+            processHandle,
+            null,
+            size,
+            0x1000 | 0x2000, // MEM_COMMIT | MEM_RESERVE
+            0x40 // PAGE_EXECUTE_READWRITE
+        );
+        return addr == null ? 0 : Pointer.nativeValue(addr);
+    }
+
+    public static boolean virtualFreeEx(long address) {
+        if (processHandle == null || address == 0) return false;
+        return ExtraKernel32.INSTANCE.VirtualFreeEx(
+            processHandle,
+            new Pointer(address),
+            0L,
+            0x8000 // MEM_RELEASE
+        );
+    }
+
+    public static void callThread(long funcAddress) {
+        if (processHandle == null || funcAddress == 0) return;
+
+        HANDLE hThread = ExtraKernel32.INSTANCE.CreateRemoteThread(
+            processHandle,
+            null,
+            0L,
+            new Pointer(funcAddress),
+            null,
+            0,
+            null
+        );
+
+        if (hThread != null && !hThread.equals(WinBase.INVALID_HANDLE_VALUE)) {
+            Kernel32.INSTANCE.WaitForSingleObject(hThread, WinBase.INFINITE);
+            Kernel32.INSTANCE.CloseHandle(hThread);
+        } else {
+            System.err.println("[CS2Memory] CreateRemoteThread failed! Last error: " + Kernel32.INSTANCE.GetLastError());
+        }
+    }
+
+    public interface ExtraKernel32 extends com.sun.jna.win32.StdCallLibrary {
+        ExtraKernel32 INSTANCE = Native.load("kernel32", ExtraKernel32.class, com.sun.jna.win32.W32APIOptions.DEFAULT_OPTIONS);
+
+        Pointer VirtualAllocEx(HANDLE hProcess, Pointer lpAddress, long dwSize, int flAllocationType, int flProtect);
+        boolean VirtualFreeEx(HANDLE hProcess, Pointer lpAddress, long dwSize, int dwFreeType);
+        HANDLE CreateRemoteThread(HANDLE hProcess, Pointer lpThreadAttributes, long dwStackSize, Pointer lpStartAddress, Pointer lpParameter, int dwCreationFlags, Pointer lpThreadId);
     }
 }

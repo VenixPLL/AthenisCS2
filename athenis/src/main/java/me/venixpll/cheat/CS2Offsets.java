@@ -41,6 +41,7 @@ public class CS2Offsets {
     public static long dwEntityList          = 38688144L;
     public static long dwViewMatrix          = 36981552L;
     public static long dwLocalPlayerPawn     = 36959896L;
+    public static long dwLocalPlayerController = 36833056L;
     /** Offset to local player view angle struct {pitch, yaw, roll} in client.dll */
     public static long dwViewAngles          = 37034408L;
     public static long dwGlobalVars          = 0L;
@@ -78,10 +79,30 @@ public class CS2Offsets {
     public static int m_modelState       = 0x160;
     /** Absolute world-space origin inside CGameSceneNode. */
     public static int m_vecAbsOrigin     = 200; // 0xC8
+    public static int m_pChild           = 0x40;
+    public static int m_pNextSibling     = 0x48;
+    public static int m_pOwner           = 0x30;
 
     // Weapon services offsets
-    public static int m_pWeaponServices  = 0x11A0;
-    public static int m_hMyWeapons       = 0x40;
+    public static int m_pWeaponServices  = 0x13D8;
+    public static int m_hMyWeapons       = 0x48;
+    public static int m_hActiveWeapon     = 0x60;
+    public static int m_pClippingWeapon  = 0x3DC0;
+    public static int m_hHudModelArms    = 0x2400;
+
+    // Attribute offsets
+    public static int m_pInventoryServices = 0x810;
+    public static int m_unMusicID        = 0x58;
+    public static int m_nFallbackPaintKit = 0x1850;
+    public static int m_AttributeManager = 0x1378;
+    public static int m_Item             = 0x50;
+    public static int m_AttributeList    = 0x208;
+    public static int m_Attributes       = 0x8;
+    public static int m_iItemDefinitionIndex = 0x1BA;
+    public static int m_iItemIDHigh      = 0x1D0;
+    public static int m_MeshGroupMask    = 0x220;
+    public static int m_hOwnerEntity     = 0x528;
+    public static int m_nSubclassID      = 0x3B8;
 
     // Planted C4 offsets
     public static int m_flC4Blow         = 0xEB4;
@@ -310,6 +331,9 @@ public class CS2Offsets {
         dwEntityList      = clientOffsets.get("dwEntityList").getAsLong();
         dwViewMatrix      = clientOffsets.get("dwViewMatrix").getAsLong();
         dwLocalPlayerPawn = clientOffsets.get("dwLocalPlayerPawn").getAsLong();
+        if (clientOffsets.has("dwLocalPlayerController")) {
+            dwLocalPlayerController = clientOffsets.get("dwLocalPlayerController").getAsLong();
+        }
         if (clientOffsets.has("dwViewAngles")) {
             dwViewAngles = clientOffsets.get("dwViewAngles").getAsLong();
         }
@@ -455,6 +479,38 @@ public class CS2Offsets {
                 }
             }
         }
+
+        m_pInventoryServices = getField(classes, "CCSPlayerController", "m_pInventoryServices", 0x810);
+        m_unMusicID = getField(classes, "CCSPlayerController_InventoryServices", "m_unMusicID", 0x58);
+        m_pClippingWeapon = getField(classes, "C_CSPlayerPawn", "m_pClippingWeapon", 0x3DC0);
+        m_hHudModelArms = getField(classes, "C_CSPlayerPawn", "m_hHudModelArms", 0x2400);
+        m_hOwnerEntity = getField(classes, "C_BaseEntity", "m_hOwnerEntity", 0x528);
+        m_hActiveWeapon = getField(classes, "CPlayer_WeaponServices", "m_hActiveWeapon", 0x60);
+        m_pChild = getField(classes, "CGameSceneNode", "m_pChild", 0x40);
+        m_pNextSibling = getField(classes, "CGameSceneNode", "m_pNextSibling", 0x48);
+        m_pOwner = getField(classes, "CGameSceneNode", "m_pOwner", 0x30);
+        m_MeshGroupMask = getField(classes, "CModelState", "m_MeshGroupMask", 0x220);
+        m_nFallbackPaintKit = getField(classes, "C_EconEntity", "m_nFallbackPaintKit", 0x1850);
+        m_AttributeManager = getField(classes, "C_EconEntity", "m_AttributeManager", 0x1378);
+        m_Item = getField(classes, "C_AttributeContainer", "m_Item", 0x50);
+        m_AttributeList = getField(classes, "C_EconItemView", "m_AttributeList", 0x208);
+        m_Attributes = getField(classes, "CAttributeList", "m_Attributes", 0x8);
+        m_iItemDefinitionIndex = getField(classes, "C_EconItemView", "m_iItemDefinitionIndex", 0x1BA);
+        m_iItemIDHigh = getField(classes, "C_EconItemView", "m_iItemIDHigh", 0x1D0);
+        m_nSubclassID = getField(classes, "C_BaseEntity", "m_nSubclassID", 0x3B8);
+    }
+
+    private static int getField(JsonObject classes, String className, String fieldName, int defaultVal) {
+        if (classes.has(className)) {
+            JsonObject c = classes.getAsJsonObject(className);
+            if (c.has("fields")) {
+                JsonObject fields = c.getAsJsonObject("fields");
+                if (fields.has(fieldName)) {
+                    return fields.get(fieldName).getAsInt();
+                }
+            }
+        }
+        return defaultVal;
     }
 
     /**
