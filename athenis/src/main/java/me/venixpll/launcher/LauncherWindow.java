@@ -10,7 +10,6 @@ import me.venixpll.cheat.module.impl.RadarHackModule;
 import me.venixpll.cheat.module.impl.TriggerBotModule;
 import me.venixpll.cheat.module.impl.BunnyHopModule;
 import me.venixpll.cheat.module.impl.BombTimerModule;
-import me.venixpll.cheat.module.impl.SilentAimbotModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
@@ -114,7 +113,6 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new TriggerBotModule());
             ModuleManager.registerModule(new BunnyHopModule());
             ModuleManager.registerModule(new BombTimerModule());
-            ModuleManager.registerModule(new SilentAimbotModule());
         }
         ConfigManager.load();
 
@@ -450,7 +448,8 @@ public class LauncherWindow extends JFrame {
     // ── Button factories ──────────────────────────────────────────────────────
 
     /**
-     * Creates a compact window chrome button (minimise / close) with a hover fill and an icon.
+     * Creates a compact window chrome button (minimise / close) with a hover fill
+     * and an icon.
      *
      * @param iconPath Path to the icon in resources.
      * @param hoverBg  Background colour shown on hover.
@@ -641,7 +640,6 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new TriggerBotModule());
                     ModuleManager.registerModule(new BunnyHopModule());
                     ModuleManager.registerModule(new BombTimerModule());
-                    ModuleManager.registerModule(new SilentAimbotModule());
                 }
 
                 // Restore user's last saved configuration before starting the engine.
