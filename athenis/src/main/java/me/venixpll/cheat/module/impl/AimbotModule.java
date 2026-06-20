@@ -58,22 +58,22 @@ public class AimbotModule extends CheatModule {
     public final ModeSetting targetBone = new ModeSetting(
             "Target Bone##aimbot", 0, "Head", "Neck", "Chest", "Stomach", "Closest");
     public final ModeSetting activationMode = new ModeSetting(
-            "Activation##aimbot", 0, "Hold Key", "Toggle");
+            "Activation##aimbot", 1, "Hold Key", "Toggle");
     public final ModeSetting aimKey = new ModeSetting(
             "Aim Key##aimbot", 0,
             "Right Mouse", "Middle Mouse", "Left Alt", "Left Shift", "X Key", "Z Key", "Ctrl");
     public final FloatSetting fov = new FloatSetting(
-            "FOV (degrees)##aimbot", 8.0f, 0.5f, 45.0f);
+            "FOV (degrees)##aimbot", 0.7f, 0.5f, 45.0f);
     public final FloatSetting fovMin = new FloatSetting(
-            "FOV Min##aimbot", 0.3f, 0.01f, 3.0f);
+            "FOV Min##aimbot", 0.01f, 0.01f, 3.0f);
     public final FloatSetting smooth = new FloatSetting(
-            "Smooth##aimbot", 6.0f, 1.0f, 30.0f);
+            "Smooth##aimbot", 6.5f, 1.0f, 30.0f);
     public final FloatSetting sensitivity = new FloatSetting(
-            "Sensitivity##aimbot", 1.0f, 0.1f, 10.0f);
+            "Sensitivity##aimbot", 1.5f, 0.1f, 10.0f);
     public final BooleanSetting humanize = new BooleanSetting(
-            "Humanize##aimbot", false);
+            "Humanize##aimbot", true);
     public final FloatSetting humanizeStrength = new FloatSetting(
-            "Humanize Strength##aimbot", 20.0f, 0.0f, 100.0f);
+            "Humanize Strength##aimbot", 3.6f, 0.0f, 20.0f);
     public final BooleanSetting enemyOnly = new BooleanSetting(
             "Enemy Only##aimbot", true);
     public final BooleanSetting useVisCheck = new BooleanSetting(
@@ -81,7 +81,7 @@ public class AimbotModule extends CheatModule {
     public final BooleanSetting spottedFallback = new BooleanSetting(
             "Spotted Fallback##aimbot", true);
     public final BooleanSetting cancelOnShoot = new BooleanSetting(
-            "Cancel on Shoot##aimbot", false);
+            "Cancel on Shoot##aimbot", true);
 
     // ── Internal state ────────────────────────────────────────────────────────
     private volatile boolean aimThreadRunning = false;
