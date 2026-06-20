@@ -15,10 +15,10 @@ public class SkinChangerWindow {
 
     public static void render() {
         ImGui.setNextWindowSize(380, 320, ImGuiCond.FirstUseEver);
-        
+
         // Open a separate ImGui window without NoSavedSettings so position is saved
-        if (ImGui.begin("Skin Changer")) {
-            
+        if (ImGui.begin("Skin Changer (Edits Memory)")) {
+
             if (ImGui.checkbox("Enable Skin Changer", SkinChanger.enabled)) {
                 if (!SkinChanger.enabled.get()) {
                     SkinChanger.cleanupAllAllocatedBlocks();
@@ -49,21 +49,24 @@ public class SkinChangerWindow {
             }
 
             WeaponsEnum heldWeapon = SkinChanger.getCurrentWeapon();
-            
+
             // Auto-select held weapon if valid for the active team
-            if (heldWeapon != WeaponsEnum.NONE && isWeaponValidForTeam(selectedTeam, heldWeapon) && selectedWeapon == WeaponsEnum.NONE) {
+            if (heldWeapon != WeaponsEnum.NONE && isWeaponValidForTeam(selectedTeam, heldWeapon)
+                    && selectedWeapon == WeaponsEnum.NONE) {
                 selectedWeapon = heldWeapon;
                 selectedSkinIdx = 0;
             }
-            
+
             ImGui.text("Currently Held: " + (heldWeapon == WeaponsEnum.NONE ? "None" : heldWeapon.getDisplayName()));
             ImGui.separator();
 
             // Weapon Selector
-            String weaponPreview = selectedWeapon == WeaponsEnum.NONE ? "Select Weapon" : selectedWeapon.getDisplayName();
+            String weaponPreview = selectedWeapon == WeaponsEnum.NONE ? "Select Weapon"
+                    : selectedWeapon.getDisplayName();
             if (ImGui.beginCombo("Weapon", weaponPreview)) {
                 for (WeaponsEnum w : WeaponsEnum.values()) {
-                    if (!isWeaponValidForTeam(selectedTeam, w)) continue;
+                    if (!isWeaponValidForTeam(selectedTeam, w))
+                        continue;
                     boolean isSelected = (selectedWeapon == w);
                     if (ImGui.selectable(w.getDisplayName(), isSelected)) {
                         selectedWeapon = w;
@@ -117,13 +120,13 @@ public class SkinChangerWindow {
                     if (activeSkin != null && activeSkin.paint != 0) {
                         ImGui.spacing();
 
-                        float[] wearVal = new float[]{ activeSkin.wear };
+                        float[] wearVal = new float[] { activeSkin.wear };
                         if (ImGui.sliderFloat("Wear Factor", wearVal, 0.0001f, 1.0f, "%.4f")) {
                             activeSkin.wear = wearVal[0];
                             SkinChanger.applySkin(selectedTeam, selectedWeapon, activeSkin);
                         }
 
-                        int[] seedVal = new int[]{ activeSkin.seed };
+                        int[] seedVal = new int[] { activeSkin.seed };
                         if (ImGui.sliderInt("Pattern Seed", seedVal, 1, 1000)) {
                             activeSkin.seed = seedVal[0];
                             SkinChanger.applySkin(selectedTeam, selectedWeapon, activeSkin);
