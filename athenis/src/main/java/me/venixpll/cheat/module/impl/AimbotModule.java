@@ -80,6 +80,8 @@ public class AimbotModule extends CheatModule {
             "VisCheck##aimbot", true);
     public final BooleanSetting spottedFallback = new BooleanSetting(
             "Spotted Fallback##aimbot", true);
+    public final BooleanSetting cancelOnShoot = new BooleanSetting(
+            "Cancel on Shoot##aimbot", false);
 
     // ── Internal state ────────────────────────────────────────────────────────
     private volatile boolean aimThreadRunning = false;
@@ -107,6 +109,7 @@ public class AimbotModule extends CheatModule {
         addSetting(enemyOnly);
         addSetting(useVisCheck);
         addSetting(spottedFallback);
+        addSetting(cancelOnShoot);
     }
 
     // ── Module lifecycle ──────────────────────────────────────────────────────
@@ -153,6 +156,13 @@ public class AimbotModule extends CheatModule {
 
                     // 2. Hold-key guard
                     if (activationMode.getValue() == 0 && !isAimKeyHeld()) {
+                        resetState();
+                        Thread.yield();
+                        continue;
+                    }
+
+                    // 2b. Cancel on Shoot check with vertical mouse jitter
+                    if (cancelOnShoot.getValue() && isLeftMouseHeld()) {
                         resetState();
                         Thread.yield();
                         continue;
@@ -365,6 +375,16 @@ public class AimbotModule extends CheatModule {
         try {
             short r = com.sun.jna.platform.win32.User32.INSTANCE
                     .GetAsyncKeyState(AIM_KEY_VK[aimKey.getValue()]);
+            return (r & 0x8000) != 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isLeftMouseHeld() {
+        try {
+            // VK_LBUTTON = 0x01
+            short r = com.sun.jna.platform.win32.User32.INSTANCE.GetAsyncKeyState(0x01);
             return (r & 0x8000) != 0;
         } catch (Exception ignored) {
             return false;
