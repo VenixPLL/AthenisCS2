@@ -82,6 +82,16 @@ public class AimbotModule extends CheatModule {
             "Spotted Fallback##aimbot", true);
     public final BooleanSetting cancelOnShoot = new BooleanSetting(
             "Cancel on Shoot##aimbot", true);
+    public final BooleanSetting overshoot = new BooleanSetting(
+            "Overshoot##aimbot", false);
+    public final FloatSetting overshootScale = new FloatSetting(
+            "Overshoot Scale##aimbot", 1.2f, 1.0f, 2.0f);
+    public final FloatSetting overshootDuration = new FloatSetting(
+            "Overshoot Duration (ms)##aimbot", 150f, 50f, 500f);
+    public final BooleanSetting overshootDistanceCheck = new BooleanSetting(
+            "Overshoot Distance Check##aimbot", false);
+    public final FloatSetting overshootMaxDistance = new FloatSetting(
+            "Overshoot Max Distance##aimbot", 500f, 100f, 3000f);
 
     // ── Internal state ────────────────────────────────────────────────────────
     private volatile boolean aimThreadRunning = false;
@@ -93,6 +103,12 @@ public class AimbotModule extends CheatModule {
     private float accumY = 0f;
     private long lastAimNs = 0L;
     private static final long AIM_INTERVAL_NS = 2_000_000L; // 2 ms = 500 Hz cap
+    private long overshootTargetAddress = 0L;
+    private long overshootStartTime = 0L;
+    private float overshootDirX = 0f;
+    private float overshootDirY = 0f;
+    private float initialDistance = 0f;
+    private boolean overshootCompleted = true;
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public AimbotModule() {
@@ -110,6 +126,11 @@ public class AimbotModule extends CheatModule {
         addSetting(useVisCheck);
         addSetting(spottedFallback);
         addSetting(cancelOnShoot);
+        addSetting(overshoot);
+        addSetting(overshootScale);
+        addSetting(overshootDuration);
+        addSetting(overshootDistanceCheck);
+        addSetting(overshootMaxDistance);
     }
 
     // ── Module lifecycle ──────────────────────────────────────────────────────
@@ -128,6 +149,16 @@ public class AimbotModule extends CheatModule {
         prevDeltaY = 0f;
         accumX = 0f;
         accumY = 0f;
+        resetOvershoot();
+    }
+
+    private void resetOvershoot() {
+        overshootTargetAddress = 0L;
+        overshootStartTime = 0L;
+        overshootDirX = 0f;
+        overshootDirY = 0f;
+        initialDistance = 0f;
+        overshootCompleted = true;
     }
 
     // ── Aim thread ────────────────────────────────────────────────────────────
@@ -221,6 +252,8 @@ public class AimbotModule extends CheatModule {
                     float bestDist = Float.MAX_VALUE;
                     float bestDX = 0f;
                     float bestDY = 0f;
+                    long bestTargetAddress = 0L;
+                    float targetDistToLocal = 0f;
 
                     for (PlayerSnapshot p : players) {
                         if (p.isLocal || !p.onScreen)
@@ -246,6 +279,12 @@ public class AimbotModule extends CheatModule {
                             bestDist = dist;
                             bestDX = sdx;
                             bestDY = sdy;
+                            bestTargetAddress = p.pawnAddress;
+                            if (foot != null) {
+                                targetDistToLocal = foot.distance(new Vector3(p.worldX, p.worldY, p.worldZ));
+                            } else {
+                                targetDistToLocal = 0f;
+                            }
                         }
                     }
 
@@ -254,6 +293,54 @@ public class AimbotModule extends CheatModule {
                         resetState();
                         Thread.yield();
                         continue;
+                    }
+
+                    // 8.5. Overshoot logic
+                    if (overshoot.getValue()) {
+                        boolean withinDistance = true;
+                        if (overshootDistanceCheck.getValue()) {
+                            withinDistance = (targetDistToLocal <= overshootMaxDistance.getValue());
+                        }
+
+                        if (withinDistance) {
+                            long now = System.currentTimeMillis();
+                            if (bestTargetAddress != overshootTargetAddress) {
+                                overshootTargetAddress = bestTargetAddress;
+                                overshootStartTime = now;
+                                overshootCompleted = false;
+
+                                float len = (float) Math.sqrt(bestDX * bestDX + bestDY * bestDY);
+                                if (len > 0) {
+                                    overshootDirX = bestDX / len;
+                                    overshootDirY = bestDY / len;
+                                    initialDistance = len;
+                                } else {
+                                    overshootDirX = 0f;
+                                    overshootDirY = 0f;
+                                    initialDistance = 0f;
+                                }
+                            }
+
+                            if (!overshootCompleted) {
+                                long elapsed = now - overshootStartTime;
+                                float duration = overshootDuration.getValue();
+                                if (elapsed >= duration) {
+                                    overshootCompleted = true;
+                                } else {
+                                    float progress = (float) elapsed / duration;
+                                    float factor = 6.75f * progress * (1.0f - progress) * (1.0f - progress);
+                                    float overshootDist = (overshootScale.getValue() - 1.0f) * initialDistance;
+                                    float offsetAmount = overshootDist * factor;
+
+                                    bestDX += offsetAmount * overshootDirX;
+                                    bestDY += offsetAmount * overshootDirY;
+                                }
+                            }
+                        } else {
+                            resetOvershoot();
+                        }
+                    } else {
+                        resetOvershoot();
                     }
 
                     // 9. Rate limit — 500 Hz cap
