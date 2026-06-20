@@ -5,12 +5,18 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.*;
+
 
 public class SkinDatabase {
     private static final List<SkinInfo> weaponSkins = new ArrayList<>();
@@ -51,6 +57,7 @@ public class SkinDatabase {
         WEAPON_MAP.put("R8 Revolver", WeaponsEnum.REVOLVER);
         WEAPON_MAP.put("P90", WeaponsEnum.P90);
         WEAPON_MAP.put("P250", WeaponsEnum.P250);
+        WEAPON_MAP.put("UMP-45", WeaponsEnum.UMP45);
     }
 
     private static WeaponsEnum getDefPerString(String name) {
@@ -60,6 +67,68 @@ public class SkinDatabase {
             }
         }
         return WeaponsEnum.NONE;
+    }
+
+    private static File resolveCacheFile() {
+        String appData = System.getenv("APPDATA");
+        Path dir = appData != null
+                ? Paths.get(appData, "Athenis")
+                : Paths.get(System.getProperty("user.home"), ".athenis");
+        try {
+            Files.createDirectories(dir);
+        } catch (Exception ignored) {}
+        return dir.resolve("skins_cache.json").toFile();
+    }
+
+    private static void parseAndLoadSkins(String jsonBody) {
+        JsonArray arr = JsonParser.parseString(jsonBody).getAsJsonArray();
+        synchronized (weaponSkins) {
+            weaponSkins.clear();
+            for (JsonElement el : arr) {
+                JsonObject obj = el.getAsJsonObject();
+                int paintIndex = 0;
+                if (obj.has("paint_index")) {
+                    try {
+                        paintIndex = obj.get("paint_index").getAsInt();
+                    } catch (Exception ignored) {}
+                }
+                if (paintIndex == 0) continue;
+
+                String name = "";
+                if (obj.has("name")) {
+                    name = obj.get("name").getAsString();
+                }
+                WeaponsEnum wType = getDefPerString(name);
+                if (wType == WeaponsEnum.NONE) {
+                    continue;
+                }
+
+                boolean legacy = false;
+                if (obj.has("legacy_model")) {
+                    legacy = obj.get("legacy_model").getAsBoolean();
+                }
+
+                weaponSkins.add(new SkinInfo(paintIndex, legacy, name, wType));
+            }
+        }
+        System.out.println("[SkinDatabase] Successfully parsed " + weaponSkins.size() + " weapon skins!");
+    }
+
+    private static boolean loadFromCache() {
+        File cacheFile = resolveCacheFile();
+        if (!cacheFile.exists()) {
+            System.out.println("[SkinDatabase] No cached skins database found.");
+            return false;
+        }
+        try {
+            System.out.println("[SkinDatabase] Loading skins database from local cache: " + cacheFile.getAbsolutePath());
+            String jsonBody = Files.readString(cacheFile.toPath());
+            parseAndLoadSkins(jsonBody);
+            return true;
+        } catch (Exception e) {
+            System.err.println("[SkinDatabase] Failed to read or parse cached skins database: " + e.getMessage());
+            return false;
+        }
     }
 
     public static void initialize() {
@@ -77,44 +146,32 @@ public class SkinDatabase {
 
                 HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
                 if (resp.statusCode() == 200) {
-                    JsonArray arr = JsonParser.parseString(resp.body()).getAsJsonArray();
-                    synchronized (weaponSkins) {
-                        weaponSkins.clear();
-                        for (JsonElement el : arr) {
-                            JsonObject obj = el.getAsJsonObject();
-                            int paintIndex = 0;
-                            if (obj.has("paint_index")) {
-                                try {
-                                    paintIndex = obj.get("paint_index").getAsInt();
-                                } catch (Exception ignored) {}
-                            }
-                            if (paintIndex == 0) continue;
-
-                            String name = "";
-                            if (obj.has("name")) {
-                                name = obj.get("name").getAsString();
-                            }
-                            WeaponsEnum wType = getDefPerString(name);
-                            if (wType == WeaponsEnum.NONE) {
-                                continue;
-                            }
-
-                            boolean legacy = false;
-                            if (obj.has("legacy_model")) {
-                                legacy = obj.get("legacy_model").getAsBoolean();
-                            }
-
-                            weaponSkins.add(new SkinInfo(paintIndex, legacy, name, wType));
+                    String jsonBody = resp.body();
+                    // Save to local cache first
+                    try {
+                        File cacheFile = resolveCacheFile();
+                        try (FileWriter writer = new FileWriter(cacheFile)) {
+                            writer.write(jsonBody);
                         }
+                        System.out.println("[SkinDatabase] Saved skin database cache locally to " + cacheFile.getAbsolutePath());
+                    } catch (Exception cacheEx) {
+                        System.err.println("[SkinDatabase] Failed to save skin database cache: " + cacheEx.getMessage());
                     }
-                    System.out.println("[SkinDatabase] Successfully parsed " + weaponSkins.size() + " weapon/knife skins!");
+                    parseAndLoadSkins(jsonBody);
                     return;
+                } else {
+                    System.err.println("[SkinDatabase] API response status code: " + resp.statusCode());
                 }
             } catch (Exception e) {
-                System.err.println("[SkinDatabase] Failed to download skins JSON: " + e.getMessage());
+                System.err.println("[SkinDatabase] Failed to download skins JSON: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getName()));
             }
 
-            // Fallback to basic common skins if offline/failed
+            // Attempt to load from cache
+            if (loadFromCache()) {
+                return;
+            }
+
+            // Fallback to basic common skins if offline/failed and cache file is not present
             loadFallbacks();
         }, "Athenis-SkinDBLoader").start();
     }

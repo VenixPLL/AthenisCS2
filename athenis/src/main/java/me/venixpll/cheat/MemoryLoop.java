@@ -211,7 +211,6 @@ public class MemoryLoop {
     private static void startSlowDataThread() {
         Thread thread = new Thread(() -> {
             System.out.println("[MemoryLoop/Slow] Entity data thread started.");
-            int debugTicks = 0;
 
             while (running) {
                 try {
@@ -251,14 +250,6 @@ public class MemoryLoop {
                     // not for rendering. Running it here at 10 Hz is appropriate.
                     for (CheatModule module : ModuleManager.getModules()) {
                         module.onTick();
-                    }
-
-                    // Periodic diagnostics — log once every ~3 seconds (30 ticks × 100 ms).
-                    debugTicks++;
-                    if (debugTicks % 30 == 0) {
-                        System.out.println(String.format(
-                                "[MemoryLoop/Slow] Tracking %d player(s). clientBase=0x%X",
-                                freshData.size(), clientBase));
                     }
 
                     Thread.sleep(SLOW_LOOP_INTERVAL_MS);
