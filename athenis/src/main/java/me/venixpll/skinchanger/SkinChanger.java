@@ -24,6 +24,8 @@ public class SkinChanger {
     
     public static final ImBoolean enabled = new ImBoolean(false);
     private static final Map<Long, Long> allocatedBlocks = new ConcurrentHashMap<>();
+    private static short originalInstructionValue = 0;
+    private static boolean isPatched = false;
 
     private static final Map<Integer, Map<WeaponsEnum, SkinInfo>> teamSkins = new ConcurrentHashMap<>();
     static {
@@ -47,36 +49,58 @@ public class SkinChanger {
             
             if (!running) return;
 
-            // Perform signature scan and instruction patch
+            // Perform signature scan
             System.out.println("[SkinChanger] Scanning for RegenerateWeaponSkins signature...");
             regenerateWeaponSkinsSig = CS2Memory.sigScan("client.dll", "48 83 EC ? E8 ? ? ? ? 48 85 C0 0F 84 ? ? ? ? 48 8B 10");
             
             if (regenerateWeaponSkinsSig != 0) {
                 System.out.format("[SkinChanger] Found RegenerateWeaponSkins at 0x%X%n", regenerateWeaponSkinsSig);
-                
+                short currentVal = CS2Memory.readShort(regenerateWeaponSkinsSig + 0x52);
                 short patchVal = (short) (CS2Offsets.m_AttributeManager + CS2Offsets.m_Item + CS2Offsets.m_AttributeList + CS2Offsets.m_Attributes);
-                boolean patched = CS2Memory.writeShort(regenerateWeaponSkinsSig + 0x52, patchVal);
-                if (patched) {
-                    System.out.format("[SkinChanger] Patched RegenerateWeaponSkins+0x52 with value 0x%X%n", patchVal);
+                if (currentVal != patchVal) {
+                    originalInstructionValue = currentVal;
                 } else {
-                    System.err.println("[SkinChanger] Failed to patch RegenerateWeaponSkins!");
+                    // Fallback default value if already patched on previous startup
+                    originalInstructionValue = (short) (CS2Offsets.m_iItemDefinitionIndex);
                 }
+                System.out.format("[SkinChanger] Cached original instruction value: 0x%X%n", originalInstructionValue);
             } else {
                 System.err.println("[SkinChanger] Failed to find RegenerateWeaponSkins signature!");
             }
+
+            short patchVal = (short) (CS2Offsets.m_AttributeManager + CS2Offsets.m_Item + CS2Offsets.m_AttributeList + CS2Offsets.m_Attributes);
 
             while (running) {
                 try {
                     Thread.sleep(10);
 
+                    if (!CS2Memory.isAttached() || !CS2Memory.isProcessRunning()) {
+                        cleanupAllAllocatedBlocks();
+                        isPatched = false;
+                        continue;
+                    }
+
                     if (!enabled.get()) {
+                        if (isPatched && regenerateWeaponSkinsSig != 0) {
+                            boolean restored = CS2Memory.writeShort(regenerateWeaponSkinsSig + 0x52, originalInstructionValue);
+                            if (restored) {
+                                System.out.println("[SkinChanger] Restored original instruction to RegenerateWeaponSkins+0x52.");
+                            }
+                            isPatched = false;
+                        }
                         cleanupAllAllocatedBlocks();
                         continue;
                     }
 
-                    if (!CS2Memory.isAttached() || !CS2Memory.isProcessRunning()) {
-                        cleanupAllAllocatedBlocks();
-                        continue;
+                    // Enable skinchanger patch if not yet patched
+                    if (!isPatched && regenerateWeaponSkinsSig != 0) {
+                        boolean patched = CS2Memory.writeShort(regenerateWeaponSkinsSig + 0x52, patchVal);
+                        if (patched) {
+                            System.out.format("[SkinChanger] Patched RegenerateWeaponSkins+0x52 with value 0x%X%n", patchVal);
+                            isPatched = true;
+                        } else {
+                            System.err.println("[SkinChanger] Failed to patch RegenerateWeaponSkins!");
+                        }
                     }
 
                     long clientBase = CS2Memory.getClientBase();
