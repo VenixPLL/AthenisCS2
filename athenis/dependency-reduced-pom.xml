@@ -43,6 +43,82 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>com.github.wvengen</groupId>
+        <artifactId>proguard-maven-plugin</artifactId>
+        <version>2.6.1</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>proguard</goal>
+            </goals>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>com.guardsquare</groupId>
+            <artifactId>proguard-base</artifactId>
+            <version>7.3.2</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <proguardVersion>7.3.2</proguardVersion>
+          <injar>${project.build.finalName}.jar</injar>
+          <outjar>${project.build.finalName}-obfuscated.jar</outjar>
+          <obfuscate>true</obfuscate>
+          <options>
+            <option>-dontshrink</option>
+            <option>-dontoptimize</option>
+            <option>-keepattributes Signature,InnerClasses,AnnotationDefault,EnclosingMethod,Deprecated,SourceFile,LineNumberTable</option>
+            <option>-keep public class me.venixpll.Main { public static void main(java.lang.String[]); }</option>
+            <option>-keep class * implements com.sun.jna.Library { *; }</option>
+            <option>-keep class * implements com.sun.jna.win32.StdCallLibrary { *; }</option>
+            <option>-keep class * implements com.sun.jna.Structure { *; }</option>
+            <option>-keep class * implements com.sun.jna.Callback { *; }</option>
+            <option>-keep class !me.venixpll.** { *; }</option>
+            <option>-keepclassmembers class * extends java.lang.Enum { public static **[] values(); public static ** valueOf(java.lang.String); }</option>
+            <option>-dontwarn **</option>
+          </options>
+          <libs>
+            <lib>${java.home}/jmods/java.base.jmod</lib>
+            <lib>${java.home}/jmods/java.desktop.jmod</lib>
+          </libs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.akathist.maven.plugins.launch4j</groupId>
+        <artifactId>launch4j-maven-plugin</artifactId>
+        <version>2.7.0</version>
+        <executions>
+          <execution>
+            <id>l4j-gui</id>
+            <phase>package</phase>
+            <goals>
+              <goal>launch4j</goal>
+            </goals>
+            <configuration>
+              <headerType>gui</headerType>
+              <jar>${project.build.directory}/${project.build.finalName}-obfuscated.jar</jar>
+              <outfile>${project.build.directory}/${project.build.finalName}.exe</outfile>
+              <downloadUrl>https://adoptium.net/temurin/releases/</downloadUrl>
+              <classPath>
+                <mainClass>me.venixpll.Main</mainClass>
+              </classPath>
+              <jre>
+                <path>%JAVA_HOME%;%PATH%</path>
+                <minVersion>17</minVersion>
+              </jre>
+              <version>1.0.0.0</version>
+              <txtProductVersion>1.0.0.0</txtProductVersion>
+              <productName>Athenis</productName>
+              <txtFileVersion>1.0.0.0</txtFileVersion>
+              <fileDescription />
+              <copyright>Athenis 2026</copyright>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
   <dependencies>
@@ -84,8 +160,8 @@
     </dependency>
   </dependencies>
   <properties>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.target>17</maven.compiler.target>
     <maven.compiler.source>17</maven.compiler.source>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 </project>

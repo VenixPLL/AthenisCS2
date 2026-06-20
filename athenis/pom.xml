@@ -102,6 +102,96 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- proguard-maven-plugin to lightly obfuscate the shaded fat jar -->
+            <plugin>
+                <groupId>com.github.wvengen</groupId>
+                <artifactId>proguard-maven-plugin</artifactId>
+                <version>2.6.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>proguard</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <proguardVersion>7.3.2</proguardVersion>
+                    <injar>${project.build.finalName}.jar</injar>
+                    <outjar>${project.build.finalName}-obfuscated.jar</outjar>
+                    <obfuscate>true</obfuscate>
+                    <options>
+                        <option>-dontshrink</option>
+                        <option>-dontoptimize</option>
+                        <option>-keepattributes Signature,InnerClasses,AnnotationDefault,EnclosingMethod,Deprecated,SourceFile,LineNumberTable</option>
+                        
+                        <!-- Keep the main entry point class intact -->
+                        <option>-keep public class me.venixpll.Main { public static void main(java.lang.String[]); }</option>
+                        
+                        <!-- Keep JNA interfaces, stdcall classes, and Native bindings -->
+                        <option>-keep class * implements com.sun.jna.Library { *; }</option>
+                        <option>-keep class * implements com.sun.jna.win32.StdCallLibrary { *; }</option>
+                        <option>-keep class * implements com.sun.jna.Structure { *; }</option>
+                        <option>-keep class * implements com.sun.jna.Callback { *; }</option>
+                        
+                        <!-- Keep all classes from dependencies untouched (anything not in me.venixpll package) -->
+                        <option>-keep class !me.venixpll.** { *; }</option>
+                        
+                        <!-- Keep public classes and members in me.venixpll, but obfuscate internal bodies -->
+                        <option>-keepclassmembers class * extends java.lang.Enum { public static **[] values(); public static ** valueOf(java.lang.String); }</option>
+                        
+                        <!-- Ignore warnings globally for dependencies -->
+                        <option>-dontwarn **</option>
+                    </options>
+                    <libs>
+                        <lib>${java.home}/jmods/java.base.jmod</lib>
+                        <lib>${java.home}/jmods/java.desktop.jmod</lib>
+                    </libs>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.guardsquare</groupId>
+                        <artifactId>proguard-base</artifactId>
+                        <version>7.3.2</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <!-- launch4j-maven-plugin to wrap the fat jar in a standalone Windows .exe -->
+            <plugin>
+                <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                <artifactId>launch4j-maven-plugin</artifactId>
+                <version>2.7.0</version>
+                <executions>
+                    <execution>
+                        <id>l4j-gui</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>launch4j</goal>
+                        </goals>
+                        <configuration>
+                            <headerType>gui</headerType>
+                            <jar>${project.build.directory}/${project.build.finalName}-obfuscated.jar</jar>
+                            <outfile>${project.build.directory}/${project.build.finalName}.exe</outfile>
+                            <downloadUrl>https://adoptium.net/temurin/releases/</downloadUrl>
+                            <classPath>
+                                <mainClass>me.venixpll.Main</mainClass>
+                            </classPath>
+                            <jre>
+                                <path>%JAVA_HOME%;%PATH%</path>
+                                <minVersion>17</minVersion>
+                            </jre>
+                            <version>1.0.0.0</version>
+                            <txtProductVersion>1.0.0.0</txtProductVersion>
+                            <productName>Athenis</productName>
+                            <txtFileVersion>1.0.0.0</txtFileVersion>
+                            <fileDescription></fileDescription>
+                            <copyright>Athenis 2026</copyright>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
