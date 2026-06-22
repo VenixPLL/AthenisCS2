@@ -43,6 +43,23 @@ public class ESPModule extends CheatModule {
     /** Filter out teammate ESP options */
     public final BooleanSetting teamCheck = new BooleanSetting("Enemy-Only Team Filter", true);
 
+    // ── Fake Chams ────────────────────────────────────────────────────────────
+    /**
+     * When enabled, renders a filled solid-color silhouette over every tracked
+     * player to simulate real "chams" (coloured model overlays).
+     * The fill is drawn in two layers:
+     *   1. A filled bounding-box rectangle for the body mass.
+     *   2. Thickened filled bone segments (wide lines) to suggest limbs.
+     * Visible players get a brighter, more opaque tint on top.
+     */
+    public final BooleanSetting fakeChams      = new BooleanSetting("Fake Chams", false);
+    /** Base fill color for the chams silhouette (non-visible players). */
+    public final ColorSetting   chamsColor     = new ColorSetting("Chams Color",     0.08f, 1.0f, 0.45f, 0.55f);
+    /** Alternate fill color used when the player is directly visible to local. */
+    public final ColorSetting   chamsVisColor  = new ColorSetting("Chams Vis Color", 1.0f,  0.3f, 0.05f, 0.80f);
+    /** Width (px) of each bone segment drawn as a thick line for the limb fill. */
+    public final FloatSetting   chamsLimbWidth = new FloatSetting("Chams Limb Width", 8.0f, 2.0f, 24.0f);
+
     /** Bone connections for drawing the skeleton */
     private static final int[][] BONE_CONNECTIONS = {
         // Spine / Body
@@ -117,6 +134,10 @@ public class ESPModule extends CheatModule {
         addSetting(extrapolationBias);
         addSetting(enemyColor);
         addSetting(teamColor);
+        addSetting(fakeChams);
+        addSetting(chamsColor);
+        addSetting(chamsVisColor);
+        addSetting(chamsLimbWidth);
     }
 
     /**
@@ -193,6 +214,48 @@ public class ESPModule extends CheatModule {
                 colorInt = isEnemy
                         ? ImColor.rgba(enemyCol[0], enemyCol[1], enemyCol[2], enemyCol[3])
                         : ImColor.rgba(teamCol[0],  teamCol[1],  teamCol[2],  teamCol[3]);
+            }
+
+            // ── Fake Chams silhouette ─────────────────────────────────────────
+            if (fakeChams.getValue()) {
+                float[] chamsCol    = (isVis && visCheck != null) ? chamsVisColor.getValue() : chamsColor.getValue();
+                int     chamsFill   = ImColor.rgba(chamsCol[0], chamsCol[1], chamsCol[2], chamsCol[3]);
+                float   limbW       = chamsLimbWidth.getValue();
+
+                // 1. Filled body rectangle — lower 80 % of the bounding box
+                //    (excludes the head zone so bones show through naturally).
+                float bodyTop = minY + height * 0.10f;
+                drawList.addRectFilled(minX, bodyTop, maxX, maxY, chamsFill);
+
+                // 2. Thickened bone segments drawn as fat lines to simulate limbs.
+                if (player.boneX.length > 0) {
+                    for (int[] connection : BONE_CONNECTIONS) {
+                        int b1 = connection[0];
+                        int b2 = connection[1];
+                        if (b1 < player.boneX.length && b2 < player.boneX.length
+                                && player.boneVisible[b1] && player.boneVisible[b2]) {
+                            float lx1 = player.boneX[b1] + espOffsetX;
+                            float ly1 = player.boneY[b1] + espOffsetY;
+                            float lx2 = player.boneX[b2] + espOffsetX;
+                            float ly2 = player.boneY[b2] + espOffsetY;
+                            drawList.addLine(lx1, ly1, lx2, ly2, chamsFill, limbW);
+                        }
+                    }
+
+                    // Filled head circle
+                    if (7 < player.boneX.length && player.boneVisible[7]) {
+                        float hcx = player.boneX[7] + espOffsetX;
+                        float hcy = player.boneY[7] + espOffsetY;
+                        float hr  = Math.max(4.0f, Math.min(14.0f, height / 10.0f));
+                        drawList.addCircleFilled(hcx, hcy, hr, chamsFill, 24);
+                    }
+                }
+
+                // 3. Bright rim outline — only when box rendering is active.
+                if (boxEsp.getValue()) {
+                    int rimColor = ImColor.rgba(chamsCol[0], chamsCol[1], chamsCol[2], Math.min(1.0f, chamsCol[3] + 0.3f));
+                    drawList.addRect(minX, bodyTop, maxX, maxY, rimColor, 0.0f, 0, 1.5f);
+                }
             }
 
             // ── Bounding box with high-contrast outlines ─────────────────────
