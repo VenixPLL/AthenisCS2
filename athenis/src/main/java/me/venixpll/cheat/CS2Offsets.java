@@ -108,6 +108,14 @@ public class CS2Offsets {
     public static int m_flC4Blow         = 0xEB4;
     public static int m_bBombTicking     = 0xEC0;
 
+    // Grenade projectile offsets (C_BaseGrenade)
+    /**
+     * Server-time timestamp (float, seconds) at which a live grenade will detonate.
+     * Inherited by all CS2 projectile subclasses (HE, flashbang, smoke, molotov, decoy).
+     * Offset within the C_BaseGrenade class layout.
+     */
+    public static int m_flDetonateTime   = 4448; // 0x1160
+
     // ── Remote URLs ───────────────────────────────────────────────────────────
     private static final String OFFSETS_URL    = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/offsets.json";
     private static final String CLIENT_DLL_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/client_dll.json";
@@ -480,6 +488,19 @@ public class CS2Offsets {
             }
         }
 
+        // ── Grenade projectile offsets (C_BaseGrenade) ────────────────────────
+        // m_flDetonateTime: server-time timestamp at which the grenade will detonate.
+        String[] grenadeDetonateCandidates = { "C_BaseCSGrenadeProjectile", "C_BaseGrenade", "C_BaseCSGrenade" };
+        for (String cls : grenadeDetonateCandidates) {
+            if (classes.has(cls)) {
+                com.google.gson.JsonObject fields = classes.getAsJsonObject(cls).getAsJsonObject("fields");
+                if (fields != null && fields.has("m_flDetonateTime")) {
+                    m_flDetonateTime = fields.get("m_flDetonateTime").getAsInt();
+                    break;
+                }
+            }
+        }
+
         m_pInventoryServices = getField(classes, "CCSPlayerController", "m_pInventoryServices", 0x810);
         m_unMusicID = getField(classes, "CCSPlayerController_InventoryServices", "m_unMusicID", 0x58);
         m_pClippingWeapon = getField(classes, "C_CSPlayerPawn", "m_pClippingWeapon", 0x3DC0);
@@ -554,5 +575,6 @@ public class CS2Offsets {
         System.out.println(String.format("  > dwPlantedC4:           0x%X", dwPlantedC4));
         System.out.println(String.format("  > m_flC4Blow:            0x%X", m_flC4Blow));
         System.out.println(String.format("  > m_bBombTicking:        0x%X", m_bBombTicking));
+        System.out.println(String.format("  > m_flDetonateTime:      0x%X", m_flDetonateTime));
     }
 }
