@@ -55,12 +55,24 @@ public class GrenadeESPModule extends CheatModule {
     public final BooleanSetting showMolotov  = new BooleanSetting("Show Molotov",      true);
     /** Show decoy grenades */
     public final BooleanSetting showDecoy    = new BooleanSetting("Show Decoy",        true);
-    /** Radius of the circular timer widget in pixels */
+    /** Radius of the circular timer widget in pixels (at closest range) */
     public final FloatSetting   circleRadius = new FloatSetting("Circle Radius (px)", 22.0f, 10.0f, 50.0f);
-    /** Thickness of the arc stroke */
+    /** Thickness of the arc stroke (at closest range) */
     public final FloatSetting   arcThickness = new FloatSetting("Arc Thickness (px)",  4.0f,  1.0f, 10.0f);
     /** Background circle fill alpha */
     public final FloatSetting   bgAlpha      = new FloatSetting("Background Alpha",    0.55f,  0.0f,  1.0f);
+    /**
+     * Maximum render distance in CS2 world units (1 unit ≈ 1 inch).
+     * Grenades beyond this range are not drawn at all.
+     * Typical map diagonal is ~8000–10000 units; 3000 covers most tactical use.
+     */
+    public final FloatSetting   maxDistance  = new FloatSetting("Max Distance (units)", 3000f, 200f, 8000f);
+    /**
+     * Minimum scale factor applied at {@link #maxDistance}.
+     * 0.2 means the circle shrinks to 20 % of base size at the far end.
+     * This keeps distant grenades visible but unobtrusive.
+     */
+    public final FloatSetting   minScale     = new FloatSetting("Min Scale",  0.25f, 0.05f, 1.0f);
 
     // ── Offsets: these are fetched from CS2Offsets so they auto-update ────────
     private static final float  TICK_RATE    = 64.0f;
@@ -103,6 +115,8 @@ public class GrenadeESPModule extends CheatModule {
         addSetting(circleRadius);
         addSetting(arcThickness);
         addSetting(bgAlpha);
+        addSetting(maxDistance);
+        addSetting(minScale);
     }
 
     @Override
@@ -196,6 +210,26 @@ public class GrenadeESPModule extends CheatModule {
         }
     }
 
+    /**
+     * Returns the RGB components of the arc color for this grenade type and time fraction.
+     * Same color logic as {@link #arcColor} but returns {@code float[3] {r, g, b}}
+     * so the caller can apply a custom alpha (e.g. for distance fade).
+     *
+     * @param type     Grenade type.
+     * @param fraction Time fraction (1.0 = full, 0.0 = detonating).
+     * @return {@code float[3]} containing red, green, blue in [0, 1].
+     */
+    private float[] arcColorRGB(GrenadeType type, float fraction) {
+        switch (type) {
+            case HE:      return new float[]{ 1.0f, 0.15f + fraction * 0.2f, 0.15f };
+            case FLASH:   return new float[]{ 0.55f + fraction * 0.45f, 0.75f, 1.0f };
+            case SMOKE:   return new float[]{ 0.6f, 0.75f + fraction * 0.2f, 0.85f };
+            case MOLOTOV: return new float[]{ 1.0f, 0.35f + fraction * 0.55f, 0.05f };
+            case DECOY:   return new float[]{ 0.1f, 0.85f, 0.75f };
+            default:      return new float[]{ 1.0f, 1.0f, 1.0f };
+        }
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
@@ -214,8 +248,24 @@ public class GrenadeESPModule extends CheatModule {
         int     sh        = PlayerCache.screenHeight;
         float   offX      = ESPModule.espOffsetX;
         float   offY      = ESPModule.espOffsetY;
-        float   radius    = circleRadius.getValue();
-        float   thickness = arcThickness.getValue();
+        float   baseRadius    = circleRadius.getValue();
+        float   baseThickness = arcThickness.getValue();
+        float   maxDist       = maxDistance.getValue();
+        float   minScaleVal   = minScale.getValue();
+
+        // ── Read local player world position for distance calculation ──────────
+        // We use m_vOldOrigin (the same field PositionReader uses) as it is
+        // always available and accurate enough for distance-based LOD.
+        float localX = 0f, localY = 0f, localZ = 0f;
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (localPawn != 0) {
+            Vector3 localOrig = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+            if (localOrig != null && Float.isFinite(localOrig.x)) {
+                localX = localOrig.x;
+                localY = localOrig.y;
+                localZ = localOrig.z;
+            }
+        }
 
         // Scan a generous range of entity slots — grenade projectiles typically
         // live in high slots (well past the 64 controller slots).
@@ -280,6 +330,35 @@ public class GrenadeESPModule extends CheatModule {
                 // Skip if all zero (entity not yet initialised)
                 if (worldPos.x == 0f && worldPos.y == 0f && worldPos.z == 0f) continue;
 
+                // ── Distance-based scale (LOD) ─────────────────────────────────
+                // Compute 3D Euclidean distance from local player to the grenade.
+                float dx   = worldPos.x - localX;
+                float dy   = worldPos.y - localY;
+                float dz   = worldPos.z - localZ;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                // Beyond the configured max distance: skip entirely.
+                if (dist > maxDist) continue;
+
+                // Linear scale: 1.0 at distance ≤ FULL_SCALE_DIST, minScaleVal at maxDist.
+                // Anything closer than FULL_SCALE_DIST always gets full size.
+                final float FULL_SCALE_DIST = 300f; // units — full size when closer than this
+                float distanceScale;
+                if (dist <= FULL_SCALE_DIST) {
+                    distanceScale = 1.0f;
+                } else {
+                    // Interpolate: t = 0 at FULL_SCALE_DIST, t = 1 at maxDist
+                    float t = (dist - FULL_SCALE_DIST) / (maxDist - FULL_SCALE_DIST);
+                    distanceScale = 1.0f - (1.0f - minScaleVal) * t;
+                }
+
+                float radius    = baseRadius    * distanceScale;
+                float thickness = baseThickness * distanceScale;
+
+                // Also fade alpha proportionally for very distant grenades
+                // so they blend out naturally rather than just shrinking.
+                float alphaScale = 0.4f + 0.6f * distanceScale; // ranges 1.0 → 0.4
+
                 // ── Project to screen ──────────────────────────────────────────
                 boolean projected = ScreenProjector.project(
                         worldPos.x, worldPos.y, worldPos.z + 5f, // slight upward offset
@@ -290,7 +369,7 @@ public class GrenadeESPModule extends CheatModule {
                 float cy = screenOut[1] + offY;
 
                 // ── Draw circular timer ────────────────────────────────────────
-                drawGrenadeTimer(drawList, cx, cy, radius, thickness, type, timeLeft, offX, offY);
+                drawGrenadeTimer(drawList, cx, cy, radius, thickness, alphaScale, type, timeLeft, offX, offY);
 
             } catch (Exception ignored) {
                 // Robust: never crash the render loop over a bad entity read
@@ -311,33 +390,34 @@ public class GrenadeESPModule extends CheatModule {
      *   <li>Type label below the circle (HE / FLASH / SMOKE / FIRE / DECOY).</li>
      * </ol>
      *
-     * @param drawList  ImGui draw list (foreground).
-     * @param cx        Screen X centre of the circle.
-     * @param cy        Screen Y centre of the circle.
-     * @param radius    Circle radius in pixels.
-     * @param thickness Arc stroke thickness in pixels.
-     * @param type      Grenade type — drives label and color.
-     * @param timeLeft  Remaining fuse time in seconds.
-     * @param offX      Overlay X offset (for label text).
-     * @param offY      Overlay Y offset (for label text).
+     * @param drawList   ImGui draw list (foreground).
+     * @param cx         Screen X centre of the circle.
+     * @param cy         Screen Y centre of the circle.
+     * @param radius     Circle radius in pixels (already scaled by distance).
+     * @param thickness  Arc stroke thickness in pixels (already scaled by distance).
+     * @param alphaScale Overall alpha multiplier in [0.4, 1.0] — 1.0 = nearby, ~0.4 = far.
+     * @param type       Grenade type — drives label and color.
+     * @param timeLeft   Remaining fuse time in seconds.
+     * @param offX       Overlay X offset (for label text).
+     * @param offY       Overlay Y offset (for label text).
      */
     private void drawGrenadeTimer(ImDrawList drawList,
                                   float cx, float cy,
                                   float radius, float thickness,
+                                  float alphaScale,
                                   GrenadeType type, float timeLeft,
                                   float offX, float offY) {
 
         // 1. ── Dark filled background ────────────────────────────────────────
-        float bgAlphaVal = bgAlpha.getValue();
+        float bgAlphaVal = bgAlpha.getValue() * alphaScale;
         drawList.addCircleFilled(cx, cy, radius + 1, ImColor.rgba(0f, 0f, 0f, bgAlphaVal * 0.85f), 32);
 
         // 2. ── Grey track (full-circle ghost) ─────────────────────────────
-        drawList.addCircle(cx, cy, radius, ImColor.rgba(0.3f, 0.3f, 0.3f, 0.55f), 48, 1.5f);
+        drawList.addCircle(cx, cy, radius, ImColor.rgba(0.3f, 0.3f, 0.3f, 0.55f * alphaScale), 48, 1.5f);
 
         // 3. ── Colored arc that drains with the timer ──────────────────────
         float maxTime   = maxFuseTime(type);
         float fraction  = Math.min(1.0f, timeLeft / maxTime); // 1.0 = full, 0.0 = empty
-        int   arcCol    = arcColor(type, fraction);
 
         // Draw the arc as a poly-line: sweep from top (-π/2) clockwise.
         // The arc covers 'fraction' of the full circle (2π).
@@ -355,11 +435,14 @@ public class GrenadeESPModule extends CheatModule {
         }
 
         // Draw as a sequence of thick line segments
+        // arcCol already has full alpha; blend with alphaScale by recreating the color.
+        float[] arcRGB = arcColorRGB(type, fraction); // returns float[3] {r,g,b}
+        int arcColFaded = ImColor.rgba(arcRGB[0], arcRGB[1], arcRGB[2], alphaScale);
         if (vtxCount >= 2) {
             for (int s = 0; s < vtxCount - 1; s++) {
                 drawList.addLine(arcVtxX[s], arcVtxY[s],
                                  arcVtxX[s + 1], arcVtxY[s + 1],
-                                 arcCol, thickness);
+                                 arcColFaded, thickness);
             }
         }
 
@@ -367,7 +450,7 @@ public class GrenadeESPModule extends CheatModule {
         if (vtxCount > 0) {
             float capR = thickness * 0.55f;
             drawList.addCircleFilled(arcVtxX[vtxCount - 1], arcVtxY[vtxCount - 1],
-                                     capR, arcCol, 8);
+                                     capR, arcColFaded, 8);
         }
 
         // 4. ── Time text in the centre ────────────────────────────────────
@@ -377,7 +460,7 @@ public class GrenadeESPModule extends CheatModule {
         float ty = cy - textSizeBuf.y * 0.5f;
 
         // Drop shadow (4-way)
-        int shadow = ImColor.rgba(0f, 0f, 0f, 1.0f);
+        int shadow = ImColor.rgba(0f, 0f, 0f, alphaScale);
         drawList.addText(tx - 1, ty - 1, shadow, timeText);
         drawList.addText(tx + 1, ty - 1, shadow, timeText);
         drawList.addText(tx - 1, ty + 1, shadow, timeText);
@@ -385,8 +468,8 @@ public class GrenadeESPModule extends CheatModule {
 
         // Main text — white when timer is generous, shifts to bright arc color when critical
         int textCol = (timeLeft < 1.5f)
-                ? arcCol
-                : ImColor.rgba(0.95f, 0.95f, 0.95f, 1.0f);
+                ? arcColFaded
+                : ImColor.rgba(0.95f, 0.95f, 0.95f, alphaScale);
         drawList.addText(tx, ty, textCol, timeText);
 
         // 5. ── Type label below the circle ────────────────────────────────
@@ -397,6 +480,6 @@ public class GrenadeESPModule extends CheatModule {
 
         drawList.addText(lx - 1, ly + 1, shadow, label);
         drawList.addText(lx + 1, ly + 1, shadow, label);
-        drawList.addText(lx, ly, arcCol, label);
+        drawList.addText(lx, ly, arcColFaded, label);
     }
 }
