@@ -171,30 +171,6 @@ public class GrenadeESPModule extends CheatModule {
         }
     }
 
-    /** Color for the arc depending on grenade type and time fraction. */
-    private int arcColor(GrenadeType type, float fraction) {
-        // fraction: 1.0 = full timer, 0.0 = about to detonate
-        switch (type) {
-            case HE:
-                // Red with time-based alpha pulse
-                return ImColor.rgba(1.0f, 0.15f + fraction * 0.2f, 0.15f, 1.0f);
-            case FLASH:
-                // Bright white-blue, pulsing
-                return ImColor.rgba(0.55f + fraction * 0.45f, 0.75f, 1.0f, 1.0f);
-            case SMOKE:
-                // Neutral grey-blue
-                return ImColor.rgba(0.6f, 0.75f + fraction * 0.2f, 0.85f, 1.0f);
-            case MOLOTOV:
-                // Orange/fire — shifts red as time runs out
-                return ImColor.rgba(1.0f, 0.35f + fraction * 0.55f, 0.05f, 1.0f);
-            case DECOY:
-                // Teal/cyan
-                return ImColor.rgba(0.1f, 0.85f, 0.75f, 1.0f);
-            default:
-                return ImColor.rgba(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-    }
-
     /** Grenade-type-specific total fuse time used to compute fraction. */
     private float maxFuseTime(GrenadeType type) {
         switch (type) {
