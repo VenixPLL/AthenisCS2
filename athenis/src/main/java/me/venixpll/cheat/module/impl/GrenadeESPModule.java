@@ -56,11 +56,11 @@ public class GrenadeESPModule extends CheatModule {
     /** Show decoy grenades */
     public final BooleanSetting showDecoy    = new BooleanSetting("Show Decoy",        true);
     /** Radius of the circular timer widget in pixels (at closest range) */
-    public final FloatSetting   circleRadius = new FloatSetting("Circle Radius (px)", 22.0f, 10.0f, 50.0f);
+    private static final float CIRCLE_RADIUS = 22.0f;
     /** Thickness of the arc stroke (at closest range) */
-    public final FloatSetting   arcThickness = new FloatSetting("Arc Thickness (px)",  4.0f,  1.0f, 10.0f);
+    private static final float ARC_THICKNESS  = 4.0f;
     /** Background circle fill alpha */
-    public final FloatSetting   bgAlpha      = new FloatSetting("Background Alpha",    0.55f,  0.0f,  1.0f);
+    private static final float BG_ALPHA       = 0.55f;
     /**
      * Maximum render distance in CS2 world units (1 unit ≈ 1 inch).
      * Grenades beyond this range are not drawn at all.
@@ -112,9 +112,6 @@ public class GrenadeESPModule extends CheatModule {
         addSetting(showSmoke);
         addSetting(showMolotov);
         addSetting(showDecoy);
-        addSetting(circleRadius);
-        addSetting(arcThickness);
-        addSetting(bgAlpha);
         addSetting(maxDistance);
         addSetting(minScale);
     }
@@ -248,8 +245,8 @@ public class GrenadeESPModule extends CheatModule {
         int     sh        = PlayerCache.screenHeight;
         float   offX      = ESPModule.espOffsetX;
         float   offY      = ESPModule.espOffsetY;
-        float   baseRadius    = circleRadius.getValue();
-        float   baseThickness = arcThickness.getValue();
+        float   baseRadius    = CIRCLE_RADIUS;
+        float   baseThickness = ARC_THICKNESS;
         float   maxDist       = maxDistance.getValue();
         float   minScaleVal   = minScale.getValue();
 
@@ -409,7 +406,7 @@ public class GrenadeESPModule extends CheatModule {
                                   float offX, float offY) {
 
         // 1. ── Dark filled background ────────────────────────────────────────
-        float bgAlphaVal = bgAlpha.getValue() * alphaScale;
+        float bgAlphaVal = BG_ALPHA * alphaScale;
         drawList.addCircleFilled(cx, cy, radius + 1, ImColor.rgba(0f, 0f, 0f, bgAlphaVal * 0.85f), 32);
 
         // 2. ── Grey track (full-circle ghost) ─────────────────────────────

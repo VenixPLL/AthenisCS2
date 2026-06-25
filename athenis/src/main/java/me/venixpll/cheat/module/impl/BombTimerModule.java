@@ -10,7 +10,6 @@ import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
-import me.venixpll.cheat.setting.FloatSetting;
 
 /**
  * BombTimerModule.
@@ -47,13 +46,10 @@ public class BombTimerModule extends CheatModule {
     private static final float BOMB_FUSE   = 40.0f; // default CS2 bomb timer (s)
     private static final int   ARC_SEGMENTS = 48;
 
-    // ── Settings ──────────────────────────────────────────────────────────────
-    /** Radius of the on-screen circular timer in pixels. */
-    public final FloatSetting circleRadius = new FloatSetting("Circle Radius (px)", 28.0f, 12.0f, 60.0f);
-    /** Arc stroke thickness in pixels. */
-    public final FloatSetting arcThickness = new FloatSetting("Arc Thickness (px)",  5.0f,  1.0f, 12.0f);
-    /** Background circle fill alpha. */
-    public final FloatSetting bgAlpha      = new FloatSetting("Background Alpha",    0.60f,  0.0f,  1.0f);
+    // ── Visual constants (not exposed as settings) ────────────────────────────
+    private static final float CIRCLE_RADIUS = 28.0f;
+    private static final float ARC_THICKNESS =  5.0f;
+    private static final float BG_ALPHA      =  0.60f;
 
     // ── Pre-allocated buffers (avoid GC pressure in render loop) ──────────────
     private final imgui.ImVec2 textSizeBuf = new imgui.ImVec2();
@@ -63,9 +59,6 @@ public class BombTimerModule extends CheatModule {
 
     public BombTimerModule() {
         super("Bomb Timer", ModuleCategory.EXTERNAL, false);
-        addSetting(circleRadius);
-        addSetting(arcThickness);
-        addSetting(bgAlpha);
     }
 
     @Override
@@ -183,8 +176,8 @@ public class BombTimerModule extends CheatModule {
      * </ol>
      */
     private void drawOnScreenCircle(ImDrawList drawList, float cx, float cy, float timeLeft) {
-        float radius    = circleRadius.getValue();
-        float thickness = arcThickness.getValue();
+        float radius    = CIRCLE_RADIUS;
+        float thickness = ARC_THICKNESS;
 
         // Time fraction: 1.0 = fresh plant, 0.0 = about to detonate
         float fraction = Math.min(1.0f, timeLeft / BOMB_FUSE);
@@ -195,9 +188,8 @@ public class BombTimerModule extends CheatModule {
         drawList.addCircleFilled(cx, cy, radius + thickness + 3f, glowCol, 48);
 
         // 2. Dark filled background circle
-        float bgA = bgAlpha.getValue();
         drawList.addCircleFilled(cx, cy, radius + 1f,
-                ImColor.rgba(0.04f, 0.04f, 0.08f, bgA), 48);
+                ImColor.rgba(0.04f, 0.04f, 0.08f, BG_ALPHA), 48);
 
         // 3. Grey track (ghost full arc)
         drawList.addCircle(cx, cy, radius,
