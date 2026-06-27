@@ -54,6 +54,7 @@ public class CS2Offsets {
 
     // ── Schema variable offsets (loaded from client_dll.json) ─────────────────
     public static int m_hPlayerPawn = 2316;
+    public static int m_hObserverPawn = 2320;
     public static int m_iHealth = 844;
     public static int m_iTeamNum = 1003;
     public static int m_vOldOrigin = 5008;
@@ -120,6 +121,20 @@ public class CS2Offsets {
      * Direct pawn field at offset 0x23E8.
      */
     public static int m_bIsScoped = 0x23E8;
+
+    // ── Spectator / Observer offsets ──────────────────────────────────────────
+
+    /**
+     * Pointer from player pawn to CPlayer_ObserverServices (C_BasePlayerPawn::m_pObserverServices).
+     * Used to access spectated targets. Typical offset: 0x1118 or 0x1120.
+     */
+    public static int m_pObserverServices = 0x1118;
+
+    /**
+     * Handle of the entity currently being spectated (CPlayer_ObserverServices::m_hObserverTarget).
+     * Located inside the observer services struct. Typical offset: 0x44.
+     */
+    public static int m_hObserverTarget = 0x44;
 
     // ── Direct fields on the player controller ────────────────────────────────
 
@@ -435,6 +450,12 @@ public class CS2Offsets {
                 .getAsJsonObject("fields")
                 .get("m_hPlayerPawn").getAsInt();
 
+        if (classes.getAsJsonObject("CCSPlayerController").getAsJsonObject("fields").has("m_hObserverPawn")) {
+            m_hObserverPawn = classes.getAsJsonObject("CCSPlayerController")
+                    .getAsJsonObject("fields")
+                    .get("m_hObserverPawn").getAsInt();
+        }
+
         m_iHealth = classes.getAsJsonObject("C_BaseEntity")
                 .getAsJsonObject("fields")
                 .get("m_iHealth").getAsInt();
@@ -585,6 +606,10 @@ public class CS2Offsets {
         m_flFlashDuration     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
         m_iProgressBarDuration = getField(classes, "C_CSPlayerPawnBase", "m_iProgressBarDuration", 0x13E0);
 
+        // Spectator/Observer offsets:
+        m_pObserverServices = getField(classes, "C_BasePlayerPawn", "m_pObserverServices", 0x1118);
+        m_hObserverTarget   = getField(classes, "CPlayer_ObserverServices", "m_hObserverTarget", 0x44);
+
         // CCSPlayerController fields (defuse kit flag on controller):
         m_bPawnHasDefuser = getField(classes, "CCSPlayerController", "m_bPawnHasDefuser", 2336);
 
@@ -655,6 +680,8 @@ public class CS2Offsets {
         System.out.println(String.format("  > m_iProgressBarDuration:0x%X", m_iProgressBarDuration));
         System.out.println(String.format("  > m_bIsScoped:           0x%X", m_bIsScoped));
         System.out.println(String.format("  > m_bPawnHasDefuser:     0x%X", m_bPawnHasDefuser));
+        System.out.println(String.format("  > m_pObserverServices:   0x%X", m_pObserverServices));
+        System.out.println(String.format("  > m_hObserverTarget:     0x%X", m_hObserverTarget));
         System.out.println(String.format("  > m_pInGameMoneySvc:     0x%X", m_pInGameMoneyServices_ctrl));
         System.out.println(String.format("  > m_iAccount:            0x%X", m_iAccount));
     }
