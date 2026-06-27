@@ -42,6 +42,25 @@ public class PlayerCache {
         // True if this player is carrying the C4 bomb
         public boolean hasBomb;
 
+        // ── Player Flags ───────────────────────────────────────────────────────────────
+        /** m_flFlashMaxAlpha: 0.0 = not flashed, 255.0 = fully blinded. Direct pawn field. */
+        public float flashMaxAlpha;
+        /** m_flFlashDuration: seconds the flash lasts; 0 when not flashed. Direct pawn field. */
+        public float flashDuration;
+        /** True when the player is currently looking through a weapon scope (m_nZoomLevel > 0). */
+        public boolean isScoped;
+        /**
+         * True when m_iProgressBarDuration > 0, which means the player is actively
+         * defusing or planting the bomb (the progress bar is visible on their HUD).
+         */
+        public boolean isDefusingOrPlanting;
+        /** True when the player is carrying a defuse kit (m_bHasDefuser). */
+        public boolean hasKit;
+        /** Player’s current cash balance in-game ($). */
+        public int money;
+        /** Raw controller address – used to fetch money from InGameMoneyServices. */
+        public long controllerAddress;
+
         /**
          * Standard constructor for player data snapshot.
          */
@@ -59,6 +78,13 @@ public class PlayerCache {
             this.onScreen = false;
             this.pawnAddress = pawnAddress;
             this.hasBomb = false;
+            this.flashMaxAlpha       = 0f;
+            this.flashDuration       = 0f;
+            this.isScoped            = false;
+            this.isDefusingOrPlanting = false;
+            this.hasKit              = false;
+            this.money               = 0;
+            this.controllerAddress   = 0L;
         }
     }
 
@@ -94,6 +120,21 @@ public class PlayerCache {
         public final float yaw;
         public final boolean hasBomb;
         public final long pawnAddress;
+
+        /** m_flFlashMaxAlpha: 0.0 = not flashed, 255.0 = fully blinded. Direct pawn field. */
+        public final float flashMaxAlpha;
+        /** m_flFlashDuration: seconds the flash lasts; 0 when not flashed. Direct pawn field. */
+        public final float flashDuration;
+        /** True when the player is currently looking through a weapon scope. */
+        public final boolean isScoped;
+        /**
+         * True when m_iProgressBarDuration > 0 (defusing or planting).
+         */
+        public final boolean isDefusingOrPlanting;
+        /** True when the player is carrying a defuse kit. */
+        public final boolean hasKit;
+        /** Player’s current cash balance ($). */
+        public final int money;
 
         /** Velocity vector in world-space units/sec, read alongside origin. */
         public final float velX;
@@ -148,6 +189,13 @@ public class PlayerCache {
             this.boneX       = boneX != null ? boneX : EMPTY_FLOAT;
             this.boneY       = boneY != null ? boneY : EMPTY_FLOAT;
             this.boneVisible = boneVisible != null ? boneVisible : EMPTY_BOOL;
+            // ── Player Flags ──────────────────────────────────────────────────
+            this.flashMaxAlpha        = src.flashMaxAlpha;
+            this.flashDuration        = src.flashDuration;
+            this.isScoped             = src.isScoped;
+            this.isDefusingOrPlanting = src.isDefusingOrPlanting;
+            this.hasKit               = src.hasKit;
+            this.money                = src.money;
         }
     }
 

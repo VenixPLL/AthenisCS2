@@ -161,10 +161,49 @@ public final class EntityDataReader {
                 }
             }
 
+            // ── Step 7 — Player Flags ────────────────────────────────────────────────
+
+            // 7a. Blind: read m_flFlashMaxAlpha and m_flFlashDuration directly from the pawn.
+            float flashMaxAlpha = 0f;
+            float flashDuration = 0f;
+            int flashMaxAlphaRaw = readInt(playerPawn + CS2Offsets.m_flFlashMaxAlpha);
+            int flashDurationRaw = readInt(playerPawn + CS2Offsets.m_flFlashDuration);
+            flashMaxAlpha = Float.intBitsToFloat(flashMaxAlphaRaw);
+            flashDuration = Float.intBitsToFloat(flashDurationRaw);
+            if (!Float.isFinite(flashMaxAlpha) || flashMaxAlpha < 0f) flashMaxAlpha = 0f;
+            if (!Float.isFinite(flashDuration) || flashDuration < 0f) flashDuration = 0f;
+
+            // 7b. Defusing/Planting: read m_iProgressBarDuration directly from the pawn.
+            int progressBarDuration = readInt(playerPawn + CS2Offsets.m_iProgressBarDuration);
+            boolean isDefusingOrPlanting = progressBarDuration > 0;
+
+            // 7c. Scoped: read m_bIsScoped directly from the pawn.
+            int scopedByte = readInt(playerPawn + CS2Offsets.m_bIsScoped);
+            boolean isScoped = (scopedByte & 0xFF) != 0;
+
+            // 7d. Kit: read m_bPawnHasDefuser directly from the player controller.
+            int hasDefuserByte = readInt(playerController + CS2Offsets.m_bPawnHasDefuser);
+            boolean hasKit = (hasDefuserByte & 0xFF) != 0;
+
+            // 7e. Money: controller → m_pInGameMoneyServices → m_iAccount (int).
+            int money = 0;
+            long moneyServices = readLong(playerController + CS2Offsets.m_pInGameMoneyServices_ctrl);
+            if (moneyServices != 0) {
+                money = readInt(moneyServices + CS2Offsets.m_iAccount);
+                if (money < 0 || money > 99999) money = 0; // sanity clamp
+            }
+
             // Position and screen coords start at zero; PositionReader fills them next tick.
             PlayerCache.PlayerData player = new PlayerCache.PlayerData(
                     i, health, team, name, new Vector3(), isLocal, playerPawn);
-            player.hasBomb = hasBomb;
+            player.hasBomb              = hasBomb;
+            player.flashMaxAlpha        = flashMaxAlpha;
+            player.flashDuration        = flashDuration;
+            player.isScoped             = isScoped;
+            player.isDefusingOrPlanting = isDefusingOrPlanting;
+            player.hasKit               = hasKit;
+            player.money                = money;
+            player.controllerAddress    = playerController;
 
             result.add(player);
         }

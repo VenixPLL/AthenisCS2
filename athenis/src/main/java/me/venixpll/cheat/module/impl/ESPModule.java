@@ -17,6 +17,7 @@ import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.ColorSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -42,6 +43,20 @@ public class ESPModule extends CheatModule {
     public final BooleanSetting nameEsp   = new BooleanSetting("Show Player Names", true);
     /** Filter out teammate ESP options */
     public final BooleanSetting teamCheck = new BooleanSetting("Enemy-Only Team Filter", true);
+
+    // ── Player Flags ──────────────────────────────────────────────────────────────
+    /** Master toggle for the Player Flags feature. */
+    public final BooleanSetting flagsEsp       = new BooleanSetting("Show Player Flags",   true);
+    /** Show a “Blind” badge when the target is currently flashed. */
+    public final BooleanSetting flagBlind      = new BooleanSetting("Flag: Blind",          true);
+    /** Show a “Scoped” badge when the target has their weapon zoomed in. */
+    public final BooleanSetting flagScoped     = new BooleanSetting("Flag: Scoped",         true);
+    /** Show a “Defusing” badge when the target is actively defusing the bomb. */
+    public final BooleanSetting flagDefusing   = new BooleanSetting("Flag: Defusing",       true);
+    /** Show a “Kit” badge when the target is carrying a defuse kit. */
+    public final BooleanSetting flagKit        = new BooleanSetting("Flag: Kit",             true);
+    /** Show the target’s current in-game money balance. */
+    public final BooleanSetting flagMoney      = new BooleanSetting("Flag: Money",           true);
 
     // ── Fake Chams ────────────────────────────────────────────────────────────
     /**
@@ -138,6 +153,13 @@ public class ESPModule extends CheatModule {
         addSetting(chamsColor);
         addSetting(chamsVisColor);
         addSetting(chamsLimbWidth);
+        // ── Player Flags
+        addSetting(flagsEsp);
+        addSetting(flagBlind);
+        addSetting(flagScoped);
+        addSetting(flagDefusing);
+        addSetting(flagKit);
+        addSetting(flagMoney);
     }
 
     /**
@@ -331,6 +353,139 @@ public class ESPModule extends CheatModule {
                 drawList.addText(textX + 1, textY + 1, ImColor.rgba(0, 0, 0, 255), text);
                 drawList.addText(textX,     textY,     textColor, text);
             }
+            // ── Player Flags (above the bounding box) ────────────────────────────
+            if (flagsEsp.getValue()) {
+                renderFlags(drawList, player, minX, maxX, minY, feetX, headY);
+            }
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Player Flag rendering
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Constant height of each flag badge pill in pixels.
+     * The pill’s width is driven by the text it contains plus horizontal padding.
+     */
+    private static final float FLAG_H    = 11.0f;
+    /** Vertical gap between consecutive flag badges. */
+    private static final float FLAG_GAP  = 2.0f;
+    /** Horizontal padding inside each pill on both sides. */
+    private static final float FLAG_PAD  = 4.0f;
+    /** Corner radius for the rounded pill shape. */
+    private static final float FLAG_ROUNDING = 3.0f;
+
+    // Pre-allocated badge text buffer
+    private final imgui.ImVec2 flagSizeBuf = new imgui.ImVec2();
+
+    /**
+     * Draws the active flag badges (Blind / Scoped / Defusing / Kit / Money)
+     * as a vertical column of pill-shaped labels stacked above the bounding box top edge.
+     *
+     * <p>Each badge is drawn as a semi-transparent filled rounded rectangle with a
+     * contrasting drop-shadow text and a brighter label on top.</p>
+     *
+     * @param drawList  ImGui foreground draw list.
+     * @param player    Immutable player snapshot supplying flag state.
+     * @param minX      Left edge of the player bounding box.
+     * @param maxX      Right edge of the player bounding box.
+     * @param minY      Top edge of the player bounding box (smallest Y = highest on screen).
+     * @param centerX   Horizontal centre of the bounding box (feet X).
+     * @param headY     Screen Y of the head (topmost projected point).
+     */
+    private void renderFlags(ImDrawList drawList,
+                             PlayerSnapshot player,
+                             float minX, float maxX,
+                             float minY, float centerX, float headY) {
+
+        // Build the list of active badges in priority order.
+        List<FlagEntry> badges = new ArrayList<>(5);
+
+        // Flashbang blind indicator (duration left > 0.1s and max alpha > 10.0)
+        if (flagBlind.getValue() && player.flashDuration > 0.1f && player.flashMaxAlpha > 10.0f) {
+            // Intensity label: "BLIND!" when heavily flashed (remaining duration > 2.0s)
+            String label = player.flashDuration > 2.0f ? "BLIND!" : "BLIND";
+            // Vivid cyan — eye-catching, distinct from all other badge colours.
+            badges.add(new FlagEntry(label, ImColor.rgba(0.0f, 0.95f, 1.0f, 0.88f)));
+        }
+        // Scoped indicator
+        if (flagScoped.getValue() && player.isScoped) {
+            // Purple-magenta — easy to remember as “scope” colour.
+            badges.add(new FlagEntry("SCOPED", ImColor.rgba(0.80f, 0.20f, 1.0f, 0.88f)));
+        }
+        // Defusing / Planting indicator
+        if (flagDefusing.getValue() && player.isDefusingOrPlanting) {
+            if (player.team == 3) {
+                // CT is defusing the bomb
+                badges.add(new FlagEntry("DEFUSING", ImColor.rgba(1.0f, 0.45f, 0.0f, 0.92f)));
+            } else if (player.team == 2) {
+                // T is planting the bomb
+                badges.add(new FlagEntry("PLANTING", ImColor.rgba(1.0f, 0.30f, 0.10f, 0.92f)));
+            }
+        }
+        // Kit indicator
+        if (flagKit.getValue() && player.hasKit) {
+            // Warm gold — associated with utility / kit items.
+            badges.add(new FlagEntry("KIT", ImColor.rgba(1.0f, 0.85f, 0.0f, 0.88f)));
+        }
+        // Money indicator
+        if (flagMoney.getValue() && player.money > 0) {
+            // Green — universally associated with money.
+            String label = "$" + player.money;
+            badges.add(new FlagEntry(label, ImColor.rgba(0.25f, 0.92f, 0.35f, 0.88f)));
+        }
+
+        if (badges.isEmpty()) return;
+
+        // Stack badges upward from the top of the name text.
+        // nameEsp places its text at (headY - 15); start just above that.
+        float cursor = headY - 16.0f + espOffsetY; // top of first badge
+
+        for (int bi = badges.size() - 1; bi >= 0; bi--) {
+            FlagEntry badge = badges.get(bi);
+
+            // Measure the text so we can size the pill correctly.
+            ImGui.calcTextSize(flagSizeBuf, badge.label);
+            float tw = flagSizeBuf.x;
+            float pillW = tw + FLAG_PAD * 2.0f;
+
+            // Centre the pill horizontally over the bounding box.
+            float pillX = centerX + espOffsetX - pillW / 2.0f;
+            float pillY = cursor - FLAG_H;
+
+            // —— Background pill (dark, semi-transparent) ———————————————————
+            drawList.addRectFilled(
+                    pillX, pillY,
+                    pillX + pillW, cursor,
+                    ImColor.rgba(0.0f, 0.0f, 0.0f, 0.60f),
+                    FLAG_ROUNDING);
+
+            // —— Coloured pill border ————————————————————————————————
+            drawList.addRect(
+                    pillX, pillY,
+                    pillX + pillW, cursor,
+                    badge.color,
+                    FLAG_ROUNDING, 0, 1.0f);
+
+            // —— Label text with drop-shadow ————————————————————————————
+            float tx = pillX + FLAG_PAD;
+            float ty = pillY + (FLAG_H - flagSizeBuf.y) / 2.0f;
+            int shadow = ImColor.rgba(0, 0, 0, 200);
+            drawList.addText(tx - 1, ty,     shadow,      badge.label);
+            drawList.addText(tx + 1, ty,     shadow,      badge.label);
+            drawList.addText(tx,     ty - 1, shadow,      badge.label);
+            drawList.addText(tx,     ty + 1, shadow,      badge.label);
+            drawList.addText(tx,     ty,     badge.color, badge.label);
+
+            cursor = pillY - FLAG_GAP; // next badge sits above this one
+        }
+    }
+
+    /** Immutable record holding the display text and colour for a single flag badge. */
+    private static final class FlagEntry {
+        final String label;
+        final int    color; // ImColor.rgba packed int
+        FlagEntry(String label, int color) { this.label = label; this.color = color; }
     }
 }

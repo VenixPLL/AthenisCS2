@@ -19,17 +19,17 @@ import java.time.Duration;
  *
  * <h3>Update strategy</h3>
  * <ol>
- *   <li>Attempt to download {@code offsets.json}, {@code client_dll.json} and
- *       {@code buttons.json} from GitHub.</li>
- *   <li>Compute SHA-256 of each downloaded body and compare with the
- *       checksums stored in {@code offsets_checksums.json} next to the cached
- *       files.</li>
- *   <li>If any checksum differs → write the new files to disk, update the
- *       checksum file, and parse the fresh data.</li>
- *   <li>If checksums are identical → the local cache is already current; parse
- *       the cached files (avoids redundant parsing on every launch).</li>
- *   <li>If the network is unreachable → fall back to the last cached files on
- *       disk.  If no cache exists either → use the built-in hardcoded defaults.</li>
+ * <li>Attempt to download {@code offsets.json}, {@code client_dll.json} and
+ * {@code buttons.json} from GitHub.</li>
+ * <li>Compute SHA-256 of each downloaded body and compare with the
+ * checksums stored in {@code offsets_checksums.json} next to the cached
+ * files.</li>
+ * <li>If any checksum differs → write the new files to disk, update the
+ * checksum file, and parse the fresh data.</li>
+ * <li>If checksums are identical → the local cache is already current; parse
+ * the cached files (avoids redundant parsing on every launch).</li>
+ * <li>If the network is unreachable → fall back to the last cached files on
+ * disk. If no cache exists either → use the built-in hardcoded defaults.</li>
  * </ol>
  *
  * Cache directory: {@code %APPDATA%\Athenis\} (Windows) or
@@ -38,107 +38,162 @@ import java.time.Duration;
 public class CS2Offsets {
 
     // ── Global offsets (loaded from offsets.json) ─────────────────────────────
-    public static long dwEntityList          = 38688144L;
-    public static long dwViewMatrix          = 36981552L;
-    public static long dwLocalPlayerPawn     = 36959896L;
+    public static long dwEntityList = 38688144L;
+    public static long dwViewMatrix = 36981552L;
+    public static long dwLocalPlayerPawn = 36959896L;
     public static long dwLocalPlayerController = 36833056L;
     /** Offset to local player view angle struct {pitch, yaw, roll} in client.dll */
-    public static long dwViewAngles          = 37034408L;
-    public static long dwGlobalVars          = 0L;
-    public static long dwForceJump           = 33972128L;
-    public static long dwPlantedC4           = 0L;
+    public static long dwViewAngles = 37034408L;
+    public static long dwGlobalVars = 0L;
+    public static long dwForceJump = 33972128L;
+    public static long dwPlantedC4 = 0L;
 
     // engine2.dll offsets for server tick count → current game time
-    public static long dwNetworkGameClient                    = 9478560L;
-    public static int  dwNetworkGameClient_serverTickCount    = 588;
+    public static long dwNetworkGameClient = 9478560L;
+    public static int dwNetworkGameClient_serverTickCount = 588;
 
     // ── Schema variable offsets (loaded from client_dll.json) ─────────────────
-    public static int m_hPlayerPawn      = 2316;
-    public static int m_iHealth          = 844;
-    public static int m_iTeamNum         = 1003;
-    public static int m_vOldOrigin       = 5008;
-    public static int m_iszPlayerName    = 1780;
-    public static int m_fFlags           = 0x3EC;
+    public static int m_hPlayerPawn = 2316;
+    public static int m_iHealth = 844;
+    public static int m_iTeamNum = 1003;
+    public static int m_vOldOrigin = 5008;
+    public static int m_iszPlayerName = 1780;
+    public static int m_fFlags = 0x3EC;
     /** Offset to the recoil punch angle struct {pitch, yaw} inside player pawn */
-    public static int m_aimPunchAngle    = 5296;
+    public static int m_aimPunchAngle = 5296;
     /**
      * Offset to EntitySpottedState_t::m_bSpotted.
      * When true the game has determined at least one enemy can see this entity.
      */
-    public static int m_bSpotted         = 0x8;
+    public static int m_bSpotted = 0x8;
     public static int m_entitySpottedState = 7224;
     /** Offset to the view angles struct {pitch, yaw, roll} inside player pawn */
-    public static int m_angEyeAngles     = 0x1518;
+    public static int m_angEyeAngles = 0x1518;
     /**
      * Velocity vector of the player pawn (3 floats: vx, vy, vz in units/sec).
      */
-    public static int m_vecVelocity      = 0x3C8;
+    public static int m_vecVelocity = 0x3C8;
 
     // GameSceneNode & Model/Skeleton offsets
-    public static int m_pGameSceneNode   = 0x310;
-    public static int m_modelState       = 0x160;
+    public static int m_pGameSceneNode = 0x310;
+    public static int m_modelState = 0x160;
     /** Absolute world-space origin inside CGameSceneNode. */
-    public static int m_vecAbsOrigin     = 200; // 0xC8
-    public static int m_pChild           = 0x40;
-    public static int m_pNextSibling     = 0x48;
-    public static int m_pOwner           = 0x30;
+    public static int m_vecAbsOrigin = 200; // 0xC8
+    public static int m_pChild = 0x40;
+    public static int m_pNextSibling = 0x48;
+    public static int m_pOwner = 0x30;
 
     // Weapon services offsets
-    public static int m_pWeaponServices  = 0x13D8;
-    public static int m_hMyWeapons       = 0x48;
-    public static int m_hActiveWeapon     = 0x60;
-    public static int m_pClippingWeapon  = 0x3DC0;
-    public static int m_hHudModelArms    = 0x2400;
+    public static int m_pWeaponServices = 0x13D8;
+    public static int m_hMyWeapons = 0x48;
+    public static int m_hActiveWeapon = 0x60;
+    public static int m_pClippingWeapon = 0x3DC0;
+    public static int m_hHudModelArms = 0x2400;
+
+    // ── Player Flag offsets ───────────────────────────────────────────────────
+    // ── Direct fields on the player pawn ──────────────────────────────────────
+
+    /**
+     * Maximum flash alpha on the pawn’s screen (C_CSPlayerPawnBase::m_flFlashMaxAlpha).
+     * Range: 0.0 (not flashed) to 255.0 (fully blinded).
+     * Direct pawn field at offset 0x13FC — no pointer indirection.
+     */
+    public static int m_flFlashMaxAlpha = 0x13FC;
+
+    /**
+     * Duration of the flashbang effect in seconds (C_CSPlayerPawnBase::m_flFlashDuration).
+     * 0 when not flashed. Together with m_flFlashMaxAlpha this determines if a player is blind.
+     * Direct pawn field at offset 0x1400.
+     */
+    public static int m_flFlashDuration = 0x1400;
+
+    /**
+     * Duration of the progress bar shown during planting/defusing (C_CSPlayerPawnBase::m_iProgressBarDuration).
+     * Value is 5 when defusing without a kit and 10 with a kit (in server ticks or seconds),
+     * and 0 when no progress bar is active. Non-zero means the player is defusing or planting.
+     * Direct pawn field at offset 0x13E0 — no pointer indirection.
+     */
+    public static int m_iProgressBarDuration = 0x13E0;
+
+    /**
+     * Boolean flag on the player pawn indicating if they are currently scoped/zoomed in (C_CSPlayerPawn::m_bIsScoped).
+     * Direct pawn field at offset 0x23E8.
+     */
+    public static int m_bIsScoped = 0x23E8;
+
+    // ── Direct fields on the player controller ────────────────────────────────
+
+    /**
+     * Boolean flag on the player controller indicating if their pawn has a defuse kit (CCSPlayerController::m_bPawnHasDefuser).
+     * Direct controller field at offset 2336 (0x920).
+     */
+    public static int m_bPawnHasDefuser = 2336;
+
+    /**
+     * Pointer from CCSPlayerController to CCSPlayerController_InGameMoneyServices.
+     * Used to access the player's current cash (m_iAccount).
+     */
+    public static int m_pInGameMoneyServices_ctrl = 2056; // 0x808
+
+    /**
+     * Offset of m_iAccount inside CCSPlayerController_InGameMoneyServices.
+     * The player's current in-game cash balance ($).
+     */
+    public static int m_iAccount = 64; // 0x40
 
     // Attribute offsets
     public static int m_pInventoryServices = 0x810;
-    public static int m_unMusicID        = 0x58;
+    public static int m_unMusicID = 0x58;
     public static int m_nFallbackPaintKit = 0x1850;
     public static int m_AttributeManager = 0x1378;
-    public static int m_Item             = 0x50;
-    public static int m_AttributeList    = 0x208;
-    public static int m_Attributes       = 0x8;
+    public static int m_Item = 0x50;
+    public static int m_AttributeList = 0x208;
+    public static int m_Attributes = 0x8;
     public static int m_iItemDefinitionIndex = 0x1BA;
-    public static int m_iItemIDHigh      = 0x1D0;
-    public static int m_MeshGroupMask    = 0x220;
-    public static int m_hOwnerEntity     = 0x528;
-    public static int m_nSubclassID      = 0x3B8;
+    public static int m_iItemIDHigh = 0x1D0;
+    public static int m_MeshGroupMask = 0x220;
+    public static int m_hOwnerEntity = 0x528;
+    public static int m_nSubclassID = 0x3B8;
 
     // Planted C4 offsets
-    public static int m_flC4Blow         = 0xEB4;
-    public static int m_bBombTicking     = 0xEC0;
+    public static int m_flC4Blow = 0xEB4;
+    public static int m_bBombTicking = 0xEC0;
 
     // Grenade projectile offsets (C_BaseGrenade)
     /**
      * Server-time timestamp (float, seconds) at which a live grenade will detonate.
-     * Inherited by all CS2 projectile subclasses (HE, flashbang, smoke, molotov, decoy).
+     * Inherited by all CS2 projectile subclasses (HE, flashbang, smoke, molotov,
+     * decoy).
      * Offset within the C_BaseGrenade class layout.
      */
-    public static int m_flDetonateTime   = 4448; // 0x1160
+    public static int m_flDetonateTime = 4448; // 0x1160
 
     // ── Remote URLs ───────────────────────────────────────────────────────────
-    private static final String OFFSETS_URL    = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/offsets.json";
+    private static final String OFFSETS_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/offsets.json";
     private static final String CLIENT_DLL_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/client_dll.json";
-    private static final String BUTTONS_URL    = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/buttons.json";
+    private static final String BUTTONS_URL = "https://raw.githubusercontent.com/a2x/cs2-dumper/main/output/buttons.json";
 
     // ── Cache file names ──────────────────────────────────────────────────────
-    private static final String CACHE_OFFSETS    = "offsets.json";
+    private static final String CACHE_OFFSETS = "offsets.json";
     private static final String CACHE_CLIENT_DLL = "client_dll.json";
-    private static final String CACHE_BUTTONS    = "buttons.json";
-    private static final String CACHE_CHECKSUMS  = "offsets_checksums.json";
+    private static final String CACHE_BUTTONS = "buttons.json";
+    private static final String CACHE_CHECKSUMS = "offsets_checksums.json";
 
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Initialises offsets by attempting to download the latest data from GitHub.
-     * Compares checksums to avoid redundant writes.  Falls back to cached files
+     * Compares checksums to avoid redundant writes. Falls back to cached files
      * or hardcoded defaults when the network is unavailable.
      */
     public static void load() {
         System.out.println("[CS2Offsets] Attempting to download latest offsets from GitHub...");
 
         Path cacheDir = getCacheDir();
-        try { Files.createDirectories(cacheDir); } catch (IOException ignored) {}
+        try {
+            Files.createDirectories(cacheDir);
+        } catch (IOException ignored) {
+        }
 
         try {
             HttpClient client = HttpClient.newBuilder()
@@ -146,26 +201,26 @@ public class CS2Offsets {
                     .build();
 
             // ── Fetch all three JSON files ─────────────────────────────────
-            String offsetsJson    = fetch(client, OFFSETS_URL);
-            String clientDllJson  = fetch(client, CLIENT_DLL_URL);
-            String buttonsJson    = fetch(client, BUTTONS_URL);
+            String offsetsJson = fetch(client, OFFSETS_URL);
+            String clientDllJson = fetch(client, CLIENT_DLL_URL);
+            String buttonsJson = fetch(client, BUTTONS_URL);
 
             // ── Compute SHA-256 checksums ──────────────────────────────────
-            String newOffsetsCsum    = sha256(offsetsJson);
-            String newClientDllCsum  = sha256(clientDllJson);
-            String newButtonsCsum    = sha256(buttonsJson);
+            String newOffsetsCsum = sha256(offsetsJson);
+            String newClientDllCsum = sha256(clientDllJson);
+            String newButtonsCsum = sha256(buttonsJson);
 
             // ── Compare with previously saved checksums ────────────────────
             JsonObject storedChecksums = loadStoredChecksums(cacheDir);
-            boolean offsetsChanged    = !newOffsetsCsum.equals(getChecksum(storedChecksums, "offsets"));
-            boolean clientDllChanged  = !newClientDllCsum.equals(getChecksum(storedChecksums, "client_dll"));
-            boolean buttonsChanged    = !newButtonsCsum.equals(getChecksum(storedChecksums, "buttons"));
+            boolean offsetsChanged = !newOffsetsCsum.equals(getChecksum(storedChecksums, "offsets"));
+            boolean clientDllChanged = !newClientDllCsum.equals(getChecksum(storedChecksums, "client_dll"));
+            boolean buttonsChanged = !newButtonsCsum.equals(getChecksum(storedChecksums, "buttons"));
 
             if (offsetsChanged || clientDllChanged || buttonsChanged) {
                 System.out.println("[CS2Offsets] New offsets detected — updating local cache...");
-                writeCacheFile(cacheDir, CACHE_OFFSETS,    offsetsJson);
+                writeCacheFile(cacheDir, CACHE_OFFSETS, offsetsJson);
                 writeCacheFile(cacheDir, CACHE_CLIENT_DLL, clientDllJson);
-                writeCacheFile(cacheDir, CACHE_BUTTONS,    buttonsJson);
+                writeCacheFile(cacheDir, CACHE_BUTTONS, buttonsJson);
                 saveChecksums(cacheDir, newOffsetsCsum, newClientDllCsum, newButtonsCsum);
             } else {
                 System.out.println("[CS2Offsets] Offsets are up-to-date (checksums match).");
@@ -240,7 +295,8 @@ public class CS2Offsets {
      */
     private static JsonObject loadStoredChecksums(Path cacheDir) {
         Path file = cacheDir.resolve(CACHE_CHECKSUMS);
-        if (!Files.exists(file)) return new JsonObject();
+        if (!Files.exists(file))
+            return new JsonObject();
         try {
             String json = Files.readString(file, StandardCharsets.UTF_8);
             return JsonParser.parseString(json).getAsJsonObject();
@@ -254,7 +310,8 @@ public class CS2Offsets {
      * if absent.
      */
     private static String getChecksum(JsonObject obj, String key) {
-        if (obj.has(key)) return obj.get(key).getAsString();
+        if (obj.has(key))
+            return obj.get(key).getAsString();
         return "";
     }
 
@@ -263,9 +320,9 @@ public class CS2Offsets {
      */
     private static void saveChecksums(Path cacheDir, String offsets, String clientDll, String buttons) {
         JsonObject obj = new JsonObject();
-        obj.addProperty("offsets",    offsets);
+        obj.addProperty("offsets", offsets);
         obj.addProperty("client_dll", clientDll);
-        obj.addProperty("buttons",    buttons);
+        obj.addProperty("buttons", buttons);
         writeCacheFile(cacheDir, CACHE_CHECKSUMS, obj.toString());
     }
 
@@ -301,9 +358,9 @@ public class CS2Offsets {
      * @return {@code true} if all files were present and parsed successfully.
      */
     private static boolean loadFromCache(Path cacheDir) {
-        Path offsetsFile    = cacheDir.resolve(CACHE_OFFSETS);
-        Path clientDllFile  = cacheDir.resolve(CACHE_CLIENT_DLL);
-        Path buttonsFile    = cacheDir.resolve(CACHE_BUTTONS);
+        Path offsetsFile = cacheDir.resolve(CACHE_OFFSETS);
+        Path clientDllFile = cacheDir.resolve(CACHE_CLIENT_DLL);
+        Path buttonsFile = cacheDir.resolve(CACHE_BUTTONS);
 
         if (!Files.exists(offsetsFile) || !Files.exists(clientDllFile) || !Files.exists(buttonsFile)) {
             System.err.println("[CS2Offsets] Cache files missing — cannot use offline fallback.");
@@ -311,9 +368,9 @@ public class CS2Offsets {
         }
 
         try {
-            String offsetsJson   = Files.readString(offsetsFile,   StandardCharsets.UTF_8);
-            String clientDllJson = Files.readString(clientDllFile,  StandardCharsets.UTF_8);
-            String buttonsJson   = Files.readString(buttonsFile,    StandardCharsets.UTF_8);
+            String offsetsJson = Files.readString(offsetsFile, StandardCharsets.UTF_8);
+            String clientDllJson = Files.readString(clientDllFile, StandardCharsets.UTF_8);
+            String buttonsJson = Files.readString(buttonsFile, StandardCharsets.UTF_8);
 
             parseOffsets(offsetsJson);
             parseClientDll(clientDllJson);
@@ -336,8 +393,8 @@ public class CS2Offsets {
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
         JsonObject clientOffsets = obj.getAsJsonObject("client.dll");
 
-        dwEntityList      = clientOffsets.get("dwEntityList").getAsLong();
-        dwViewMatrix      = clientOffsets.get("dwViewMatrix").getAsLong();
+        dwEntityList = clientOffsets.get("dwEntityList").getAsLong();
+        dwViewMatrix = clientOffsets.get("dwViewMatrix").getAsLong();
         dwLocalPlayerPawn = clientOffsets.get("dwLocalPlayerPawn").getAsLong();
         if (clientOffsets.has("dwLocalPlayerController")) {
             dwLocalPlayerController = clientOffsets.get("dwLocalPlayerController").getAsLong();
@@ -359,7 +416,8 @@ public class CS2Offsets {
                 dwNetworkGameClient = engine2Offsets.get("dwNetworkGameClient").getAsLong();
             }
             if (engine2Offsets.has("dwNetworkGameClient_serverTickCount")) {
-                dwNetworkGameClient_serverTickCount = engine2Offsets.get("dwNetworkGameClient_serverTickCount").getAsInt();
+                dwNetworkGameClient_serverTickCount = engine2Offsets.get("dwNetworkGameClient_serverTickCount")
+                        .getAsInt();
             }
         }
     }
@@ -370,7 +428,7 @@ public class CS2Offsets {
      * @param json Content of the client_dll.json file.
      */
     private static void parseClientDll(String json) {
-        JsonObject obj     = JsonParser.parseString(json).getAsJsonObject();
+        JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
         JsonObject classes = obj.getAsJsonObject("client.dll").getAsJsonObject("classes");
 
         m_hPlayerPawn = classes.getAsJsonObject("CCSPlayerController")
@@ -410,7 +468,8 @@ public class CS2Offsets {
 
         // Spotted state
         if (classes.has("EntitySpottedState_t")) {
-            com.google.gson.JsonObject fields = classes.getAsJsonObject("EntitySpottedState_t").getAsJsonObject("fields");
+            com.google.gson.JsonObject fields = classes.getAsJsonObject("EntitySpottedState_t")
+                    .getAsJsonObject("fields");
             if (fields != null && fields.has("m_bSpotted")) {
                 m_bSpotted = fields.get("m_bSpotted").getAsInt();
             } else {
@@ -456,7 +515,8 @@ public class CS2Offsets {
         }
 
         if (classes.has("CPlayer_WeaponServices")) {
-            com.google.gson.JsonObject fields = classes.getAsJsonObject("CPlayer_WeaponServices").getAsJsonObject("fields");
+            com.google.gson.JsonObject fields = classes.getAsJsonObject("CPlayer_WeaponServices")
+                    .getAsJsonObject("fields");
             if (fields != null && fields.has("m_hMyWeapons")) {
                 m_hMyWeapons = fields.get("m_hMyWeapons").getAsInt();
             }
@@ -519,6 +579,20 @@ public class CS2Offsets {
         m_iItemDefinitionIndex = getField(classes, "C_EconItemView", "m_iItemDefinitionIndex", 0x1BA);
         m_iItemIDHigh = getField(classes, "C_EconItemView", "m_iItemIDHigh", 0x1D0);
         m_nSubclassID = getField(classes, "C_BaseEntity", "m_nSubclassID", 0x3B8);
+
+        // Direct pawn fields from C_CSPlayerPawnBase (flash + progress bar):
+        m_flFlashMaxAlpha     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashMaxAlpha",     0x13FC);
+        m_flFlashDuration     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
+        m_iProgressBarDuration = getField(classes, "C_CSPlayerPawnBase", "m_iProgressBarDuration", 0x13E0);
+
+        // CCSPlayerController fields (defuse kit flag on controller):
+        m_bPawnHasDefuser = getField(classes, "CCSPlayerController", "m_bPawnHasDefuser", 2336);
+
+        // CCSPlayerController_InGameMoneyServices (money)
+        m_iAccount = getField(classes, "CCSPlayerController_InGameMoneyServices", "m_iAccount", 64);
+
+        // Pointer offsets on the pawn/controller for component navigation
+        m_pInGameMoneyServices_ctrl = getField(classes, "CCSPlayerController", "m_pInGameMoneyServices", 2056);
     }
 
     private static int getField(JsonObject classes, String className, String fieldName, int defaultVal) {
@@ -576,5 +650,12 @@ public class CS2Offsets {
         System.out.println(String.format("  > m_flC4Blow:            0x%X", m_flC4Blow));
         System.out.println(String.format("  > m_bBombTicking:        0x%X", m_bBombTicking));
         System.out.println(String.format("  > m_flDetonateTime:      0x%X", m_flDetonateTime));
+        System.out.println(String.format("  > m_flFlashMaxAlpha:     0x%X", m_flFlashMaxAlpha));
+        System.out.println(String.format("  > m_flFlashDuration:     0x%X", m_flFlashDuration));
+        System.out.println(String.format("  > m_iProgressBarDuration:0x%X", m_iProgressBarDuration));
+        System.out.println(String.format("  > m_bIsScoped:           0x%X", m_bIsScoped));
+        System.out.println(String.format("  > m_bPawnHasDefuser:     0x%X", m_bPawnHasDefuser));
+        System.out.println(String.format("  > m_pInGameMoneySvc:     0x%X", m_pInGameMoneyServices_ctrl));
+        System.out.println(String.format("  > m_iAccount:            0x%X", m_iAccount));
     }
 }
