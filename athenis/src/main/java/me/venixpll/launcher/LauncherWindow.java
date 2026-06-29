@@ -123,6 +123,15 @@ public class LauncherWindow extends JFrame {
         buildUI();
         redirectStreams();
         startPulseAnimation();
+        setupSystemTray();
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowIconified(WindowEvent e) {
+                setVisible(false);
+            }
+        });
+
         setVisible(true);
 
         log("INFO", "Athenis launcher ready.  Press START to initialise.");
@@ -202,7 +211,10 @@ public class LauncherWindow extends JFrame {
         right.setBorder(new EmptyBorder(0, 0, 0, 8));
 
         JButton minBtn = buildIconCtrlButton("/assets/menu-burger.png", new Color(0x2D3142));
-        minBtn.addActionListener(e -> setState(JFrame.ICONIFIED));
+        minBtn.addActionListener(e -> {
+            setState(JFrame.ICONIFIED);
+            setVisible(false);
+        });
 
         JButton closeBtn = buildIconCtrlButton("/assets/cross.png", new Color(0x3D1010));
         closeBtn.addActionListener(e -> {
@@ -935,5 +947,79 @@ public class LauncherWindow extends JFrame {
             g.setColor(trackColor);
             g.fillRect(r.x, r.y, r.width, r.height);
         }
+    }
+
+    private void setupSystemTray() {
+        if (!SystemTray.isSupported()) {
+            System.err.println("[Launcher] System tray is not supported on this platform.");
+            return;
+        }
+
+        try {
+            SystemTray tray = SystemTray.getSystemTray();
+
+            // Create a custom modern tray icon
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            
+            // Draw a rounded square background matching C_BG/C_SURFACE
+            g.setColor(C_BG);
+            g.fillRoundRect(0, 0, 16, 16, 4, 4);
+            
+            // Draw a nice cyan accent dot in the center representing Athenis
+            g.setColor(C_ACCENT); // C_ACCENT cyan
+            g.fillOval(3, 3, 10, 10);
+            
+            // Draw a tiny specular/inner glow dot
+            g.setColor(new Color(255, 255, 255, 180));
+            g.fillOval(5, 5, 3, 3);
+            
+            g.dispose();
+
+            PopupMenu popup = new PopupMenu();
+
+            MenuItem openItem = new MenuItem("Open");
+            openItem.addActionListener(e -> SwingUtilities.invokeLater(this::restoreFromTray));
+
+            MenuItem disableItem = new MenuItem("Disable");
+            disableItem.addActionListener(e -> SwingUtilities.invokeLater(() -> {
+                if (overlayRunning) {
+                    onStop();
+                } else {
+                    log("INFO", "Cheat is not running.");
+                }
+            }));
+
+            MenuItem exitItem = new MenuItem("Exit");
+            exitItem.addActionListener(e -> {
+                if (overlayRunning) {
+                    onStop();
+                }
+                System.exit(0);
+            });
+
+            popup.add(openItem);
+            popup.add(disableItem);
+            popup.addSeparator();
+            popup.add(exitItem);
+
+            TrayIcon trayIcon = new TrayIcon(img, "Athenis CS2", popup);
+            trayIcon.setImageAutoSize(true);
+
+            // Double click on tray icon restores the window
+            trayIcon.addActionListener(e -> SwingUtilities.invokeLater(this::restoreFromTray));
+
+            tray.add(trayIcon);
+        } catch (Exception e) {
+            System.err.println("[Launcher] Failed to setup system tray: " + e.getMessage());
+        }
+    }
+
+    private void restoreFromTray() {
+        setVisible(true);
+        setExtendedState(JFrame.NORMAL);
+        toFront();
+        requestFocus();
     }
 }

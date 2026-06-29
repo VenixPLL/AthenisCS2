@@ -175,7 +175,15 @@ public class OverlayWindow extends Application {
      */
     @Override
     protected void configure(final Configuration config) {
-        config.setTitle("Overlay");
+        // Generate a random string for the window title to evade detection
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        java.util.Random rnd = new java.util.Random();
+        StringBuilder sb = new StringBuilder();
+        int length = 8 + rnd.nextInt(9); // random size between 8 and 16 chars
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(rnd.nextInt(chars.length())));
+        }
+        config.setTitle(sb.toString());
 
         // Native GLFW initialization check
         GLFW.glfwInit();
