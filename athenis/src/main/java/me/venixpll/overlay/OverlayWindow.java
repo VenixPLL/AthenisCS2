@@ -234,29 +234,31 @@ public class OverlayWindow extends Application {
         style.setItemSpacing(6.0f, 5.0f);
         style.setScrollbarSize(10.0f);
 
-        // ── Orange-on-dark color palette ──────────────────────────────────────
-        // Accent: #EA6E14 → (0.918, 0.431, 0.078)
-        final float aR = 0.918f, aG = 0.431f, aB = 0.078f;
-        // Dark BG: ~#1C1C1D
-        final float bg1R = 0.110f, bg1G = 0.110f, bg1B = 0.114f;
-        // Slightly lighter: ~#212123
-        final float bg2R = 0.130f, bg2G = 0.130f, bg2B = 0.135f;
-        // Sidebar/topbar: ~#171719
-        final float bg3R = 0.090f, bg3G = 0.090f, bg3B = 0.094f;
+        // ── Cyan-on-dark palette — matches the Launcher (Catppuccin Mocha-inspired) ──
+        // Accent: #00B4D8 (cyan) → (0.000, 0.706, 0.847)
+        final float aR = 0.000f, aG = 0.706f, aB = 0.847f;
+        // C_BG:       #0A0B0E → (0.039, 0.043, 0.055)
+        final float bg1R = 0.039f, bg1G = 0.043f, bg1B = 0.055f;
+        // C_SURFACE2: #161B22 → (0.086, 0.106, 0.133)  — content / child panels
+        final float bg2R = 0.086f, bg2G = 0.106f, bg2B = 0.133f;
+        // C_SURFACE:  #111318 → (0.067, 0.075, 0.094)  — sidebar / topbar
+        final float bg3R = 0.067f, bg3G = 0.075f, bg3B = 0.094f;
+        // C_BORDER:   #21262D → (0.129, 0.149, 0.176)
+        final float brR = 0.129f, brG = 0.149f, brB = 0.176f;
 
         // Window background (transparent — the per-window color is set by OverlayMenu)
         style.setColor(imgui.flag.ImGuiCol.WindowBg, bg1R, bg1G, bg1B, 0.97f);
         style.setColor(imgui.flag.ImGuiCol.ChildBg, bg2R, bg2G, bg2B, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.PopupBg, bg3R, bg3G, bg3B, 0.98f);
 
-        // Borders
-        style.setColor(imgui.flag.ImGuiCol.Border, 0.22f, 0.22f, 0.22f, 1.00f);
+        // Borders — use the launcher's C_BORDER shade
+        style.setColor(imgui.flag.ImGuiCol.Border, brR, brG, brB, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.BorderShadow, 0.00f, 0.00f, 0.00f, 0.00f);
 
         // Frame (checkboxes, sliders, inputs)
-        style.setColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.22f, 0.22f, 0.22f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.FrameBgActive, aR * 0.5f, aG * 0.5f, aB * 0.5f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.FrameBg, bg2R + 0.03f, bg2G + 0.03f, bg2B + 0.03f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.FrameBgHovered, bg2R + 0.06f, bg2G + 0.06f, bg2B + 0.06f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.FrameBgActive, aR * 0.30f, aG * 0.30f, aB * 0.30f, 1.00f);
 
         // Title bar (unused — menu has NoTitleBar, but keep for any sub-windows)
         style.setColor(imgui.flag.ImGuiCol.TitleBg, bg3R, bg3G, bg3B, 1.00f);
@@ -265,41 +267,41 @@ public class OverlayWindow extends Application {
 
         // Scrollbar
         style.setColor(imgui.flag.ImGuiCol.ScrollbarBg, bg3R, bg3G, bg3B, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrab, 0.28f, 0.28f, 0.28f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrabHovered, 0.35f, 0.35f, 0.35f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrab, brR, brG, brB, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ScrollbarGrabHovered, brR + 0.05f, brG + 0.05f, brB + 0.05f, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.ScrollbarGrabActive, aR, aG, aB, 1.00f);
 
-        // Checkmark & slider grab — orange accent
+        // Checkmark & slider grab — cyan accent
         style.setColor(imgui.flag.ImGuiCol.CheckMark, aR, aG, aB, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.SliderGrab, aR, aG, aB, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.SliderGrabActive, Math.min(aR * 1.15f, 1f), Math.min(aG * 1.15f, 1f),
                 Math.min(aB * 1.15f, 1f), 1.00f);
 
         // Buttons
-        style.setColor(imgui.flag.ImGuiCol.Button, 0.18f, 0.18f, 0.18f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.ButtonHovered, 0.24f, 0.24f, 0.24f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.Button, bg2R + 0.03f, bg2G + 0.03f, bg2B + 0.03f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.ButtonHovered, bg2R + 0.07f, bg2G + 0.07f, bg2B + 0.07f, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.ButtonActive, aR, aG, aB, 1.00f);
 
         // Header (selectables)
-        style.setColor(imgui.flag.ImGuiCol.Header, 0.15f, 0.15f, 0.155f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.HeaderHovered, 0.20f, 0.20f, 0.205f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.HeaderActive, aR * 0.6f, aG * 0.6f, aB * 0.6f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.Header, bg2R, bg2G, bg2B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.HeaderHovered, bg2R + 0.05f, bg2G + 0.05f, bg2B + 0.05f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.HeaderActive, aR * 0.40f, aG * 0.40f, aB * 0.40f, 1.00f);
 
         // Separator
-        style.setColor(imgui.flag.ImGuiCol.Separator, 0.22f, 0.22f, 0.22f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.Separator, brR, brG, brB, 1.00f);
         style.setColor(imgui.flag.ImGuiCol.SeparatorHovered, aR, aG, aB, 0.78f);
         style.setColor(imgui.flag.ImGuiCol.SeparatorActive, aR, aG, aB, 1.00f);
 
         // Tab bar
-        style.setColor(imgui.flag.ImGuiCol.Tab, 0.15f, 0.15f, 0.155f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.TabHovered, 0.20f, 0.20f, 0.205f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.TabActive, aR * 0.7f, aG * 0.7f, aB * 0.7f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.TabUnfocused, 0.13f, 0.13f, 0.135f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.TabUnfocusedActive, 0.18f, 0.18f, 0.185f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.Tab, bg2R, bg2G, bg2B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabHovered, bg2R + 0.05f, bg2G + 0.05f, bg2B + 0.05f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabActive, aR * 0.55f, aG * 0.55f, aB * 0.55f, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabUnfocused, bg3R, bg3G, bg3B, 1.00f);
+        style.setColor(imgui.flag.ImGuiCol.TabUnfocusedActive, bg2R + 0.02f, bg2G + 0.02f, bg2B + 0.02f, 1.00f);
 
-        // Text
-        style.setColor(imgui.flag.ImGuiCol.Text, 0.92f, 0.92f, 0.92f, 1.00f);
-        style.setColor(imgui.flag.ImGuiCol.TextDisabled, 0.50f, 0.50f, 0.50f, 1.00f);
+        // Text — launcher's C_TEXT / C_TEXT_DIM
+        style.setColor(imgui.flag.ImGuiCol.Text, 0.804f, 0.839f, 0.957f, 1.00f);  // #CDD6F4
+        style.setColor(imgui.flag.ImGuiCol.TextDisabled, 0.424f, 0.439f, 0.525f, 1.00f); // #6C7086
 
         // Transparency clear color — must stay fully transparent so the overlay is
         // see-through
@@ -384,8 +386,8 @@ public class OverlayWindow extends Application {
         int shadowColor = ImGui.getColorU32(0.0f, 0.0f, 0.0f, 0.75f);
         drawList.addText(posX + 1.5f, posY + 1.5f, shadowColor, text);
 
-        // Draw main text: primary bright cyan accent color (0.0f, 0.7f, 1.0f, 1.0f)
-        int mainColor = ImGui.getColorU32(0.0f, 0.7f, 1.0f, 1.0f);
+        // Draw main text: accent cyan #00B4D8 matching the launcher and menu palette
+        int mainColor = ImGui.getColorU32(0.0f, 0.706f, 0.847f, 1.0f);
         drawList.addText(posX, posY, mainColor, text);
     }
 

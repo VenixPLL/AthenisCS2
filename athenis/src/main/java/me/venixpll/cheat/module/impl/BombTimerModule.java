@@ -3,6 +3,7 @@ package me.venixpll.cheat.module.impl;
 import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
+import imgui.ImVec2;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
@@ -10,6 +11,8 @@ import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
+import me.venixpll.cheat.setting.FloatSetting;
+import me.venixpll.overlay.OverlayWindow;
 
 /**
  * BombTimerModule.
@@ -22,8 +25,9 @@ import me.venixpll.cheat.projection.ScreenProjector;
  *       drains from green → orange → red, time text in the centre and a
  *       "BOMB" label below.</li>
  *   <li><b>Off-screen</b> (bomb not in view): a styled digital timer banner
- *       at the top-centre of the overlay: rounded pill background with a
- *       pulsing colored bar below it and a drop-shadowed time text.</li>
+ *       that can be freely dragged to any position on screen. The banner
+ *       defaults to top-centre and can be repositioned while the overlay
+ *       menu (INSERT key) is open by clicking and dragging it.</li>
  * </ul>
  *
  * <h3>Pointer chain</h3>
@@ -51,14 +55,54 @@ public class BombTimerModule extends CheatModule {
     private static final float ARC_THICKNESS =  5.0f;
     private static final float BG_ALPHA      =  0.60f;
 
+    // ── Banner pill geometry constants ────────────────────────────────────────
+    private static final float PILL_W = 160f;
+    private static final float PILL_H =  44f;
+
+    // ── Off-screen banner position settings (persisted via ConfigManager) ─────
+
+    /**
+     * X coordinate of the banner's left edge.
+     * Default centres the pill on a 1920-wide screen; bounded 0 – 1920.
+     */
+    public final FloatSetting bannerX = new FloatSetting(
+            "Banner X", 1920f / 2f - PILL_W / 2f, 0f, 1920f);
+
+    /**
+     * Y coordinate of the banner's top edge.
+     * Default places the pill near the top of a 1080-high screen; bounded 0 – 1060.
+     */
+    public final FloatSetting bannerY = new FloatSetting(
+            "Banner Y", 14f, 0f, 1060f);
+
     // ── Pre-allocated buffers (avoid GC pressure in render loop) ──────────────
     private final imgui.ImVec2 textSizeBuf = new imgui.ImVec2();
     private final float[]      screenOut   = new float[2];
     private final float[]      arcVtxX     = new float[ARC_SEGMENTS + 2];
     private final float[]      arcVtxY     = new float[ARC_SEGMENTS + 2];
 
+    // ── Drag state (render thread only — no volatile/lock needed) ─────────────
+
+    /** Sentinel: no drag in progress. */
+    private static final int DRAG_NONE = 0;
+    /** User is dragging the banner to a new position. */
+    private static final int DRAG_MOVE = 1;
+
+    /** Current drag mode. */
+    private int   dragMode          = DRAG_NONE;
+    /** Banner X at the moment the drag started. */
+    private float dragStartX        = 0f;
+    /** Banner Y at the moment the drag started. */
+    private float dragStartY        = 0f;
+    /** Mouse X at the moment the drag started. */
+    private float dragOriginMouseX  = 0f;
+    /** Mouse Y at the moment the drag started. */
+    private float dragOriginMouseY  = 0f;
+
     public BombTimerModule() {
         super("Bomb Timer", ModuleCategory.EXTERNAL, false);
+        addSetting(bannerX);
+        addSetting(bannerY);
     }
 
     @Override
@@ -100,6 +144,13 @@ public class BombTimerModule extends CheatModule {
 
     @Override
     public void onRender(ImDrawList drawList) {
+        // ── Menu-open preview: show a draggable mock banner even when no bomb
+        //    is planted so the user can reposition the widget freely. ──────────
+        if (OverlayWindow.isMenuOpen()) {
+            drawMockBanner(drawList);
+            return;
+        }
+
         if (!PlayerCache.tracking) return;
 
         long clientBase = CS2Memory.getClientBase();
@@ -256,11 +307,16 @@ public class BombTimerModule extends CheatModule {
         drawList.addText(lx, ly, arcCol, label);
     }
 
-    // ── Off-screen: styled digital banner ────────────────────────────────────
+    // ── Off-screen: styled digital banner (draggable) ─────────────────────────
 
     /**
-     * Draws a premium-looking digital timer banner at the top-centre of the
-     * overlay when the bomb is not visible on screen.
+     * Draws a premium-looking digital timer banner at the stored position when
+     * the bomb is not visible on screen.
+     *
+     * <p>While the overlay menu is open (INSERT key) the banner shows a drag
+     * affordance and can be repositioned freely by clicking and dragging it.
+     * The new position is stored in {@link #bannerX} / {@link #bannerY} and
+     * persisted automatically by ConfigManager on exit.
      *
      * <p>Layers:
      * <ol>
@@ -278,12 +334,15 @@ public class BombTimerModule extends CheatModule {
         float offY = ESPModule.espOffsetY;
         float sw   = PlayerCache.screenWidth;
 
-        // Pill geometry
-        float pillW    = 160f;
-        float pillH    = 44f;
-        float pillX    = offX + sw / 2.0f - pillW / 2.0f;
-        float pillY    = offY + 14f;
-        float pillR    = pillH / 2.0f; // corner rounding = semi-circle ends
+        // Resolve pill position from persisted settings
+        float pillW = PILL_W;
+        float pillH = PILL_H;
+        float pillX = offX + bannerX.getValue();
+        float pillY = offY + bannerY.getValue();
+        float pillR = pillH / 2.0f; // corner rounding = semi-circle ends
+
+        // ── Handle drag interaction ───────────────────────────────────────────
+        handleBannerDrag(pillX, pillY, pillW, pillH);
 
         // 1. Outer glow border (colored)
         int borderGlow = ImColor.rgba(rgb[0], rgb[1], rgb[2], 0.35f);
@@ -342,5 +401,182 @@ public class BombTimerModule extends CheatModule {
                 ? arcCol
                 : ImColor.rgba(0.96f, 0.96f, 0.96f, 1.0f);
         drawList.addText(tx, ty, textCol, timeText);
+
+        // 7. Drag affordance overlay (only when menu is open)
+        if (OverlayWindow.isMenuOpen()) {
+            drawBannerDragAffordance(drawList, pillX, pillY, pillW, pillH, pillR);
+        }
+    }
+
+    /**
+     * Updates the drag state machine for the off-screen banner.
+     * Must be called every frame before drawing the pill so that the position
+     * settings are updated before the pill geometry is calculated.
+     *
+     * <p>Drag is only processed when the overlay menu is open; otherwise the
+     * window is click-through and mouse events are never received.
+     *
+     * @param pillX  Current pill left edge (screen pixels, including espOffset).
+     * @param pillY  Current pill top edge (screen pixels, including espOffset).
+     * @param pillW  Pill width in pixels.
+     * @param pillH  Pill height in pixels.
+     */
+    private void handleBannerDrag(float pillX, float pillY, float pillW, float pillH) {
+        if (!OverlayWindow.isMenuOpen()) {
+            // Menu closed → always reset drag so a stale drag does not resume.
+            dragMode = DRAG_NONE;
+            return;
+        }
+
+        ImVec2 mousePos = ImGui.getMousePos();
+        float mouseX = mousePos.x;
+        float mouseY = mousePos.y;
+
+        boolean hoverPill = mouseX >= pillX && mouseX <= pillX + pillW
+                         && mouseY >= pillY && mouseY <= pillY + pillH;
+
+        if (ImGui.isMouseReleased(0)) {
+            // Any release ends the drag.
+            dragMode = DRAG_NONE;
+
+        } else if (dragMode == DRAG_MOVE) {
+            // Continue moving: apply cumulative delta from drag origin.
+            float deltaX = mouseX - dragOriginMouseX;
+            float deltaY = mouseY - dragOriginMouseY;
+            bannerX.setValue(dragStartX + deltaX);
+            bannerY.setValue(dragStartY + deltaY);
+
+        } else if (ImGui.isMouseClicked(0) && hoverPill) {
+            // Begin drag on the frame the LMB is first pressed inside the pill.
+            dragMode = DRAG_MOVE;
+            dragStartX = bannerX.getValue();
+            dragStartY = bannerY.getValue();
+            dragOriginMouseX = mouseX;
+            dragOriginMouseY = mouseY;
+        }
+    }
+
+    /**
+     * Draws a semi-transparent drag-hint overlay on top of the pill while the
+     * menu is open.  The hint consists of:
+     * <ul>
+     *   <li>A highlighted border (bright cyan) to signal interactivity.</li>
+     *   <li>A small "⠿ drag" label inside the pill.</li>
+     * </ul>
+     *
+     * @param drawList ImGui foreground draw list.
+     * @param pillX    Pill left edge (screen pixels).
+     * @param pillY    Pill top edge (screen pixels).
+     * @param pillW    Pill width.
+     * @param pillH    Pill height.
+     * @param pillR    Corner radius.
+     */
+    private void drawBannerDragAffordance(ImDrawList drawList,
+            float pillX, float pillY, float pillW, float pillH, float pillR) {
+
+        ImVec2 mousePos = ImGui.getMousePos();
+        float mouseX = mousePos.x;
+        float mouseY = mousePos.y;
+
+        boolean hoverPill = mouseX >= pillX && mouseX <= pillX + pillW
+                         && mouseY >= pillY && mouseY <= pillY + pillH;
+
+        // Highlight border when hovered or actively dragging
+        if (hoverPill || dragMode == DRAG_MOVE) {
+            drawList.addRect(pillX - 2, pillY - 2,
+                             pillX + pillW + 2, pillY + pillH + 2,
+                             ImColor.rgba(0.00f, 0.85f, 1.00f, 0.80f),
+                             pillR + 2, 0, 1.8f);
+        } else {
+            // Subtle dashed outline to indicate draggability even when not hovered
+            drawList.addRect(pillX - 2, pillY - 2,
+                             pillX + pillW + 2, pillY + pillH + 2,
+                             ImColor.rgba(0.00f, 0.71f, 0.85f, 0.40f),
+                             pillR + 2, 0, 1.0f);
+        }
+
+        // Small hint label at the bottom-centre of the pill
+        String hint = dragMode == DRAG_MOVE ? "dragging..." : "\u22BF drag to move";
+        ImGui.calcTextSize(textSizeBuf, hint);
+        float hx = pillX + pillW / 2.0f - textSizeBuf.x / 2.0f;
+        float hy = pillY + pillH - textSizeBuf.y - 2f;
+        drawList.addText(hx, hy,
+                ImColor.rgba(1.0f, 1.0f, 1.0f, dragMode == DRAG_MOVE ? 0.75f : 0.35f),
+                hint);
+    }
+
+    // ── Mock banner (shown while menu is open, no active bomb required) ─────────
+
+    /**
+     * Draws a greyed-out, static preview of the off-screen timer banner at the
+     * current stored position so the user can reposition it without needing an
+     * active bomb.
+     *
+     * <p>The pill uses muted, monochrome colours to make it visually distinct
+     * from a live timer. Drag interaction is fully active so the user can move
+     * it the same way as the real banner.
+     *
+     * @param drawList ImGui foreground draw list.
+     */
+    private void drawMockBanner(ImDrawList drawList) {
+        float offX = ESPModule.espOffsetX;
+        float offY = ESPModule.espOffsetY;
+
+        float pillW = PILL_W;
+        float pillH = PILL_H;
+        float pillX = offX + bannerX.getValue();
+        float pillY = offY + bannerY.getValue();
+        float pillR = pillH / 2.0f;
+
+        // Process drag so the banner can be moved right away
+        handleBannerDrag(pillX, pillY, pillW, pillH);
+
+        // Recalculate pill position after potential drag update
+        pillX = offX + bannerX.getValue();
+        pillY = offY + bannerY.getValue();
+
+        // 1. Muted outer glow border
+        drawList.addRectFilled(pillX - 2, pillY - 2,
+                               pillX + pillW + 2, pillY + pillH + 2,
+                               ImColor.rgba(0.55f, 0.55f, 0.55f, 0.25f),
+                               pillR + 2);
+
+        // 2. Dark pill background (same shade as real banner)
+        drawList.addRectFilled(pillX, pillY,
+                               pillX + pillW, pillY + pillH,
+                               ImColor.rgba(0.04f, 0.04f, 0.10f, 0.88f),
+                               pillR);
+
+        // 3. Subtle inner highlight
+        drawList.addRectFilled(pillX + 4, pillY + 2,
+                               pillX + pillW - 4, pillY + pillH * 0.35f,
+                               ImColor.rgba(1f, 1f, 1f, 0.07f),
+                               pillR);
+
+        // 4. "BOMB" label (muted white)
+        int muted  = ImColor.rgba(0.65f, 0.65f, 0.65f, 0.80f);
+        int shadow = ImColor.rgba(0, 0, 0, 180);
+
+        String label = "BOMB";
+        ImGui.calcTextSize(textSizeBuf, label);
+        float lx = pillX + pillW / 2.0f - textSizeBuf.x / 2.0f;
+        float ly = pillY + 5f;
+        drawList.addText(lx - 1, ly + 1, shadow, label);
+        drawList.addText(lx + 1, ly + 1, shadow, label);
+        drawList.addText(lx, ly, muted, label);
+
+        // 5. Placeholder time text
+        String timeText = "-- s";
+        ImGui.calcTextSize(textSizeBuf, timeText);
+        float tx = pillX + pillW / 2.0f - textSizeBuf.x / 2.0f;
+        float ty = pillY + 22f;
+        drawList.addText(tx - 1, ty - 1, shadow, timeText);
+        drawList.addText(tx + 1, ty - 1, shadow, timeText);
+        drawList.addText(tx - 1, ty + 1, shadow, timeText);
+        drawList.addText(tx + 1, ty + 1, shadow, timeText);
+        drawList.addText(tx, ty, muted, timeText);
+
+        // 6. Drag affordance (always shown — the whole point of the mock)
+        drawBannerDragAffordance(drawList, pillX, pillY, pillW, pillH, pillR);
     }
 }

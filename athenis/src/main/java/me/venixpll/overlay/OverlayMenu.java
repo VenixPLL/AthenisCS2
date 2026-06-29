@@ -37,16 +37,23 @@ public class OverlayMenu {
         private static final float SIDEBAR_W = 160f;
         private static final float TOPBAR_H = 48f;
 
-        // ── Colour palette ─────────────────────────────────────────────────────────
-        private static final float[] COL_BG = { 0.110f, 0.110f, 0.114f, 0.97f };
-        private static final float[] COL_SIDEBAR = { 0.090f, 0.090f, 0.094f, 1.00f };
-        private static final float[] COL_TOPBAR = { 0.090f, 0.090f, 0.094f, 1.00f };
-        private static final float[] COL_CONTENT = { 0.130f, 0.130f, 0.135f, 1.00f };
-        private static final float[] COL_ACCENT = { 0.918f, 0.431f, 0.078f, 1.00f };
-        private static final float[] COL_TAB_HOVER = { 0.160f, 0.160f, 0.165f, 1.00f };
-        private static final float[] COL_TAB_ACTIVE = { 0.150f, 0.150f, 0.155f, 1.00f };
-        private static final float[] COL_SEPARATOR = { 0.220f, 0.220f, 0.220f, 1.00f };
-        private static final float[] COL_TEXT_DIM = { 0.500f, 0.500f, 0.500f, 1.00f };
+        // ── Colour palette — matches the Launcher (Catppuccin Mocha-inspired) ─────
+        // C_BG        #0A0B0E
+        private static final float[] COL_BG      = { 0.039f, 0.043f, 0.055f, 0.97f };
+        // C_SURFACE   #111318  — sidebar / topbar
+        private static final float[] COL_SIDEBAR = { 0.067f, 0.075f, 0.094f, 1.00f };
+        private static final float[] COL_TOPBAR  = { 0.067f, 0.075f, 0.094f, 1.00f };
+        // C_SURFACE2  #161B22  — content area
+        private static final float[] COL_CONTENT = { 0.086f, 0.106f, 0.133f, 1.00f };
+        // Accent      #00B4D8  — cyan (matches C_ACCENT in Launcher)
+        private static final float[] COL_ACCENT  = { 0.000f, 0.706f, 0.847f, 1.00f };
+        // Hover / active tabs — slightly above C_SURFACE2
+        private static final float[] COL_TAB_HOVER  = { 0.110f, 0.135f, 0.165f, 1.00f };
+        private static final float[] COL_TAB_ACTIVE = { 0.095f, 0.118f, 0.148f, 1.00f };
+        // C_BORDER    #21262D
+        private static final float[] COL_SEPARATOR = { 0.129f, 0.149f, 0.176f, 1.00f };
+        // C_TEXT_DIM  #6C7086
+        private static final float[] COL_TEXT_DIM  = { 0.424f, 0.439f, 0.525f, 1.00f };
 
         // ── Reusable child-window flags (1.86.x compatible) ───────────────────────
         private static final int NO_SCROLL_FLAGS = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;

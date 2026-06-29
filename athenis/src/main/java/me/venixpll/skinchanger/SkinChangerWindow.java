@@ -16,6 +16,12 @@ public class SkinChangerWindow {
     public static void render() {
         ImGui.setNextWindowSize(380, 320, ImGuiCond.FirstUseEver);
 
+        // Push colors matching the unified launcher/overlay theme
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.WindowBg, 0.039f, 0.043f, 0.055f, 0.97f);     // C_BG
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.TitleBg, 0.067f, 0.075f, 0.094f, 1.00f);       // C_SURFACE
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.TitleBgActive, 0.067f, 0.075f, 0.094f, 1.00f); // C_SURFACE
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Border, 0.129f, 0.149f, 0.176f, 1.00f);        // C_BORDER
+
         // Open a separate ImGui window without NoSavedSettings so position is saved
         if (ImGui.begin("Skin Changer (Edits Memory)")) {
 
@@ -138,5 +144,6 @@ public class SkinChangerWindow {
             }
         }
         ImGui.end();
+        ImGui.popStyleColor(4);
     }
 }
