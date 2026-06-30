@@ -335,7 +335,10 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
                                 COL_ACCENT[0] * 0.45f, COL_ACCENT[1] * 0.45f, COL_ACCENT[2] * 0.45f, 1f);
-                ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper());
+                if (ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper())) {
+                        // Checkbox was just toggled — fire a notification
+                        NotificationManager.push(module.getName(), module.isEnabled());
+                }
                 ImGui.popStyleColor(4);
 
                 // ── Keybind row ───────────────────────────────────────────────────────

@@ -388,6 +388,12 @@ public class OverlayWindow extends Application {
 
         // Draw Watermark in top-left corner
         drawWatermark();
+
+        // Draw notifications in top-right corner
+        NotificationManager.render(
+                ImGui.getForegroundDrawList(),
+                PlayerCache.screenWidth,
+                PlayerCache.screenHeight);
     }
 
     /**
@@ -407,8 +413,10 @@ public class OverlayWindow extends Application {
             boolean wasDown = lastBindKeyDown.getOrDefault(module.getName(), false);
 
             if (down && !wasDown) {
-                // Rising edge → toggle module
-                module.setEnabled(!module.isEnabled());
+                // Rising edge → toggle module and notify
+                boolean newState = !module.isEnabled();
+                module.setEnabled(newState);
+                NotificationManager.push(module.getName(), newState);
             }
 
             lastBindKeyDown.put(module.getName(), down);
