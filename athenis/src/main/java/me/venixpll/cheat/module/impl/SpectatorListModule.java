@@ -61,6 +61,17 @@ public class SpectatorListModule extends CheatModule {
             int observerPawnHandle = CS2Memory.readInt(playerController + CS2Offsets.m_hObserverPawn);
             int playerPawnHandle = CS2Memory.readInt(playerController + CS2Offsets.m_hPlayerPawn);
 
+            // Skip players who are currently alive (a living player cannot be spectating)
+            if (playerPawnHandle != 0 && playerPawnHandle != -1) {
+                long plyPawn = getEntityByHandle(entityList, playerPawnHandle);
+                if (plyPawn != 0) {
+                    int health = CS2Memory.readInt(plyPawn + CS2Offsets.m_iHealth);
+                    if (health > 0 && health <= 100) {
+                        continue;
+                    }
+                }
+            }
+
             long observerServices = 0;
 
             if (observerPawnHandle != 0 && observerPawnHandle != -1) {
