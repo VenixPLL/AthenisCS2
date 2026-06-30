@@ -82,6 +82,7 @@ public final class ConfigManager {
 
                 moduleObj.addProperty("enabled", module.isEnabled());
                 moduleObj.addProperty("expanded", module.isSettingsExpanded());
+                moduleObj.addProperty("bindKey", module.getBindKey());
 
                 for (Setting<?> setting : module.getSettings()) {
                     if (setting instanceof FloatSetting) {
@@ -149,6 +150,11 @@ public final class ConfigManager {
                     // Restore expanded state
                     if (moduleObj.has("expanded")) {
                         module.setSettingsExpanded(moduleObj.get("expanded").getAsBoolean());
+                    }
+
+                    // Restore keybind
+                    if (moduleObj.has("bindKey")) {
+                        module.setBindKey(moduleObj.get("bindKey").getAsInt());
                     }
 
                     // Restore individual settings

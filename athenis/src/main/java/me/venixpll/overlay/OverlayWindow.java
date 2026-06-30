@@ -30,6 +30,13 @@ public class OverlayWindow extends Application {
     private boolean lastInsertDown = false;
 
     /**
+     * Tracks the last-known "down" state for each module's bind key so we can
+     * detect rising edges (key-just-pressed) without requiring ImGui focus.
+     * Keyed by module name for stable identity across render frames.
+     */
+    private final java.util.Map<String, Boolean> lastBindKeyDown = new java.util.HashMap<>();
+
+    /**
      * Timestamp of the last CS2 window position/size query (milliseconds).
      * Used to throttle the Win32 FindWindow + GetWindowRect pair, which runs
      * on the render thread and does not need to fire every frame.
@@ -360,6 +367,12 @@ public class OverlayWindow extends Application {
         // Handle alignment adjustments and key inputs
         updateWindowPosition();
 
+        // Poll module toggle binds every frame (only when menu is NOT open to
+        // avoid accidental triggers while the user is rebinding keys).
+        if (!menuOpen) {
+            pollModuleBindKeys();
+        }
+
         // Render cheat modules
         for (CheatModule module : ModuleManager.getModules()) {
             if (module.isEnabled()) {
@@ -375,6 +388,31 @@ public class OverlayWindow extends Application {
 
         // Draw Watermark in top-left corner
         drawWatermark();
+    }
+
+    /**
+     * Polls the Windows async key state for every registered module's bind key
+     * and toggles the module on a rising edge (key just pressed).
+     *
+     * <p>Uses {@code GetAsyncKeyState} — the same mechanism used for the INSERT
+     * menu toggle — so it works even when the overlay window does not have
+     * keyboard focus (i.e. while CS2 is the foreground window).
+     */
+    private void pollModuleBindKeys() {
+        for (CheatModule module : ModuleManager.getModules()) {
+            int vk = module.getBindKey();
+            if (vk == -1) continue; // no bind set
+
+            boolean down = (User32.INSTANCE.GetAsyncKeyState(vk) & 0x8000) != 0;
+            boolean wasDown = lastBindKeyDown.getOrDefault(module.getName(), false);
+
+            if (down && !wasDown) {
+                // Rising edge → toggle module
+                module.setEnabled(!module.isEnabled());
+            }
+
+            lastBindKeyDown.put(module.getName(), down);
+        }
     }
 
     /**

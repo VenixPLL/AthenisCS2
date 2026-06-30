@@ -12,6 +12,7 @@ import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
+import com.sun.jna.platform.win32.User32;
 
 import java.util.List;
 
@@ -337,6 +338,10 @@ public class OverlayMenu {
                 ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper());
                 ImGui.popStyleColor(4);
 
+                // ── Keybind row ───────────────────────────────────────────────────────
+                ImGui.spacing();
+                renderBindRow(module, availW);
+
                 // ── Settings list ─────────────────────────────────────────────────────
                 if (module.getSettings().isEmpty()) {
                         ImGui.spacing();
@@ -446,8 +451,184 @@ public class OverlayMenu {
                         }
                 }
 
-                // ── Bottom padding — keeps the last widget off the panel edge ─────────
+        // ── Bottom padding — keeps the last widget off the panel edge ─────────
                 ImGui.dummy(0f, 16f);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+
+        /**
+         * Renders the keybind row for a module:
+         * – a "Set Bind" button (turns red when listening) that starts capture mode,
+         * – the current bind label (VK hex / key name), and
+         * – a "Clear" button to remove the bind.
+         *
+         * <p>When listening is active, every Windows VK in range 1–254 is polled
+         * via {@code GetAsyncKeyState} every GUI frame. The first key that reads
+         * as pressed is captured and assigned; listening then stops automatically.
+         * Escape cancels without changing the bind.
+         *
+         * @param module The module to configure.
+         * @param availW Available width of the settings panel.
+         */
+        private static void renderBindRow(CheatModule module, float availW) {
+                // ── Capture mode: scan all VKs for a press ────────────────────────────
+                if (module.isListeningForBind()) {
+                        // ESC cancels capture
+                        if ((User32.INSTANCE.GetAsyncKeyState(0x1B) & 0x8000) != 0) {
+                                module.setListeningForBind(false);
+                        } else {
+                                for (int vk = 1; vk <= 254; vk++) {
+                                        // Skip keys that are not useful for binds or would
+                                        // interfere: LMB(1), RMB(2), Shift(16), Ctrl(17),
+                                        // Alt(18) are allowed but ESCAPE is handled above.
+                                        if ((User32.INSTANCE.GetAsyncKeyState(vk) & 0x8000) != 0) {
+                                                module.setBindKey(vk);
+                                                module.setListeningForBind(false);
+                                                break;
+                                        }
+                                }
+                        }
+                }
+
+                // ── Layout: [Set Bind]  <key label>  [Clear] ─────────────────────────
+                // Compute widths and X so the row is centred in the panel.
+                float btnW    = 80f;
+                float clearW  = 50f;
+                float spacing = 8f;
+                float labelW  = 110f;
+                float rowW    = btnW + spacing + labelW + spacing + clearW;
+                float startX  = (availW - rowW) * 0.5f;
+                if (startX < 8f) startX = 8f;
+
+                // ── "Set Bind" button ─────────────────────────────────────────────────
+                boolean listening = module.isListeningForBind();
+
+                // Red while listening, accent cyan otherwise
+                float[] btnR = listening
+                        ? new float[]{ 0.80f, 0.16f, 0.16f }
+                        : new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] };
+
+                ImGui.setCursorPosX(startX);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
+                        btnR[0], btnR[1], btnR[2], 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered,
+                        Math.min(btnR[0] * 1.15f, 1f),
+                        Math.min(btnR[1] * 1.15f, 1f),
+                        Math.min(btnR[2] * 1.15f, 1f), 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive,
+                        btnR[0] * 0.80f, btnR[1] * 0.80f, btnR[2] * 0.80f, 1f);
+                ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
+
+                String btnLabel = listening ? "Press key..." : "Set Bind";
+                if (ImGui.button(btnLabel + "##bind_" + module.getName(), btnW, 0f)) {
+                        // Cancel any other module's listen state first
+                        for (CheatModule m : ModuleManager.getModules()) {
+                                if (m != module) m.setListeningForBind(false);
+                        }
+                        module.setListeningForBind(!listening);
+                }
+                ImGui.popStyleVar();
+                ImGui.popStyleColor(3);
+
+                // ── Current bind label ────────────────────────────────────────────────
+                ImGui.sameLine(0f, spacing);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                        COL_TEXT_DIM[0], COL_TEXT_DIM[1], COL_TEXT_DIM[2], 1f);
+
+                int vk = module.getBindKey();
+                String keyLabel = listening
+                        ? "(waiting...)"
+                        : (vk == -1 ? "None" : vkName(vk));
+
+                // Right-pad the label to stable width so the Clear button doesn't shift
+                ImGui.setNextItemWidth(labelW);
+                float labelTextW = ImGui.calcTextSize(keyLabel).x;
+                float labelOffX  = (labelW - labelTextW) * 0.5f;
+                ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.max(0f, labelOffX));
+                ImGui.text(keyLabel);
+                ImGui.popStyleColor();
+
+                // ── "Clear" button ────────────────────────────────────────────────────
+                // Align to a fixed position after the label
+                ImGui.sameLine(startX + btnW + spacing + labelW + spacing, 0f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.22f, 0.22f, 0.22f, 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.30f, 0.30f, 0.30f, 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.16f, 0.16f, 0.16f, 1f);
+                ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
+
+                if (ImGui.button("Clear##bindclear_" + module.getName(), clearW, 0f)) {
+                        module.setBindKey(-1);
+                        module.setListeningForBind(false);
+                }
+                ImGui.popStyleVar();
+                ImGui.popStyleColor(3);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+
+        /**
+         * Returns a human-readable name for the given Windows Virtual-Key code.
+         * Falls back to {@code "VK_0xNN"} for uncommon keys so the label is always
+         * non-empty.
+         *
+         * @param vk Windows Virtual-Key code.
+         * @return Human-readable key name string.
+         */
+        private static String vkName(int vk) {
+                if (vk >= 0x41 && vk <= 0x5A) return String.valueOf((char) vk); // A-Z
+                if (vk >= 0x30 && vk <= 0x39) return String.valueOf((char) vk); // 0-9
+                if (vk >= 0x70 && vk <= 0x7B) return "F" + (vk - 0x6F);        // F1-F12
+                if (vk >= 0x60 && vk <= 0x69) return "Num" + (vk - 0x60);      // Numpad 0-9
+                return switch (vk) {
+                        case 0x01 -> "LMB";
+                        case 0x02 -> "RMB";
+                        case 0x04 -> "MMB";
+                        case 0x05 -> "X1";
+                        case 0x06 -> "X2";
+                        case 0x08 -> "Backspace";
+                        case 0x09 -> "Tab";
+                        case 0x0D -> "Enter";
+                        case 0x10 -> "Shift";
+                        case 0x11 -> "Ctrl";
+                        case 0x12 -> "Alt";
+                        case 0x14 -> "CapsLock";
+                        case 0x1B -> "Escape";
+                        case 0x20 -> "Space";
+                        case 0x21 -> "PgUp";
+                        case 0x22 -> "PgDn";
+                        case 0x23 -> "End";
+                        case 0x24 -> "Home";
+                        case 0x25 -> "Left";
+                        case 0x26 -> "Up";
+                        case 0x27 -> "Right";
+                        case 0x28 -> "Down";
+                        case 0x2D -> "Insert";
+                        case 0x2E -> "Delete";
+                        case 0x6A -> "Num*";
+                        case 0x6B -> "Num+";
+                        case 0x6D -> "Num-";
+                        case 0x6E -> "Num.";
+                        case 0x6F -> "Num/";
+                        case 0xA0 -> "LShift";
+                        case 0xA1 -> "RShift";
+                        case 0xA2 -> "LCtrl";
+                        case 0xA3 -> "RCtrl";
+                        case 0xA4 -> "LAlt";
+                        case 0xA5 -> "RAlt";
+                        case 0xBA -> ";";
+                        case 0xBB -> "=";
+                        case 0xBC -> ",";
+                        case 0xBD -> "-";
+                        case 0xBE -> ".";
+                        case 0xBF -> "/";
+                        case 0xC0 -> "`";
+                        case 0xDB -> "[";
+                        case 0xDC -> "\\";
+                        case 0xDD -> "]";
+                        case 0xDE -> "'";
+                        default   -> String.format("VK_0x%02X", vk);
+                };
         }
 
         /**

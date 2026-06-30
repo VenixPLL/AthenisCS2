@@ -20,6 +20,18 @@ public abstract class CheatModule {
     private boolean settingsExpanded = true;
 
     /**
+     * Virtual-key code (Windows VK) of the keybind that toggles this module.
+     * A value of {@code -1} means no bind is set.
+     */
+    private int bindKey = -1;
+
+    /**
+     * When {@code true} the GUI is waiting for the next key-press to assign
+     * as this module's toggle bind.
+     */
+    private boolean listeningForBind = false;
+
+    /**
      * Constructs a new CheatModule.
      *
      * @param name           Unique user-friendly name of the module.
@@ -111,6 +123,46 @@ public abstract class CheatModule {
      */
     public List<Setting<?>> getSettings() {
         return settings;
+    }
+
+    /**
+     * Gets the Windows Virtual-Key code assigned as the toggle keybind for
+     * this module, or {@code -1} if no bind is set.
+     *
+     * @return Windows VK code, or {@code -1}.
+     */
+    public int getBindKey() {
+        return bindKey;
+    }
+
+    /**
+     * Sets the Windows Virtual-Key code that will toggle this module.
+     * Pass {@code -1} to clear the bind.
+     *
+     * @param bindKey Windows VK code, or {@code -1} to clear.
+     */
+    public void setBindKey(int bindKey) {
+        this.bindKey = bindKey;
+    }
+
+    /**
+     * Returns whether the GUI is currently waiting for a key-press to assign
+     * as this module's toggle bind.
+     *
+     * @return {@code true} if listening for a new bind key.
+     */
+    public boolean isListeningForBind() {
+        return listeningForBind;
+    }
+
+    /**
+     * Sets whether the GUI should wait for the next key-press to assign as
+     * this module's toggle bind.
+     *
+     * @param listening {@code true} to start listening; {@code false} to stop.
+     */
+    public void setListeningForBind(boolean listening) {
+        this.listeningForBind = listening;
     }
 
     /**
