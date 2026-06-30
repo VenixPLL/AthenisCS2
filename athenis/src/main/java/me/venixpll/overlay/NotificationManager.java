@@ -73,6 +73,7 @@ public final class NotificationManager {
     private static final class Notification {
         String  moduleName;
         boolean enabled;
+        String  customMessage;
         long    createdMs;
 
         /**
@@ -83,8 +84,13 @@ public final class NotificationManager {
         float   currentY;
 
         Notification(String moduleName, boolean enabled, float startY) {
+            this(moduleName, enabled, null, startY);
+        }
+
+        Notification(String moduleName, boolean enabled, String customMessage, float startY) {
             this.moduleName = moduleName;
             this.enabled    = enabled;
+            this.customMessage = customMessage;
             this.createdMs  = System.currentTimeMillis();
             this.currentY   = startY;
         }
@@ -139,17 +145,30 @@ public final class NotificationManager {
      * @param enabled    {@code true} if the module was just enabled.
      */
     public static synchronized void push(String moduleName, boolean enabled) {
+        push(moduleName, enabled, null);
+    }
+
+    /**
+     * Queues or refreshes a module-toggle notification with a custom message.
+     * Thread-safe.
+     *
+     * @param moduleName    Display name or title of the notification.
+     * @param enabled       Whether to use the "enabled" accent (cyan) or "disabled" (red).
+     * @param customMessage A custom state label to display.
+     */
+    public static synchronized void push(String moduleName, boolean enabled, String customMessage) {
         // Try to update an existing entry for this module.
         for (Notification n : queue) {
             if (n.moduleName.equals(moduleName)) {
                 n.reset(enabled);
+                n.customMessage = customMessage;
                 return;
             }
         }
         // New module: append at the bottom. Its starting Y is just below the
         // last pill so it slides in from the right at the correct slot.
         float startY = slotY(queue.size());
-        queue.add(new Notification(moduleName, enabled, startY));
+        queue.add(new Notification(moduleName, enabled, customMessage, startY));
     }
 
     /**
@@ -266,7 +285,7 @@ public final class NotificationManager {
         dl.addText(textX + 1f, nameY + 1f, shadow, n.moduleName);
         dl.addText(textX,      nameY,      mainText, n.moduleName);
 
-        String label = n.enabled ? "Enabled" : "Disabled";
+        String label = n.customMessage != null ? n.customMessage : (n.enabled ? "Enabled" : "Disabled");
         dl.addText(textX + 1f, subY + 1f, shadow, label);
         dl.addText(textX,      subY,      stateCol, label);
     }

@@ -346,6 +346,9 @@ public class OverlayWindow extends Application {
         }
         ImGui.getIO().setIniFilename(dir.resolve("imgui.ini").toAbsolutePath().toString());
         ImGui.getIO().addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);
+
+        // Push startup notification
+        NotificationManager.push("Athenis", true, "Started successfully");
     }
 
     /**
