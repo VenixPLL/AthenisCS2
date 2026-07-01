@@ -269,7 +269,6 @@ public class DamageESPModule extends CheatModule {
 
             float[] dc      = damageColor.getValue();
             float   fSize   = ImGui.getFontSize() * FLOAT_FONT_SCALE;
-            int     colShad = ImColor.rgba(0f, 0f, 0f, 0.75f);
 
             activeFloaters.removeIf(f -> {
                 long  elapsed = now - f.birthMs;
