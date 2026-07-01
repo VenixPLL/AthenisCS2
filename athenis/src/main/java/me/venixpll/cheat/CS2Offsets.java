@@ -117,6 +117,15 @@ public class CS2Offsets {
     public static int m_iProgressBarDuration = 0x13E0;
 
     /**
+     * Number of shots the player has fired this life (C_CSPlayerPawnBase::m_iShotsFired).
+     * Monotonically increasing while alive; resets to 0 on death/round reset.
+     * Used by DamageESPModule to verify that the local player fired the shot
+     * that caused an enemy's health to drop.
+     * Direct pawn field at offset 0x1488.
+     */
+    public static int m_iShotsFired = 0x1488;
+
+    /**
      * Boolean flag on the player pawn indicating if they are currently scoped/zoomed in (C_CSPlayerPawn::m_bIsScoped).
      * Direct pawn field at offset 0x23E8.
      */
@@ -605,6 +614,7 @@ public class CS2Offsets {
         m_flFlashMaxAlpha     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashMaxAlpha",     0x13FC);
         m_flFlashDuration     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
         m_iProgressBarDuration = getField(classes, "C_CSPlayerPawnBase", "m_iProgressBarDuration", 0x13E0);
+        m_iShotsFired          = getField(classes, "C_CSPlayerPawnBase", "m_iShotsFired",          0x1488);
 
         // Spectator/Observer offsets:
         m_pObserverServices = getField(classes, "C_BasePlayerPawn", "m_pObserverServices", 0x1118);

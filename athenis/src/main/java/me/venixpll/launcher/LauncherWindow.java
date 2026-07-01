@@ -12,6 +12,7 @@ import me.venixpll.cheat.module.impl.BunnyHopModule;
 import me.venixpll.cheat.module.impl.BombTimerModule;
 import me.venixpll.cheat.module.impl.GrenadeESPModule;
 import me.venixpll.cheat.module.impl.SpectatorListModule;
+import me.venixpll.cheat.module.impl.DamageESPModule;
 import me.venixpll.cheat.module.impl.CrosshairOverlayModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
@@ -118,6 +119,7 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new BombTimerModule());
             ModuleManager.registerModule(new GrenadeESPModule());
             ModuleManager.registerModule(new SpectatorListModule());
+            ModuleManager.registerModule(new DamageESPModule());
             ModuleManager.registerModule(new CrosshairOverlayModule());
         }
         ConfigManager.load();
@@ -663,6 +665,7 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new BombTimerModule());
                     ModuleManager.registerModule(new GrenadeESPModule());
                     ModuleManager.registerModule(new SpectatorListModule());
+                    ModuleManager.registerModule(new DamageESPModule());
                     ModuleManager.registerModule(new CrosshairOverlayModule());
                 }
 
