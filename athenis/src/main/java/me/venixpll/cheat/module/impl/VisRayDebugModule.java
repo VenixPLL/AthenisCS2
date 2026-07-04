@@ -21,7 +21,6 @@ import me.venixpll.cheat.vischeck.VisCheck.RayHitResult;
 import me.venixpll.cheat.vischeck.VisCheck.DeletedTriangleInfo;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
-import java.io.File;
 import java.util.List;
 
 /**
