@@ -104,23 +104,26 @@ public class DamageESPModule extends CheatModule {
      * {@link #pendingFloaters}.
      */
     private static final class FloatingNumber {
-        /** Screen X at spawn (with random model-space offset already applied). */
-        final float startX;
-        /** Screen Y at spawn. */
-        final float startY;
-        /** Subtle horizontal drift in pixels over the full lifetime. */
-        final float driftX;
+        /** Target player index. */
+        final int   playerIndex;
+        /** X offset relative to player feetX, normalized by modelH. */
+        final float relX;
+        /** Y offset relative to player feetY, normalized by modelH. */
+        final float relY;
+        /** Drift X normalized by modelH. */
+        final float relDriftX;
         /** Damage value to display. */
         final int   damage;
         /** {@link System#currentTimeMillis()} when this was created. */
         final long  birthMs;
 
-        FloatingNumber(float startX, float startY, float driftX, int damage, long birthMs) {
-            this.startX  = startX;
-            this.startY  = startY;
-            this.driftX  = driftX;
-            this.damage  = damage;
-            this.birthMs = birthMs;
+        FloatingNumber(int playerIndex, float relX, float relY, float relDriftX, int damage, long birthMs) {
+            this.playerIndex = playerIndex;
+            this.relX        = relX;
+            this.relY        = relY;
+            this.relDriftX   = relDriftX;
+            this.damage      = damage;
+            this.birthMs     = birthMs;
         }
     }
 
@@ -221,6 +224,7 @@ public class DamageESPModule extends CheatModule {
 
                             // Model bounding box in screen space
                             float modelH  = p.feetY - p.headY;
+                            if (modelH <= 0f) modelH = 1f;
                             float modelHW = Math.max(modelH * 0.18f, 8f); // half-width estimate
 
                             // Random position within the model torso (~middle 60% vertically)
@@ -233,8 +237,12 @@ public class DamageESPModule extends CheatModule {
                             // Slight horizontal drift (left or right)
                             float drift = (rand.nextFloat() * 2f - 1f) * 28f;
 
+                            float relX = (spawnX - p.feetX) / modelH;
+                            float relY = (spawnY - p.feetY) / modelH;
+                            float relDriftX = drift / modelH;
+
                             pendingFloaters.add(
-                                    new FloatingNumber(spawnX, spawnY, drift, delta, now));
+                                    new FloatingNumber(p.index, relX, relY, relDriftX, delta, now));
                         }
                     }
                 }
@@ -274,6 +282,21 @@ public class DamageESPModule extends CheatModule {
                 long  elapsed = now - f.birthMs;
                 if (elapsed >= FLOAT_LIFE_MS) return true;
 
+                // Find matching player
+                PlayerSnapshot target = null;
+                for (PlayerSnapshot p : PlayerCache.renderPlayers) {
+                    if (p.index == f.playerIndex) {
+                        target = p;
+                        break;
+                    }
+                }
+
+                // Remove on player death or if target is not found
+                if (target == null || target.health <= 0) return true;
+
+                // Skip drawing if player is off screen
+                if (!target.onScreen) return false;
+
                 float t = elapsed / (float) FLOAT_LIFE_MS;
 
                 // Alpha: full opacity for first 30 %, then ease-out fade
@@ -292,9 +315,12 @@ public class DamageESPModule extends CheatModule {
                         : 1.0f;
                 float curFontSz = fSize * scaleMul;
 
-                // Position: float up + slight drift
-                float curX = f.startX + f.driftX * t;
-                float curY = f.startY - FLOAT_RISE_PX * t;
+                // Position: float up + slight drift relative to target player's position
+                float modelH = target.feetY - target.headY;
+                if (modelH <= 0f) modelH = 1f;
+
+                float curX = target.feetX + (f.relX + f.relDriftX * t) * modelH;
+                float curY = target.feetY + (f.relY - (FLOAT_RISE_PX / 300f) * t) * modelH;
 
                 String txt = "-" + f.damage;
                 ImGui.calcTextSize(sz, txt);
