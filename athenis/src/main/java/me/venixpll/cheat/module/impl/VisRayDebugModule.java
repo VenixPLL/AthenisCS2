@@ -82,7 +82,7 @@ public class VisRayDebugModule extends CheatModule {
     private volatile long   lastSaveMsgTime = 0L;
 
     public VisRayDebugModule() {
-        super("VisRay Debug", ModuleCategory.EXTERNAL, false);
+        super("VisRay Debug", ModuleCategory.DEBUG, false);
         addSetting(rayMode);
         addSetting(crosshairDist);
         addSetting(showRay);

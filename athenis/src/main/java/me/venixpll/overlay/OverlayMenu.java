@@ -9,9 +9,7 @@ import imgui.flag.ImGuiWindowFlags;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
-
 import com.sun.jna.platform.win32.User32;
-
 import java.util.List;
 
 /**
@@ -21,12 +19,9 @@ import java.util.List;
  * Compatible with imgui-java 1.86.x (no ImGuiChildFlags, uses plain 0 / false).
  */
 public class OverlayMenu {
-
         // ── Selection state ────────────────────────────────────────────────────────
         /** Index into ModuleManager.getModules() of the currently selected module. */
         private static int selectedModuleIdx = 0;
-
-
 
         // ── Window geometry ────────────────────────────────────────────────────────
         private static final float WINDOW_W = 700f;
@@ -37,18 +32,24 @@ public class OverlayMenu {
         // ── Colour palette — matches the Launcher (Catppuccin Mocha-inspired) ─────
         // C_BG        #0A0B0E
         private static final float[] COL_BG      = { 0.039f, 0.043f, 0.055f, 0.97f };
+
         // C_SURFACE   #111318  — sidebar / topbar
         private static final float[] COL_SIDEBAR = { 0.067f, 0.075f, 0.094f, 1.00f };
         private static final float[] COL_TOPBAR  = { 0.067f, 0.075f, 0.094f, 1.00f };
+
         // C_SURFACE2  #161B22  — content area
         private static final float[] COL_CONTENT = { 0.086f, 0.106f, 0.133f, 1.00f };
+
         // Accent      #00B4D8  — cyan (matches C_ACCENT in Launcher)
         private static final float[] COL_ACCENT  = { 0.000f, 0.706f, 0.847f, 1.00f };
+
         // Hover / active tabs — slightly above C_SURFACE2
         private static final float[] COL_TAB_HOVER  = { 0.110f, 0.135f, 0.165f, 1.00f };
         private static final float[] COL_TAB_ACTIVE = { 0.095f, 0.118f, 0.148f, 1.00f };
+
         // C_BORDER    #21262D
         private static final float[] COL_SEPARATOR = { 0.129f, 0.149f, 0.176f, 1.00f };
+
         // C_TEXT_DIM  #6C7086
         private static final float[] COL_TEXT_DIM  = { 0.424f, 0.439f, 0.525f, 1.00f };
 
@@ -56,7 +57,6 @@ public class OverlayMenu {
         private static final int NO_SCROLL_FLAGS = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
 
         // ─────────────────────────────────────────────────────────────────────────
-
         /**
          * Main entry point — called every frame when the menu is open.
          */
@@ -82,13 +82,11 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.WindowBg, 0f, 0f, 0f, 0f);
                 ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 10f);
                 ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0f, 0f);
-
                 ImGui.begin("##AthenisMenu",
                                 ImGuiWindowFlags.NoTitleBar
                                                 | ImGuiWindowFlags.NoResize
                                                 | ImGuiWindowFlags.NoScrollbar
                                                 | ImGuiWindowFlags.NoScrollWithMouse);
-
                 ImVec2 winPos = ImGui.getWindowPos();
 
                 // ── Full window background — manually drawn rounded rect ───────────────
@@ -116,7 +114,6 @@ public class OverlayMenu {
                 ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0f, 0f);
                 ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 0f, 0f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ChildBg, 0f, 0f, 0f, 0f);
-
                 ImGui.beginChild("##sidebar", SIDEBAR_W, WINDOW_H, false, NO_SCROLL_FLAGS);
 
                 // ── "Athenis" logo block at the top ────────────────────────────────────
@@ -142,7 +139,6 @@ public class OverlayMenu {
                 ImGui.popStyleColor(); // Text
                 ImGui.endChild();
                 ImGui.popStyleColor(); // ChildBg logo
-
                 ImGui.setCursorPosY(ImGui.getCursorPosY() + 6f);
 
                 // ── Module list ───────────────────────────────────────────────────────
@@ -152,7 +148,6 @@ public class OverlayMenu {
                                 COL_TAB_HOVER[0], COL_TAB_HOVER[1], COL_TAB_HOVER[2], 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.HeaderActive,
                                 COL_TAB_ACTIVE[0], COL_TAB_ACTIVE[1], COL_TAB_ACTIVE[2], 1f);
-
                 for (int i = 0; i < modules.size(); i++) {
                         CheatModule mod = modules.get(i);
                         boolean isActive = (selectedModuleIdx == i);
@@ -179,12 +174,14 @@ public class OverlayMenu {
                         // Overlay the module name text on top of the selectable
                         ImVec2 itemMin = ImGui.getItemRectMin();
                         float nameBrightness = isEnabled ? (isActive ? 1f : 0.80f) : 0.42f;
+
                         // Small enabled indicator dot
                         int dotColor = isEnabled
                                         ? ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f)
                                         : ImColor.rgba(0.35f, 0.35f, 0.35f, 1f);
                         ImGui.getWindowDrawList().addCircleFilled(
                                         itemMin.x + 16f, itemMin.y + 17f, 3.5f, dotColor, 8);
+
                         // Module name
                         ImGui.getWindowDrawList().addText(
                                         itemMin.x + 28f, itemMin.y + 9f,
@@ -193,14 +190,6 @@ public class OverlayMenu {
                 }
 
                 ImGui.popStyleColor(3); // Header, HeaderHovered, HeaderActive
-
-                // FPS counter pinned to bottom of sidebar
-                ImGui.setCursorPos(8f, WINDOW_H - 28f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
-                                COL_TEXT_DIM[0], COL_TEXT_DIM[1], COL_TEXT_DIM[2], 1f);
-                ImGui.text(String.format("FPS: %d", (int) ImGui.getIO().getFramerate()));
-                ImGui.popStyleColor();
-
                 ImGui.endChild(); // ##sidebar
                 ImGui.popStyleColor(); // ChildBg
                 ImGui.popStyleVar(2); // ItemSpacing, FramePadding
@@ -216,7 +205,6 @@ public class OverlayMenu {
                                 COL_TOPBAR[0], COL_TOPBAR[1], COL_TOPBAR[2], 1f);
                 ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 8f, 4f);
                 ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 10f, 7f);
-
                 ImGui.beginChild("##topbar", WINDOW_W - SIDEBAR_W, TOPBAR_H,
                                 false, NO_SCROLL_FLAGS);
                 ImGui.setCursorPos(12f, 10f);
@@ -241,7 +229,6 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.75f, 0.75f, 0.75f, 1f);
                 ImGui.text(selected.getName());
                 ImGui.popStyleColor();
-
                 ImGui.endChild(); // ##topbar
                 ImGui.popStyleColor(); // ChildBg topbar
                 ImGui.popStyleVar(2); // ItemSpacing, FramePadding
@@ -257,7 +244,6 @@ public class OverlayMenu {
                 // ── SETTINGS PANEL (centre) ────────────────────────────────────────────
                 float panelW = WINDOW_W - SIDEBAR_W - 2f;
                 float panelH = WINDOW_H - TOPBAR_H - 2f;
-
                 ImGui.setCursorPosX(1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ChildBg,
                                 COL_CONTENT[0], COL_CONTENT[1], COL_CONTENT[2], 1f);
@@ -267,16 +253,12 @@ public class OverlayMenu {
 
                 // scrollable so settings don't clip if many
                 ImGui.beginChild("##settings", panelW, panelH, false, 0);
-
                 renderModuleSettings(selected);
-
                 ImGui.endChild(); // ##settings
                 ImGui.popStyleVar(3);
                 ImGui.popStyleColor(); // ChildBg settings
-
                 ImGui.endChild(); // ##mainarea
                 ImGui.popStyleColor(); // ChildBg mainarea
-
                 ImGui.end();
 
                 // Pop outer window style
@@ -285,7 +267,6 @@ public class OverlayMenu {
         }
 
         // ─────────────────────────────────────────────────────────────────────────
-
         /**
          * Renders the enable checkbox and all settings for the given module,
          * centred horizontally with generous vertical spacing.
@@ -303,7 +284,6 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.92f, 0.92f, 0.92f, 1f);
                 ImGui.text(module.getName());
                 ImGui.popStyleColor();
-
                 ImGui.spacing();
 
                 // Thin orange underline below the title
@@ -315,7 +295,6 @@ public class OverlayMenu {
                                 cx + lineHalf, ul.y,
                                 ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 0.7f), 1.5f);
                 ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
-
                 ImGui.spacing();
 
                 // ── Enable / Disable checkbox centred ─────────────────────────────────
@@ -324,7 +303,6 @@ public class OverlayMenu {
                 if (checkX < 8f)
                         checkX = 8f;
                 ImGui.setCursorPosX(checkX);
-
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,
                                 COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
@@ -335,6 +313,7 @@ public class OverlayMenu {
                         // Checkbox was just toggled — fire a notification
                         NotificationManager.push(module.getName(), module.isEnabled());
                 }
+
                 ImGui.popStyleColor(4);
 
                 // ── Keybind row ───────────────────────────────────────────────────────
@@ -365,7 +344,6 @@ public class OverlayMenu {
                 float settingX = (availW - settingW) * 0.5f;
                 if (settingX < 8f)
                         settingX = 8f;
-
                 for (Setting<?> setting : module.getSettings()) {
                         boolean disabled = shouldDisable(module, setting);
                         if (disabled)
@@ -388,25 +366,18 @@ public class OverlayMenu {
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
                                         COL_ACCENT[0] * 0.4f, COL_ACCENT[1] * 0.4f, COL_ACCENT[2] * 0.4f, 1f);
-
                         setting.renderImGui();
-
                         ImGui.popStyleColor(6);
-
                         if (disabled)
                                 ImGui.endDisabled();
-
                         ImGui.spacing();
                 }
-
-
 
         // ── Bottom padding — keeps the last widget off the panel edge ─────────
                 ImGui.dummy(0f, 16f);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
-
         /**
          * Renders the keybind row for a module:
          * – a "Set Bind" button (turns red when listening) that starts capture mode,
@@ -458,7 +429,6 @@ public class OverlayMenu {
                 float[] btnR = listening
                         ? new float[]{ 0.80f, 0.16f, 0.16f }
                         : new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] };
-
                 ImGui.setCursorPosX(startX);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
                         btnR[0], btnR[1], btnR[2], 1f);
@@ -469,15 +439,16 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive,
                         btnR[0] * 0.80f, btnR[1] * 0.80f, btnR[2] * 0.80f, 1f);
                 ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
-
                 String btnLabel = listening ? "Press key..." : "Set Bind";
                 if (ImGui.button(btnLabel + "##bind_" + module.getName(), btnW, 0f)) {
                         // Cancel any other module's listen state first
                         for (CheatModule m : ModuleManager.getModules()) {
                                 if (m != module) m.setListeningForBind(false);
                         }
+
                         module.setListeningForBind(!listening);
                 }
+
                 ImGui.popStyleVar();
                 ImGui.popStyleColor(3);
 
@@ -485,7 +456,6 @@ public class OverlayMenu {
                 ImGui.sameLine(0f, spacing);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
                         COL_TEXT_DIM[0], COL_TEXT_DIM[1], COL_TEXT_DIM[2], 1f);
-
                 int vk = module.getBindKey();
                 String keyLabel = listening
                         ? "(waiting...)"
@@ -506,17 +476,16 @@ public class OverlayMenu {
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.30f, 0.30f, 0.30f, 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.16f, 0.16f, 0.16f, 1f);
                 ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
-
                 if (ImGui.button("Clear##bindclear_" + module.getName(), clearW, 0f)) {
                         module.setBindKey(-1);
                         module.setListeningForBind(false);
                 }
+
                 ImGui.popStyleVar();
                 ImGui.popStyleColor(3);
         }
 
         // ─────────────────────────────────────────────────────────────────────────
-
         /**
          * Returns a human-readable name for the given Windows Virtual-Key code.
          * Falls back to {@code "VK_0xNN"} for uncommon keys so the label is always
