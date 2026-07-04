@@ -235,7 +235,10 @@ public class SkinChanger {
         if (skin == null || skin.paint == 0) {
             skins.remove(weapon);
         } else {
-            skins.put(weapon, new SkinInfo(skin.paint, skin.bUsesOldModel, skin.name, skin.weaponType, skin.wear, skin.seed));
+            SkinInfo newSkin = new SkinInfo(skin.paint, skin.bUsesOldModel, skin.name, skin.weaponType, skin.wear, skin.seed);
+            newSkin.quality = skin.quality;
+            newSkin.nameTag = skin.nameTag;
+            skins.put(weapon, newSkin);
         }
         forceUpdate = true;
         saveConfig();
@@ -428,6 +431,8 @@ public class SkinChanger {
                     sObj.addProperty("name", entry.getValue().name);
                     sObj.addProperty("wear", entry.getValue().wear);
                     sObj.addProperty("seed", entry.getValue().seed);
+                    sObj.addProperty("quality", entry.getValue().quality);
+                    sObj.addProperty("nameTag", entry.getValue().nameTag);
 
                     teamObj.add(entry.getKey().name(), sObj);
                 }
@@ -468,9 +473,18 @@ public class SkinChanger {
                         String name = sObj.get("name").getAsString();
                         float wear = sObj.has("wear") ? sObj.get("wear").getAsFloat() : 0.001f;
                         int seed = sObj.has("seed") ? sObj.get("seed").getAsInt() : 1;
+                        String quality = sObj.has("quality") ? sObj.get("quality").getAsString() : "Normal";
+                        String nameTag = sObj.has("nameTag") ? sObj.get("nameTag").getAsString() : "";
                         
-                        teamSkins.get(2).put(weapon, new SkinInfo(paint, legacy, name, weapon, wear, seed));
-                        teamSkins.get(3).put(weapon, new SkinInfo(paint, legacy, name, weapon, wear, seed));
+                        SkinInfo skinT = new SkinInfo(paint, legacy, name, weapon, wear, seed);
+                        skinT.quality = quality;
+                        skinT.nameTag = nameTag;
+                        SkinInfo skinCT = new SkinInfo(paint, legacy, name, weapon, wear, seed);
+                        skinCT.quality = quality;
+                        skinCT.nameTag = nameTag;
+                        
+                        teamSkins.get(2).put(weapon, skinT);
+                        teamSkins.get(3).put(weapon, skinCT);
                     } catch (Exception ignored) {}
                 }
                 saveConfig();
@@ -488,7 +502,13 @@ public class SkinChanger {
                                 String name = sObj.get("name").getAsString();
                                 float wear = sObj.has("wear") ? sObj.get("wear").getAsFloat() : 0.001f;
                                 int seed = sObj.has("seed") ? sObj.get("seed").getAsInt() : 1;
-                                teamSkins.get(teamId).put(weapon, new SkinInfo(paint, legacy, name, weapon, wear, seed));
+                                String quality = sObj.has("quality") ? sObj.get("quality").getAsString() : "Normal";
+                                String nameTag = sObj.has("nameTag") ? sObj.get("nameTag").getAsString() : "";
+                                
+                                SkinInfo skin = new SkinInfo(paint, legacy, name, weapon, wear, seed);
+                                skin.quality = quality;
+                                skin.nameTag = nameTag;
+                                teamSkins.get(teamId).put(weapon, skin);
                             } catch (Exception ignored) {}
                         }
                     }

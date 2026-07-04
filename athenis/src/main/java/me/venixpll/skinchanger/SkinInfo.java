@@ -7,6 +7,9 @@ public class SkinInfo {
     public WeaponsEnum weaponType;
     public float wear;
     public int seed;
+    public String quality = "Normal";
+    public String nameTag = "";
+
     public SkinInfo(int paint, boolean bUsesOldModel, String name, WeaponsEnum weaponType) {
         this(paint, bUsesOldModel, name, weaponType, 0.001f, 1);
     }
