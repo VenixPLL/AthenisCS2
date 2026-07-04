@@ -20,6 +20,7 @@ import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheck.RayHitResult;
 import me.venixpll.cheat.vischeck.VisCheck.DeletedTriangleInfo;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
+import me.venixpll.overlay.NotificationManager;
 
 import java.util.List;
 
@@ -207,6 +208,7 @@ public class VisRayDebugModule extends CheatModule {
                 if (added) {
                     System.out.printf("[VisRayDebug] Deleted triangle mesh=%d tri=%d%n",
                             hit.hitMeshIndex, hit.hitTriangleIndex);
+                    NotificationManager.push("VisRay Debug", true, "Deleted triangle");
                 }
             }
         }
@@ -402,6 +404,7 @@ public class VisRayDebugModule extends CheatModule {
         if (restoreDown && !restoreKeyWasDown) {
             vis.restoreAll();
             showSaveMsg("Restored all deletions");
+            NotificationManager.push("VisRay Debug", false, "Restored all deletions");
         }
         restoreKeyWasDown = restoreDown;
 
@@ -413,8 +416,10 @@ public class VisRayDebugModule extends CheatModule {
                 String savePath = VisCheck.getSavePath(mapName);
                 vis.saveDeletedToFile(savePath, mapName);
                 showSaveMsg("Saved " + vis.deletedTriangles.size() + " deletions");
+                NotificationManager.push("VisRay Debug", true, "Saved " + vis.deletedTriangles.size() + " deletions");
             } else {
                 showSaveMsg("No map loaded - cannot save");
+                NotificationManager.push("VisRay Debug", false, "Save failed: no map");
             }
         }
         saveKeyWasDown = saveDown;
