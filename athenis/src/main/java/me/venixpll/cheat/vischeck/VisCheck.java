@@ -86,6 +86,35 @@ public class VisCheck {
         return deletedTriangles.contains(encodeTriKey(meshIdx, triIdx));
     }
 
+    /** Helper class carrying a deleted triangle and its mesh index. */
+    public static final class DeletedTriangleInfo {
+        public final TriangleCombined triangle;
+        public final int meshIndex;
+        public final int triangleIndex;
+
+        public DeletedTriangleInfo(TriangleCombined triangle, int meshIndex, int triangleIndex) {
+            this.triangle = triangle;
+            this.meshIndex = meshIndex;
+            this.triangleIndex = triangleIndex;
+        }
+    }
+
+    /** @return list of all currently deleted triangles with their mesh index. */
+    public List<DeletedTriangleInfo> getDeletedTriangles() {
+        List<DeletedTriangleInfo> list = new ArrayList<>();
+        for (long key : deletedTriangles) {
+            int meshIdx = (int) (key / 10_000_000L);
+            int triIdx  = (int) (key % 10_000_000L);
+            if (meshIdx >= 0 && meshIdx < geometry.meshes.size()) {
+                List<TriangleCombined> mesh = geometry.meshes.get(meshIdx);
+                if (triIdx >= 0 && triIdx < mesh.size()) {
+                    list.add(new DeletedTriangleInfo(mesh.get(triIdx), meshIdx, triIdx));
+                }
+            }
+        }
+        return list;
+    }
+
     /**
      * Save the deleted triangle list to a UTF-8 JSON file.
      * Format: {"map":"...", "deleted":[{"mesh":0,"tri":5}, ...]}
@@ -119,14 +148,10 @@ public class VisCheck {
     }
 
     /**
-     * Load deleted triangles from a previously saved JSON patch file.
-     * Adds entries to the existing deletion set (does not clear first).
+     * Load deleted triangles from raw JSON string.
      */
-    public void loadDeletedFromFile(String filePath) {
+    public void loadDeletedFromText(String text, String sourceLabel) {
         try {
-            String text = new String(
-                    java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)),
-                    java.nio.charset.StandardCharsets.UTF_8);
             // Simple regex-free parser: find all {"mesh":N,"tri":M} pairs
             java.util.regex.Matcher m = java.util.regex.Pattern
                     .compile("\\{\\s*\"mesh\"\\s*:\\s*(\\d+)\\s*,\\s*\"tri\"\\s*:\\s*(\\d+)\\s*\\}")
@@ -138,9 +163,51 @@ public class VisCheck {
                 deletedTriangles.add(encodeTriKey(mesh, tri));
                 count++;
             }
-            System.out.println("[VisCheck] Loaded " + count + " deleted triangles from " + filePath);
+            if (count > 0) {
+                System.out.println("[VisCheck] Loaded " + count + " deleted triangles from " + sourceLabel);
+            }
         } catch (Exception e) {
-            System.err.println("[VisCheck] Failed to load deletions: " + e.getMessage());
+            System.err.println("[VisCheck] Failed to parse deletions from " + sourceLabel + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load deleted triangles from a previously saved JSON patch file.
+     * Adds entries to the existing deletion set (does not clear first).
+     */
+    public void loadDeletedFromFile(String filePath) {
+        try {
+            String text = new String(
+                    java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            loadDeletedFromText(text, filePath);
+        } catch (Exception e) {
+            System.err.println("[VisCheck] Failed to load deletions file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load static deletions patch from jar resources (if present).
+     * Looks in:
+     * 1. /physics/patches/{mapName}_deleted.json
+     * 2. /patches/{mapName}_deleted.json
+     */
+    public void loadStaticPatch(String mapName) {
+        String[] possiblePaths = {
+            "/physics/patches/" + mapName + "_deleted.json",
+            "/patches/" + mapName + "_deleted.json"
+        };
+        for (String path : possiblePaths) {
+            try (java.io.InputStream is = VisCheck.class.getResourceAsStream(path)) {
+                if (is != null) {
+                    byte[] bytes = is.readAllBytes();
+                    String text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    loadDeletedFromText(text, "resource:" + path);
+                    break; // stop at first match
+                }
+            } catch (Exception e) {
+                System.err.println("[VisCheck] Failed to load resource patch " + path + ": " + e.getMessage());
+            }
         }
     }
 
@@ -180,8 +247,9 @@ public class VisCheck {
         buildBVHForAllMeshes();
         logLoadStats(optimizedGeometryFile);
 
-        // Auto-load deleted patch
+        // Auto-load deleted patches (merge static resources and dynamic files)
         if (mapName != null && !mapName.isEmpty()) {
+            loadStaticPatch(mapName);
             String path = getSavePath(mapName);
             if (new java.io.File(path).exists()) {
                 loadDeletedFromFile(path);
@@ -198,8 +266,9 @@ public class VisCheck {
         buildBVHForAllMeshes();
         logLoadStats("<in-memory bytes, " + bytes.length + " B>");
 
-        // Auto-load deleted patch
+        // Auto-load deleted patches (merge static resources and dynamic files)
         if (mapName != null && !mapName.isEmpty()) {
+            loadStaticPatch(mapName);
             String path = getSavePath(mapName);
             if (new java.io.File(path).exists()) {
                 loadDeletedFromFile(path);

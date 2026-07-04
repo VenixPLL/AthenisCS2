@@ -18,6 +18,7 @@ import me.venixpll.cheat.setting.ModeSetting;
 import me.venixpll.cheat.vischeck.TriangleCombined;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheck.RayHitResult;
+import me.venixpll.cheat.vischeck.VisCheck.DeletedTriangleInfo;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
 import java.io.File;
@@ -51,6 +52,8 @@ public class VisRayDebugModule extends CheatModule {
             "Show Hit Triangle##visray", true);
     public final BooleanSetting showHitPoint = new BooleanSetting(
             "Show Hit Point##visray", true);
+    public final BooleanSetting showAllDeleted = new BooleanSetting(
+            "Show All Deleted##visray", true);
     public final BooleanSetting showInfoPanel = new BooleanSetting(
             "Show Info Panel##visray", true);
     public final BooleanSetting nearestOnly = new BooleanSetting(
@@ -85,6 +88,7 @@ public class VisRayDebugModule extends CheatModule {
         addSetting(showRay);
         addSetting(showTriangle);
         addSetting(showHitPoint);
+        addSetting(showAllDeleted);
         addSetting(showInfoPanel);
         addSetting(nearestOnly);
         addSetting(deleteKey);
@@ -139,6 +143,7 @@ public class VisRayDebugModule extends CheatModule {
         if (showRay.getValue())      drawRay(drawList, camera, rayEnd, hit, matrix, sw, sh, offX, offY);
         if (showHitPoint.getValue()) drawHitPoint(drawList, hit, matrix, sw, sh, offX, offY);
         if (showTriangle.getValue()) drawTriangle(drawList, hit, vis, matrix, sw, sh, offX, offY);
+        if (showAllDeleted.getValue()) drawAllDeletedTriangles(drawList, vis, matrix, sw, sh, offX, offY);
         if (showInfoPanel.getValue()) drawInfoPanel(drawList, hit, camera, vis, offX, offY);
     }
 
@@ -434,5 +439,42 @@ public class VisRayDebugModule extends CheatModule {
         dl.addText(px+1, py+1, ImColor.rgba(0,0,0,200), "[ VisRay Debug ]  no geometry loaded");
         dl.addText(px, py, ImColor.rgba(0.0f, 0.95f, 1.0f, 1.0f), "[ VisRay Debug ]  no geometry loaded");
         dl.addText(px, py+14, ImColor.rgba(0.8f, 0.5f, 0.5f, 0.9f), "Load a map with a .opt file to enable");
+    }
+
+    // ── Render all deleted triangles ──────────────────────────────────────────
+
+    private void drawAllDeletedTriangles(ImDrawList dl, VisCheck vis, float[] matrix,
+                                         int sw, int sh, float offX, float offY) {
+        List<DeletedTriangleInfo> deletedList = vis.getDeletedTriangles();
+        if (deletedList.isEmpty()) return;
+
+        int edgeCol = ImColor.rgba(1.0f, 0.15f, 0.15f, 0.80f); // red edges
+        int fillCol = ImColor.rgba(1.0f, 0.0f, 0.0f, 0.15f);  // semi-transparent red fill
+        int shadow  = ImColor.rgba(0, 0, 0, 150);
+
+        for (DeletedTriangleInfo info : deletedList) {
+            TriangleCombined tri = info.triangle;
+            boolean v0ok = ScreenProjector.project(tri.v0, scrA, matrix, sw, sh);
+            boolean v1ok = ScreenProjector.project(tri.v1, scrB, matrix, sw, sh);
+            boolean v2ok = ScreenProjector.project(tri.v2, scrC, matrix, sw, sh);
+
+            if (v0ok && v1ok && v2ok) {
+                float ax = scrA[0] + offX, ay = scrA[1] + offY;
+                float bx = scrB[0] + offX, by = scrB[1] + offY;
+                float cx = scrC[0] + offX, cy = scrC[1] + offY;
+
+                // Draw filled triangle
+                dl.addTriangleFilled(ax, ay, bx, by, cx, cy, fillCol);
+
+                // Draw outlines with shadow
+                dl.addLine(ax - 1, ay - 1, bx - 1, by - 1, shadow, 2.0f);
+                dl.addLine(bx - 1, by - 1, cx - 1, cy - 1, shadow, 2.0f);
+                dl.addLine(cx - 1, cy - 1, ax - 1, ay - 1, shadow, 2.0f);
+
+                dl.addLine(ax, ay, bx, by, edgeCol, 1.2f);
+                dl.addLine(bx, by, cx, cy, edgeCol, 1.2f);
+                dl.addLine(cx, cy, ax, ay, edgeCol, 1.2f);
+            }
+        }
     }
 }
