@@ -6,9 +6,143 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class VisCheck {
+
+    // ── Ray hit result (for visual debug) ────────────────────────────────────
+
+    /**
+     * Carries the result of a full ray-cast including the closest blocking
+     * triangle and world-space hit point. Used by VisRayDebugModule to project
+     * the wall intersection onto the screen overlay.
+     */
+    public static final class RayHitResult {
+        /** True when a triangle was found between camera and target. */
+        public final boolean blocked;
+        /** World-space point where the ray first hit geometry. */
+        public final Vector3 hitPoint;
+        /** The blocking triangle (null when not blocked). */
+        public final TriangleCombined hitTriangle;
+        /** Index of the BVH mesh containing the hit triangle. */
+        public final int hitMeshIndex;
+        /** Index of the triangle within geometry.meshes.get(hitMeshIndex). */
+        public final int hitTriangleIndex;
+        /** Distance from origin to the hit point (Float.MAX_VALUE if no hit). */
+        public final float hitDistance;
+        /** Total ray length from camera to target. */
+        public final float rayDistance;
+
+        public RayHitResult(boolean blocked, Vector3 hitPoint, TriangleCombined hitTriangle,
+                            int hitMeshIndex, int hitTriangleIndex,
+                            float hitDistance, float rayDistance) {
+            this.blocked          = blocked;
+            this.hitPoint         = hitPoint;
+            this.hitTriangle      = hitTriangle;
+            this.hitMeshIndex     = hitMeshIndex;
+            this.hitTriangleIndex = hitTriangleIndex;
+            this.hitDistance      = hitDistance;
+            this.rayDistance      = rayDistance;
+        }
+    }
+
     private static final int LEAF_THRESHOLD = 4;
     private final OptimizedGeometry geometry = new OptimizedGeometry();
     private final List<BVHNode> bvhNodes = new ArrayList<>();
+
+    /**
+     * Set of deleted triangle IDs encoded as {@code meshIdx * 10_000_000L + triIdx}.
+     * Triangles in this set are skipped by castRay() and castRayFree() so they
+     * no longer block line-of-sight. They can also be highlighted in red by
+     * VisRayDebugModule and exported to a patch file.
+     * <p>Thread-safe: protected by the VisCheck instance lock on write; volatile
+     * snapshot read is fine for the renderer.</p>
+     */
+    public final java.util.concurrent.ConcurrentHashMap.KeySetView<Long, Boolean>
+            deletedTriangles = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Encode a (meshIdx, triIdx) pair into a single long key for the deleted-set. */
+    public static long encodeTriKey(int meshIdx, int triIdx) {
+        return (long) meshIdx * 10_000_000L + triIdx;
+    }
+
+    /**
+     * Mark the triangle at (meshIdx, triIdx) as deleted.
+     * It will no longer block ray-casts and will be highlighted red by the debug overlay.
+     * @return true if the triangle was not already deleted.
+     */
+    public boolean deleteTriangle(int meshIdx, int triIdx) {
+        return deletedTriangles.add(encodeTriKey(meshIdx, triIdx));
+    }
+
+    /**
+     * Restore all deleted triangles — clears the deletion set so all geometry
+     * blocks ray-casts again.
+     */
+    public void restoreAll() {
+        deletedTriangles.clear();
+        System.out.println("[VisCheck] All deletions restored.");
+    }
+
+    /** @return true if the triangle at (meshIdx, triIdx) has been deleted. */
+    public boolean isDeleted(int meshIdx, int triIdx) {
+        return deletedTriangles.contains(encodeTriKey(meshIdx, triIdx));
+    }
+
+    /**
+     * Save the deleted triangle list to a UTF-8 JSON file.
+     * Format: {"map":"...", "deleted":[{"mesh":0,"tri":5}, ...]}
+     * @param filePath  Absolute path to write (will overwrite if exists).
+     * @param mapName   Map name to embed in the file header.
+     */
+    public void saveDeletedToFile(String filePath, String mapName) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n  \"map\": \"").append(mapName).append("\",\n");
+        sb.append("  \"deleted\": [\n");
+        boolean first = true;
+        for (long key : deletedTriangles) {
+            int mesh = (int) (key / 10_000_000L);
+            int tri  = (int) (key % 10_000_000L);
+            if (!first) sb.append(",\n");
+            sb.append("    {\"mesh\": ").append(mesh).append(", \"tri\": ").append(tri).append("}");
+            first = false;
+        }
+        sb.append("\n  ]\n}\n");
+        try {
+            java.nio.file.Files.write(
+                    java.nio.file.Paths.get(filePath),
+                    sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            System.out.println("[VisCheck] Saved " + deletedTriangles.size() +
+                    " deleted triangles to " + filePath);
+        } catch (Exception e) {
+            System.err.println("[VisCheck] Failed to save deletions: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Load deleted triangles from a previously saved JSON patch file.
+     * Adds entries to the existing deletion set (does not clear first).
+     */
+    public void loadDeletedFromFile(String filePath) {
+        try {
+            String text = new String(
+                    java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filePath)),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            // Simple regex-free parser: find all {"mesh":N,"tri":M} pairs
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\\{\\s*\"mesh\"\\s*:\\s*(\\d+)\\s*,\\s*\"tri\"\\s*:\\s*(\\d+)\\s*\\}")
+                    .matcher(text);
+            int count = 0;
+            while (m.find()) {
+                int mesh = Integer.parseInt(m.group(1));
+                int tri  = Integer.parseInt(m.group(2));
+                deletedTriangles.add(encodeTriKey(mesh, tri));
+                count++;
+            }
+            System.out.println("[VisCheck] Loaded " + count + " deleted triangles from " + filePath);
+        } catch (Exception e) {
+            System.err.println("[VisCheck] Failed to load deletions: " + e.getMessage());
+        }
+    }
 
     // ── Debug configuration ───────────────────────────────────────────────────
     /** Master toggle: set to true to enable all debug output. */
@@ -23,26 +157,54 @@ public class VisCheck {
     // ── Internal throttle state ───────────────────────────────────────────────
     private static final AtomicLong lastDebugBlockedMs = new AtomicLong(0L);
     private static final AtomicLong lastDebugVisibleMs = new AtomicLong(0L);
-    private static final AtomicLong totalRayCasts = new AtomicLong(0L);
-    private static final AtomicLong totalBlocked = new AtomicLong(0L);
-    private static final AtomicLong totalVisible = new AtomicLong(0L);
+    public static final AtomicLong totalRayCasts = new AtomicLong(0L);
+    public static final AtomicLong totalBlocked = new AtomicLong(0L);
+    public static final AtomicLong totalVisible = new AtomicLong(0L);
+
+    public final String mapName;
+
+    public static String getSavePath(String mapName) {
+        String appData = System.getenv("APPDATA");
+        if (appData == null) appData = System.getProperty("user.home");
+        String dir = appData + java.io.File.separator + "Athenis" + java.io.File.separator + "patches";
+        new java.io.File(dir).mkdirs();
+        return dir + java.io.File.separator + mapName + "_deleted.json";
+    }
 
     // ── Constructor (file path) ───────────────────────────────────────────────
-    public VisCheck(String optimizedGeometryFile) {
+    public VisCheck(String optimizedGeometryFile, String mapName) {
+        this.mapName = mapName;
         if (!geometry.loadFromFile(optimizedGeometryFile)) {
             System.err.println("[VisCheck] Failed to load optimized file: " + optimizedGeometryFile);
         }
         buildBVHForAllMeshes();
         logLoadStats(optimizedGeometryFile);
+
+        // Auto-load deleted patch
+        if (mapName != null && !mapName.isEmpty()) {
+            String path = getSavePath(mapName);
+            if (new java.io.File(path).exists()) {
+                loadDeletedFromFile(path);
+            }
+        }
     }
 
     // ── Constructor (bytes) ───────────────────────────────────────────────────
-    public VisCheck(byte[] bytes) {
+    public VisCheck(byte[] bytes, String mapName) {
+        this.mapName = mapName;
         if (!geometry.loadFromBytes(bytes)) {
             System.err.println("[VisCheck] Failed to load geometry from bytes");
         }
         buildBVHForAllMeshes();
         logLoadStats("<in-memory bytes, " + bytes.length + " B>");
+
+        // Auto-load deleted patch
+        if (mapName != null && !mapName.isEmpty()) {
+            String path = getSavePath(mapName);
+            if (new java.io.File(path).exists()) {
+                loadDeletedFromFile(path);
+            }
+        }
     }
 
     private void buildBVHForAllMeshes() {
@@ -60,6 +222,78 @@ public class VisCheck {
     }
 
     // ── Core visibility check ─────────────────────────────────────────────────
+
+    /**
+     * Full ray-cast that always collects hit information regardless of DEBUG flag.
+     * Used by the visual debug overlay to project the wall hit point to screen.
+     * Slightly more expensive than {@link #isPointVisible} (always tracks hit tri).
+     *
+     * @param camera  Ray origin (local player eye position).
+     * @param target  Ray end point (enemy head / chest).
+     * @return A {@link RayHitResult} containing blocked status, hit point, and triangle.
+     */
+    public RayHitResult castRay(Vector3 camera, Vector3 target) {
+        Vector3 rayDir = target.subtract(camera);
+        float distance = (float) Math.sqrt(rayDir.dot(rayDir));
+
+        if (distance < 1e-5f) {
+            return new RayHitResult(false, camera, null, -1, -1, 0f, 0f);
+        }
+
+        Vector3 normDir = new Vector3(
+                rayDir.x / distance,
+                rayDir.y / distance,
+                rayDir.z / distance);
+
+        return castRayInternal(camera, normDir, distance);
+    }
+
+    /**
+     * Casts an unbounded ray from {@code origin} in direction {@code normDir}
+     * up to {@code maxDistance} units. Used for the crosshair-look ray where
+     * there is no specific target point — the ray just probes the geometry.
+     *
+     * @param origin      Ray start (eye position).
+     * @param normDir     Normalised ray direction.
+     * @param maxDistance Max probe distance in game units.
+     * @return A {@link RayHitResult} with the closest geometry hit, or an
+     *         un-blocked result if no triangle was found within range.
+     */
+    public RayHitResult castRayFree(Vector3 origin, Vector3 normDir, float maxDistance) {
+        return castRayInternal(origin, normDir, maxDistance);
+    }
+
+    /** Shared implementation for both castRay and castRayFree. */
+    private RayHitResult castRayInternal(Vector3 origin, Vector3 normDir, float maxDist) {
+        float[]           hitDist = { Float.MAX_VALUE };
+        TriangleCombined[] hitTri  = { null };
+        int[]              hitMesh = { -1 };
+        int[]              hitTriIdx = { -1 };
+        boolean blocked = false;
+
+        for (int meshIdx = 0; meshIdx < bvhNodes.size(); meshIdx++) {
+            DebugIntersectResult res = intersectBVHDebug(
+                    bvhNodes.get(meshIdx), origin, normDir, maxDist, hitDist, meshIdx);
+            if (res.hit && hitDist[0] < maxDist) {
+                blocked = true;
+                hitTri[0]    = res.closestTriangle;
+                hitMesh[0]   = meshIdx;
+                hitTriIdx[0] = res.closestTriangleIndex;
+            }
+        }
+
+        Vector3 hitPoint = null;
+        if (blocked && hitDist[0] < Float.MAX_VALUE) {
+            hitPoint = new Vector3(
+                    origin.x + normDir.x * hitDist[0],
+                    origin.y + normDir.y * hitDist[0],
+                    origin.z + normDir.z * hitDist[0]);
+        }
+
+        return new RayHitResult(blocked, hitPoint, hitTri[0],
+                hitMesh[0], hitTriIdx[0], hitDist[0],
+                blocked ? hitDist[0] : maxDist);
+    }
 
     /**
      * Checks whether point1 (sender/camera) can see point2 (target head/chest).
@@ -105,7 +339,7 @@ public class VisCheck {
                     hitMeshIndex[0] = meshIdx;
                 }
             } else {
-                if (intersectBVH(bvhRoot, point1, normRayDir, distance, hitDistance)) {
+                if (intersectBVH(bvhRoot, point1, normRayDir, distance, hitDistance, meshIdx)) {
                     if (hitDistance[0] < distance) {
                         blocked = true;
                     }
@@ -299,13 +533,15 @@ public class VisCheck {
     // ── BVH traversal (production — no tracking overhead) ────────────────────
 
     private boolean intersectBVH(BVHNode node, Vector3 rayOrigin, Vector3 rayDir,
-            float maxDistance, float[] hitDistance) {
+            float maxDistance, float[] hitDistance, int meshIdx) {
         if (!node.bounds.rayIntersects(rayOrigin, rayDir))
             return false;
 
         boolean hit = false;
         if (node.isLeaf()) {
             for (TriangleCombined tri : node.triangles) {
+                // Skip deleted triangles in production mode
+                if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
                 float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
                 if (t > 0.0f && t < maxDistance && t < hitDistance[0]) {
                     hitDistance[0] = t;
@@ -314,9 +550,9 @@ public class VisCheck {
             }
         } else {
             if (node.left != null)
-                hit |= intersectBVH(node.left, rayOrigin, rayDir, maxDistance, hitDistance);
+                hit |= intersectBVH(node.left, rayOrigin, rayDir, maxDistance, hitDistance, meshIdx);
             if (node.right != null)
-                hit |= intersectBVH(node.right, rayOrigin, rayDir, maxDistance, hitDistance);
+                hit |= intersectBVH(node.right, rayOrigin, rayDir, maxDistance, hitDistance, meshIdx);
         }
         return hit;
     }
@@ -329,19 +565,20 @@ public class VisCheck {
         int nodesVisited = 0;
         int trianglesTested = 0;
         TriangleCombined closestTriangle = null;
+        int closestTriangleIndex = -1;
     }
 
     private DebugIntersectResult intersectBVHDebug(BVHNode node, Vector3 rayOrigin, Vector3 rayDir,
             float maxDistance, float[] hitDistance,
             int meshIdx) {
         DebugIntersectResult result = new DebugIntersectResult();
-        intersectBVHDebugRecursive(node, rayOrigin, rayDir, maxDistance, hitDistance, result);
+        intersectBVHDebugRecursive(node, rayOrigin, rayDir, maxDistance, hitDistance, result, meshIdx);
         return result;
     }
 
     private void intersectBVHDebugRecursive(BVHNode node, Vector3 rayOrigin, Vector3 rayDir,
             float maxDistance, float[] hitDistance,
-            DebugIntersectResult result) {
+            DebugIntersectResult result, int meshIdx) {
         result.nodesVisited++;
         if (!node.bounds.rayIntersects(rayOrigin, rayDir))
             return;
@@ -349,18 +586,21 @@ public class VisCheck {
         if (node.isLeaf()) {
             for (TriangleCombined tri : node.triangles) {
                 result.trianglesTested++;
+                // Skip triangles that have been manually deleted
+                if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
                 float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
                 if (t > 0.0f && t < maxDistance && t < hitDistance[0]) {
                     hitDistance[0] = t;
                     result.hit = true;
                     result.closestTriangle = tri;
+                    result.closestTriangleIndex = tri.index;
                 }
             }
         } else {
             if (node.left != null)
-                intersectBVHDebugRecursive(node.left, rayOrigin, rayDir, maxDistance, hitDistance, result);
+                intersectBVHDebugRecursive(node.left, rayOrigin, rayDir, maxDistance, hitDistance, result, meshIdx);
             if (node.right != null)
-                intersectBVHDebugRecursive(node.right, rayOrigin, rayDir, maxDistance, hitDistance, result);
+                intersectBVHDebugRecursive(node.right, rayOrigin, rayDir, maxDistance, hitDistance, result, meshIdx);
         }
     }
 

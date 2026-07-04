@@ -47,6 +47,7 @@ public class Parser {
                     t.v0 = vertices.get(triangle.a);
                     t.v1 = vertices.get(triangle.b);
                     t.v2 = vertices.get(triangle.c);
+                    t.index = combined.size();
                     combined.add(t);
                 }
             }

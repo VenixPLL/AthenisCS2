@@ -6,6 +6,7 @@ public class TriangleCombined {
     public Vector3 v0;
     public Vector3 v1;
     public Vector3 v2;
+    public int index = -1;
 
     public TriangleCombined() {
         this.v0 = new Vector3();

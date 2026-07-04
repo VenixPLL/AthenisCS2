@@ -77,7 +77,7 @@ public class VisCheckAdapter {
             byte[] bytes = stream.readAllBytes();
             stream.close();
 
-            VisCheck vis = new VisCheck(bytes);
+            VisCheck vis = new VisCheck(bytes, mapName);
             currentVisCheck = vis;
             System.out.println("[VisCheckAdapter] Successfully loaded VisCheck for " + mapName);
         } catch (Exception e) {

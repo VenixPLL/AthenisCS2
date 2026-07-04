@@ -123,6 +123,7 @@ public class OptimizedGeometry {
                     // Filter terrain/displacement triangles — these have edges of
                     // 1000-3000+ units and should never block line-of-sight.
                     if (isValidWallTriangle(tri)) {
+                        tri.index = mesh.size();
                         mesh.add(tri);
                     } else {
                         totalDropped++;
