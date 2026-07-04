@@ -262,11 +262,11 @@ public class AimbotModule extends CheatModule {
                             continue;
                         if (p.health <= 0)
                             continue;
-                        if (chkVis && !isVisible(p, localCamera, localPawn, chkSpot))
-                            continue;
-
                         int bone = resolveBone(boneMode, p);
                         if (bone < 0 || bone >= p.boneX.length || !p.boneVisible[bone])
+                            continue;
+
+                        if (chkVis && !isBoneVisible(p, bone, localCamera, localPawn, chkSpot))
                             continue;
 
                         float sdx = p.boneX[bone] - cx;
@@ -424,8 +424,16 @@ public class AimbotModule extends CheatModule {
         return bestBone;
     }
 
-    private boolean isVisible(PlayerSnapshot p, Vector3 cam, long pawn, boolean useSpotted) {
+    private boolean isBoneVisible(PlayerSnapshot p, int bone, Vector3 cam, long pawn, boolean useSpotted) {
         VisCheck vc = VisCheckAdapter.getVisCheck();
+        if (vc != null && cam != null && bone >= 0 && bone < p.boneWorldX.length) {
+            float bx = p.boneWorldX[bone];
+            float by = p.boneWorldY[bone];
+            float bz = p.boneWorldZ[bone];
+            if (bx != 0.0f || by != 0.0f || bz != 0.0f) {
+                return vc.isPointVisible(cam, new Vector3(bx, by, bz));
+            }
+        }
         if (vc != null && cam != null)
             return vc.isPointVisible(cam, new Vector3(p.worldX, p.worldY, p.worldZ + 72.0f));
         if (useSpotted && p.pawnAddress != 0) {

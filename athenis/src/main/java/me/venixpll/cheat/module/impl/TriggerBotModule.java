@@ -237,12 +237,13 @@ public class TriggerBotModule extends CheatModule {
                         if (oneShot && p.index == lastShotIndex)
                             continue;
 
-                        // VisCheck
-                        if (useVisCheck.getValue() && !isVisible(p, localCamera))
-                            continue;
-
                         // Check each bone for this targeting mode
-                        if (isAimingAtBones(p, cx, cy, bones, radFrac)) {
+                        int aimedBone = getAimedBone(p, cx, cy, bones, radFrac);
+                        if (aimedBone != -1) {
+                            // VisCheck ONLY the specific bone aimed at
+                            if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone, localCamera))
+                                continue;
+
                             hitPlayerIndex = p.index;
                             break;
                         }
@@ -267,9 +268,10 @@ public class TriggerBotModule extends CheatModule {
                         for (PlayerSnapshot p : PlayerCache.renderPlayers) {
                             if (p.index != hitPlayerIndex || p.isLocal || !p.onScreen)
                                 continue;
-                            if (useVisCheck.getValue() && !isVisible(p, buildLocalCamera()))
-                                continue;
-                            if (isAimingAtBones(p, cx, cy, bones2, radFrac2)) {
+                            int aimedBone2 = getAimedBone(p, cx, cy, bones2, radFrac2);
+                            if (aimedBone2 != -1) {
+                                if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone2, buildLocalCamera()))
+                                    continue;
                                 stillOn = true;
                                 break;
                             }
@@ -308,20 +310,11 @@ public class TriggerBotModule extends CheatModule {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /**
-     * Returns true if the crosshair {@code (cx, cy)} overlaps any of the
-     * specified bones of player {@code p}.
-     *
-     * <p>
-     * For the head bone the hit radius matches the visual head-circle drawn
-     * by ESPModule: {@code max(3, min(12, boxHeight/12))}.
-     * For all other bones a configurable fraction of box-height is used.
-     */
-    private boolean isAimingAtBones(PlayerSnapshot p,
+    private int getAimedBone(PlayerSnapshot p,
             float cx, float cy,
             int[] bones, float radFrac) {
         if (p.boneX.length == 0)
-            return false;
+            return -1;
 
         float boxHeight = p.feetY - p.headY;
 
@@ -345,9 +338,9 @@ public class TriggerBotModule extends CheatModule {
             float dx = cx - bx;
             float dy = cy - by;
             if (dx * dx + dy * dy <= r * r)
-                return true;
+                return bone;
         }
-        return false;
+        return -1;
     }
 
     /**
@@ -370,7 +363,7 @@ public class TriggerBotModule extends CheatModule {
     /**
      * Returns true if the target player passes the VisCheck from the local camera.
      */
-    private boolean isVisible(PlayerSnapshot p, Vector3 localCamera) {
+    private boolean isBoneVisible(PlayerSnapshot p, int bone, Vector3 localCamera) {
         if (!useVisCheck.getValue())
             return true;
         VisCheck vc = VisCheckAdapter.getVisCheck();

@@ -146,6 +146,11 @@ public class PlayerCache {
         public final float[] boneY;
         public final boolean[] boneVisible;
 
+        // Bone coordinates in 3D world space
+        public final float[] boneWorldX;
+        public final float[] boneWorldY;
+        public final float[] boneWorldZ;
+
         private static final float[] EMPTY_FLOAT = new float[0];
         private static final boolean[] EMPTY_BOOL = new boolean[0];
 
@@ -157,7 +162,7 @@ public class PlayerCache {
         public PlayerSnapshot(PlayerData src, float feetX, float feetY,
                               float headX, float headY, boolean onScreen,
                               float velX, float velY, float velZ) {
-            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, null, null, null);
+            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, null, null, null, null, null, null);
         }
 
         /**
@@ -167,6 +172,17 @@ public class PlayerCache {
                               float headX, float headY, boolean onScreen,
                               float velX, float velY, float velZ,
                               float[] boneX, float[] boneY, boolean[] boneVisible) {
+            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, boneX, boneY, boneVisible, null, null, null);
+        }
+
+        /**
+         * Builds an immutable snapshot including bone coordinates and 3D world space bone coordinates.
+         */
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ,
+                              float[] boneX, float[] boneY, boolean[] boneVisible,
+                              float[] boneWorldX, float[] boneWorldY, float[] boneWorldZ) {
             this.index       = src.index;
             this.health      = src.health;
             this.team        = src.team;
@@ -189,6 +205,9 @@ public class PlayerCache {
             this.boneX       = boneX != null ? boneX : EMPTY_FLOAT;
             this.boneY       = boneY != null ? boneY : EMPTY_FLOAT;
             this.boneVisible = boneVisible != null ? boneVisible : EMPTY_BOOL;
+            this.boneWorldX  = boneWorldX != null ? boneWorldX : EMPTY_FLOAT;
+            this.boneWorldY  = boneWorldY != null ? boneWorldY : EMPTY_FLOAT;
+            this.boneWorldZ  = boneWorldZ != null ? boneWorldZ : EMPTY_FLOAT;
             // ── Player Flags ──────────────────────────────────────────────────
             this.flashMaxAlpha        = src.flashMaxAlpha;
             this.flashDuration        = src.flashDuration;

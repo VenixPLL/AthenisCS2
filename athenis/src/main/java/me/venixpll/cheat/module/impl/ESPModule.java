@@ -230,8 +230,9 @@ public class ESPModule extends CheatModule {
             float[] teamCol  = teamColor.getValue();
             int colorInt;
             if (visCheck != null && isVis) {
-                // Vibrant Yellow for visible players
-                colorInt = ImColor.rgba(1.0f, 0.92f, 0.016f, 1.0f);
+                colorInt = isEnemy
+                        ? ImColor.rgba(1.0f, 0.92f, 0.016f, 1.0f) // Vibrant Yellow for visible enemies
+                        : ImColor.rgba(0.2f, 0.75f, 1.0f, 1.0f);  // Bright Light Blue for visible teammates
             } else {
                 colorInt = isEnemy
                         ? ImColor.rgba(enemyCol[0], enemyCol[1], enemyCol[2], enemyCol[3])
@@ -289,6 +290,28 @@ public class ESPModule extends CheatModule {
 
             // ── Skeleton (BoneESP) ───────────────────────────────────────────
             if (skeletonEsp.getValue() && player.boneX.length > 0) {
+                // Precompute bone vischeck block status
+                boolean[] boneVisBlocked = new boolean[player.boneX.length];
+                if (visCheck != null) {
+                    long localPawn = PlayerCache.localPlayerPawnAddress;
+                    if (localPawn != 0) {
+                        Vector3 localOrigin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+                        if (localOrigin != null) {
+                            Vector3 localCamera = new Vector3(localOrigin.x, localOrigin.y, localOrigin.z + 64.0f);
+                            for (int i = 0; i < player.boneX.length; i++) {
+                                if (player.boneVisible[i] && i < player.boneWorldX.length) {
+                                    float bx = player.boneWorldX[i];
+                                    float by = player.boneWorldY[i];
+                                    float bz = player.boneWorldZ[i];
+                                    if (bx != 0f || by != 0f || bz != 0f) {
+                                        boneVisBlocked[i] = !visCheck.isPointVisible(localCamera, new Vector3(bx, by, bz));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for (int[] connection : BONE_CONNECTIONS) {
                     int bone1 = connection[0];
                     int bone2 = connection[1];
@@ -300,10 +323,21 @@ public class ESPModule extends CheatModule {
                             float x2 = player.boneX[bone2] + espOffsetX;
                             float y2 = player.boneY[bone2] + espOffsetY;
 
+                            // If blocked, draw connection in muted red (enemy) or muted blue (team)
+                            boolean isBlocked = boneVisBlocked[bone1] || boneVisBlocked[bone2];
+                            int lineCol;
+                            if (isBlocked) {
+                                lineCol = isEnemy
+                                        ? ImColor.rgba(1.0f, 0.2f, 0.2f, 0.65f) // Blocked enemy = muted red
+                                        : ImColor.rgba(0.15f, 0.40f, 0.75f, 0.60f); // Blocked teammate = muted blue
+                            } else {
+                                lineCol = colorInt;
+                            }
+
                             // Draw high-contrast outlines
                             drawList.addLine(x1 - 1, y1 - 1, x2 - 1, y2 - 1, ImColor.rgba(0, 0, 0, 120), 1.5f);
                             drawList.addLine(x1 + 1, y1 + 1, x2 + 1, y2 + 1, ImColor.rgba(0, 0, 0, 120), 1.5f);
-                            drawList.addLine(x1,     y1,     x2,     y2,     colorInt,                   1.5f);
+                            drawList.addLine(x1,     y1,     x2,     y2,     lineCol,                    1.5f);
                         }
                     }
                 }
@@ -314,10 +348,20 @@ public class ESPModule extends CheatModule {
                     float headCY = player.boneY[7] + espOffsetY;
                     float headRadius = Math.max(3.0f, Math.min(12.0f, height / 12.0f));
 
+                    boolean isHeadBlocked = boneVisBlocked[7];
+                    int headCol;
+                    if (isHeadBlocked) {
+                        headCol = isEnemy
+                                ? ImColor.rgba(1.0f, 0.2f, 0.2f, 0.80f) // Blocked enemy head = muted red
+                                : ImColor.rgba(0.15f, 0.40f, 0.75f, 0.75f); // Blocked teammate head = muted blue
+                    } else {
+                        headCol = colorInt;
+                    }
+
                     // High-contrast outlines for the head circle
                     drawList.addCircle(headCX, headCY, headRadius - 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
                     drawList.addCircle(headCX, headCY, headRadius + 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
-                    drawList.addCircle(headCX, headCY, headRadius,        colorInt,                   16, 1.5f);
+                    drawList.addCircle(headCX, headCY, headRadius,        headCol,                    16, 1.5f);
                 }
             }
 

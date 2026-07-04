@@ -176,6 +176,9 @@ public final class PositionReader {
                 float[] bonesX = null;
                 float[] bonesY = null;
                 boolean[] bonesVisible = null;
+                float[] bonesWorldX = null;
+                float[] bonesWorldY = null;
+                float[] bonesWorldZ = null;
 
                 long gameSceneNode = CS2Memory.readLong(player.pawnAddress + CS2Offsets.m_pGameSceneNode);
                 if (gameSceneNode != 0) {
@@ -184,10 +187,17 @@ public final class PositionReader {
                         bonesX = new float[28];
                         bonesY = new float[28];
                         bonesVisible = new boolean[28];
+                        bonesWorldX = new float[28];
+                        bonesWorldY = new float[28];
+                        bonesWorldZ = new float[28];
                         for (int i = 0; i < 28; i++) {
                             float bx = BONE_BUF.getFloat(i * 32);
                             float by = BONE_BUF.getFloat(i * 32 + 4);
                             float bz = BONE_BUF.getFloat(i * 32 + 8);
+
+                            bonesWorldX[i] = bx;
+                            bonesWorldY[i] = by;
+                            bonesWorldZ[i] = bz;
 
                             boolean projected = ScreenProjector.project(bx, by, bz, BONE_OUT, matrix, width, height);
                             if (projected) {
@@ -205,7 +215,8 @@ public final class PositionReader {
                         FEET_OUT[0], FEET_OUT[1],
                         HEAD_OUT[0], HEAD_OUT[1],
                         true, vx, vy, vz,
-                        bonesX, bonesY, bonesVisible));
+                        bonesX, bonesY, bonesVisible,
+                        bonesWorldX, bonesWorldY, bonesWorldZ));
             } else {
                 player.onScreen = false;
                 out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, vx, vy, vz));
