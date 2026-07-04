@@ -10,8 +10,7 @@ import imgui.type.ImBoolean;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
-import me.venixpll.cheat.vischeck.VisCheck;
-import me.venixpll.cheat.vischeck.VisCheckAdapter;
+
 import com.sun.jna.platform.win32.User32;
 
 import java.util.List;
@@ -28,9 +27,7 @@ public class OverlayMenu {
         /** Index into ModuleManager.getModules() of the currently selected module. */
         private static int selectedModuleIdx = 0;
 
-        // ── VisCheck debug state ───────────────────────────────────────────────────
-        private static final ImBoolean visDebugEnabled = new ImBoolean(VisCheck.DEBUG);
-        private static final int[] visDebugThrottle = { (int) VisCheck.DEBUG_THROTTLE_MS };
+
 
         // ── Window geometry ────────────────────────────────────────────────────────
         private static final float WINDOW_W = 700f;
@@ -403,56 +400,7 @@ public class OverlayMenu {
                         ImGui.spacing();
                 }
 
-                // ── VisCheck debug block (inline at bottom) ───────────────────────────
-                boolean isVisCheckRelevant = module.getClass().getSimpleName().contains("ESP");
-                if (isVisCheckRelevant) {
-                        ImGui.spacing();
-                        ImGui.setCursorPosX(settingX);
 
-                        // Thin separator
-                        ImVec2 sp = ImGui.getCursorScreenPos();
-                        ImGui.getWindowDrawList().addLine(
-                                        sp.x, sp.y, sp.x + settingW, sp.y,
-                                        ImColor.rgba(COL_SEPARATOR[0], COL_SEPARATOR[1], COL_SEPARATOR[2], 1f), 1f);
-                        ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
-
-                        ImGui.setCursorPosX(settingX);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
-                                        COL_TEXT_DIM[0], COL_TEXT_DIM[1], COL_TEXT_DIM[2], 1f);
-                        ImGui.text("VisCheck Debug");
-                        ImGui.popStyleColor();
-                        ImGui.spacing();
-
-                        ImGui.setCursorPosX(settingX);
-                        ImGui.setNextItemWidth(settingW);
-                        visDebugEnabled.set(VisCheck.DEBUG);
-                        if (ImGui.checkbox("Enable Ray Debug##viscDebug", visDebugEnabled)) {
-                                VisCheckAdapter.setDebug(visDebugEnabled.get());
-                        }
-
-                        if (VisCheck.DEBUG) {
-                                ImGui.setCursorPosX(settingX);
-                                ImGui.setNextItemWidth(settingW);
-                                visDebugThrottle[0] = (int) VisCheck.DEBUG_THROTTLE_MS;
-                                if (ImGui.sliderInt("Log Throttle (ms)##viscThrottle", visDebugThrottle, 0, 5000)) {
-                                        VisCheckAdapter.setDebugThrottleMs(visDebugThrottle[0]);
-                                }
-                                if (ImGui.isItemHovered()) {
-                                        ImGui.setTooltip("0 = print every ray cast.");
-                                }
-
-                                ImGui.setCursorPosX(settingX);
-                                String map = VisCheckAdapter.getLoadedMap();
-                                ImGui.textDisabled("Map: " + (map.isEmpty() ? "(none)" : map));
-
-                                ImGui.setCursorPosX(settingX);
-                                if (ImGui.button("Print Stats##viscStats"))
-                                        VisCheckAdapter.printStats();
-                                ImGui.sameLine();
-                                if (ImGui.button("Reset Stats##viscReset"))
-                                        VisCheck.resetStats();
-                        }
-                }
 
         // ── Bottom padding — keeps the last widget off the panel edge ─────────
                 ImGui.dummy(0f, 16f);
