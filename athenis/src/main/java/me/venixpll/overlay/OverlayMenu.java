@@ -212,35 +212,15 @@ public class OverlayMenu {
                 // ── TOP BAR ───────────────────────────────────────────────────────────
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.ChildBg,
                                 COL_TOPBAR[0], COL_TOPBAR[1], COL_TOPBAR[2], 1f);
-                ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 8f, 4f);
-                ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 10f, 7f);
                 ImGui.beginChild("##topbar", WINDOW_W - SIDEBAR_W, TOPBAR_H,
                                 false, NO_SCROLL_FLAGS);
-                ImGui.setCursorPos(12f, 10f);
-
-                // "Global" orange button
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
-                                COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered,
-                                Math.min(COL_ACCENT[0] * 1.15f, 1f),
-                                Math.min(COL_ACCENT[1] * 1.15f, 1f),
-                                Math.min(COL_ACCENT[2] * 1.15f, 1f), 1f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive,
-                                COL_ACCENT[0] * 0.85f, COL_ACCENT[1] * 0.85f, COL_ACCENT[2] * 0.85f, 1f);
-                ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
-                ImGui.button("Global");
-                ImGui.popStyleVar(); // FrameRounding
-                ImGui.popStyleColor(3);
-
                 // Active module name breadcrumb
-                ImGui.sameLine(0f, 10f);
-                ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
-                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.75f, 0.75f, 0.75f, 1f);
+                ImGui.setCursorPos(16f, 14f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.85f, 0.85f, 0.85f, 1f);
                 ImGui.text(selected.getName());
                 ImGui.popStyleColor();
                 ImGui.endChild(); // ##topbar
                 ImGui.popStyleColor(); // ChildBg topbar
-                ImGui.popStyleVar(2); // ItemSpacing, FramePadding
 
                 // Thin separator under the top bar
                 ImVec2 sepPos = ImGui.getCursorScreenPos();
