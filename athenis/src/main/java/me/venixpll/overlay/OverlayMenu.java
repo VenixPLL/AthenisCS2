@@ -7,6 +7,7 @@ import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
 import com.sun.jna.platform.win32.User32;
@@ -52,6 +53,9 @@ public class OverlayMenu {
 
         // C_TEXT_DIM  #6C7086
         private static final float[] COL_TEXT_DIM  = { 0.424f, 0.439f, 0.525f, 1.00f };
+
+        // Debug Glow Green
+        private static final float[] COL_DEBUG_GREEN = { 0.18f, 0.80f, 0.44f, 1.00f };
 
         // ── Reusable child-window flags (1.86.x compatible) ───────────────────────
         private static final int NO_SCROLL_FLAGS = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
@@ -148,45 +152,50 @@ public class OverlayMenu {
                                 COL_TAB_HOVER[0], COL_TAB_HOVER[1], COL_TAB_HOVER[2], 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.HeaderActive,
                                 COL_TAB_ACTIVE[0], COL_TAB_ACTIVE[1], COL_TAB_ACTIVE[2], 1f);
+
+                // 1. Render normal modules (EXTERNAL, INTERNAL)
                 for (int i = 0; i < modules.size(); i++) {
                         CheatModule mod = modules.get(i);
-                        boolean isActive = (selectedModuleIdx == i);
-                        boolean isEnabled = mod.isEnabled();
-
-                        // Draw active highlight + orange left accent bar behind selectable
-                        if (isActive) {
-                                ImVec2 cp = ImGui.getCursorScreenPos();
-                                ImGui.getWindowDrawList().addRectFilled(
-                                                cp.x, cp.y, cp.x + 4f, cp.y + 34f,
-                                                ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f), 2f);
-                                ImGui.getWindowDrawList().addRectFilled(
-                                                cp.x, cp.y, cp.x + SIDEBAR_W, cp.y + 34f,
-                                                ImColor.rgba(COL_TAB_ACTIVE[0], COL_TAB_ACTIVE[1], COL_TAB_ACTIVE[2],
-                                                                1f),
-                                                0f);
+                        if (mod.getCategory() == ModuleCategory.DEBUG) {
+                                continue;
                         }
+                        renderModuleListItem(modules, i);
+                }
 
-                        ImGui.setCursorPosX(0f);
-                        if (ImGui.selectable("##mod" + i, isActive, 0, SIDEBAR_W, 34f)) {
-                                selectedModuleIdx = i;
+                // Separator before Debug modules (only if debug modules exist)
+                boolean hasDebugModules = false;
+                for (CheatModule mod : modules) {
+                        if (mod.getCategory() == ModuleCategory.DEBUG) {
+                                hasDebugModules = true;
+                                break;
                         }
+                }
 
-                        // Overlay the module name text on top of the selectable
-                        ImVec2 itemMin = ImGui.getItemRectMin();
-                        float nameBrightness = isEnabled ? (isActive ? 1f : 0.80f) : 0.42f;
+                if (hasDebugModules) {
+                        ImGui.setCursorPosY(ImGui.getCursorPosY() + 8f);
+                        ImVec2 sideSepPos = ImGui.getCursorScreenPos();
+                        ImGui.getWindowDrawList().addLine(
+                                        sideSepPos.x + 8f, sideSepPos.y,
+                                        sideSepPos.x + SIDEBAR_W - 8f, sideSepPos.y,
+                                        ImColor.rgba(COL_SEPARATOR[0], COL_SEPARATOR[1], COL_SEPARATOR[2], 0.6f), 1f);
+                        ImGui.setCursorPosY(ImGui.getCursorPosY() + 8f);
 
-                        // Small enabled indicator dot
-                        int dotColor = isEnabled
-                                        ? ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f)
-                                        : ImColor.rgba(0.35f, 0.35f, 0.35f, 1f);
-                        ImGui.getWindowDrawList().addCircleFilled(
-                                        itemMin.x + 16f, itemMin.y + 17f, 3.5f, dotColor, 8);
+                        // Dimmed header "DEBUG"
+                        float debugTextW = ImGui.calcTextSize("DEBUG").x;
+                        ImGui.setCursorPosX((SIDEBAR_W - debugTextW) * 0.5f);
+                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, COL_TEXT_DIM[0], COL_TEXT_DIM[1], COL_TEXT_DIM[2], 0.6f);
+                        ImGui.text("DEBUG");
+                        ImGui.popStyleColor();
+                        ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
 
-                        // Module name
-                        ImGui.getWindowDrawList().addText(
-                                        itemMin.x + 28f, itemMin.y + 9f,
-                                        ImColor.rgba(nameBrightness, nameBrightness, nameBrightness, 1f),
-                                        mod.getName());
+                        // 2. Render debug modules
+                        for (int i = 0; i < modules.size(); i++) {
+                                CheatModule mod = modules.get(i);
+                                if (mod.getCategory() != ModuleCategory.DEBUG) {
+                                        continue;
+                                }
+                                renderModuleListItem(modules, i);
+                        }
                 }
 
                 ImGui.popStyleColor(3); // Header, HeaderHovered, HeaderActive
@@ -266,13 +275,66 @@ public class OverlayMenu {
                 ImGui.popStyleColor(); // WindowBg
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
-        /**
-         * Renders the enable checkbox and all settings for the given module,
-         * centred horizontally with generous vertical spacing.
-         */
+        private static void renderModuleListItem(List<CheatModule> modules, int i) {
+                CheatModule mod = modules.get(i);
+                boolean isActive = (selectedModuleIdx == i);
+                boolean isEnabled = mod.isEnabled();
+                boolean isDebug = (mod.getCategory() == ModuleCategory.DEBUG);
+
+                // Draw active highlight + left accent bar behind selectable
+                if (isActive) {
+                        ImVec2 cp = ImGui.getCursorScreenPos();
+                        float[] accentColor = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
+                        ImGui.getWindowDrawList().addRectFilled(
+                                        cp.x, cp.y, cp.x + 4f, cp.y + 34f,
+                                        ImColor.rgba(accentColor[0], accentColor[1], accentColor[2], 1f), 2f);
+                        ImGui.getWindowDrawList().addRectFilled(
+                                        cp.x, cp.y, cp.x + SIDEBAR_W, cp.y + 34f,
+                                        ImColor.rgba(COL_TAB_ACTIVE[0], COL_TAB_ACTIVE[1], COL_TAB_ACTIVE[2], 1f),
+                                        0f);
+                }
+
+                ImGui.setCursorPosX(0f);
+                if (ImGui.selectable("##mod" + i, isActive, 0, SIDEBAR_W, 34f)) {
+                        selectedModuleIdx = i;
+                }
+
+                // Overlay the module name text on top of the selectable
+                ImVec2 itemMin = ImGui.getItemRectMin();
+
+                // Dot & Glow
+                if (isDebug && isEnabled) {
+                        // Glowing Green Dot: multiple translucent circles for neon radial glow
+                        int glowColor1 = ImColor.rgba(COL_DEBUG_GREEN[0], COL_DEBUG_GREEN[1], COL_DEBUG_GREEN[2], 0.12f);
+                        int glowColor2 = ImColor.rgba(COL_DEBUG_GREEN[0], COL_DEBUG_GREEN[1], COL_DEBUG_GREEN[2], 0.30f);
+                        int centerColor = ImColor.rgba(COL_DEBUG_GREEN[0], COL_DEBUG_GREEN[1], COL_DEBUG_GREEN[2], 1.0f);
+
+                        ImGui.getWindowDrawList().addCircleFilled(itemMin.x + 16f, itemMin.y + 17f, 7.5f, glowColor1, 12);
+                        ImGui.getWindowDrawList().addCircleFilled(itemMin.x + 16f, itemMin.y + 17f, 5.5f, glowColor2, 12);
+                        ImGui.getWindowDrawList().addCircleFilled(itemMin.x + 16f, itemMin.y + 17f, 3.5f, centerColor, 8);
+                } else {
+                        // Normal dot
+                        int dotColor = isEnabled
+                                        ? ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f)
+                                        : ImColor.rgba(0.35f, 0.35f, 0.35f, 1f);
+                        ImGui.getWindowDrawList().addCircleFilled(itemMin.x + 16f, itemMin.y + 17f, 3.5f, dotColor, 8);
+                }
+
+                // Module name
+                float nameBrightness = isEnabled ? (isActive ? 1f : 0.80f) : 0.42f;
+                int textColor = (isDebug && isEnabled)
+                                ? ImColor.rgba(0.65f, 0.95f, 0.70f, 1f) // soft pastel green
+                                : ImColor.rgba(nameBrightness, nameBrightness, nameBrightness, 1f);
+
+                ImGui.getWindowDrawList().addText(
+                                itemMin.x + 28f, itemMin.y + 9f,
+                                textColor,
+                                mod.getName());
+        }
+
         private static void renderModuleSettings(CheatModule module) {
                 float availW = ImGui.getContentRegionAvailX();
+                boolean isDebug = (module.getCategory() == ModuleCategory.DEBUG);
 
                 // ── Vertical breathing room at the top ────────────────────────────────
                 ImGui.spacing();
@@ -286,14 +348,15 @@ public class OverlayMenu {
                 ImGui.popStyleColor();
                 ImGui.spacing();
 
-                // Thin orange underline below the title
+                // Thin underline below the title
                 ImVec2 ul = ImGui.getCursorScreenPos();
                 float lineHalf = Math.min(100f, availW * 0.35f);
                 float cx = ul.x + availW * 0.5f;
+                float[] underlineCol = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
                 ImGui.getWindowDrawList().addLine(
                                 cx - lineHalf, ul.y,
                                 cx + lineHalf, ul.y,
-                                ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 0.7f), 1.5f);
+                                ImColor.rgba(underlineCol[0], underlineCol[1], underlineCol[2], 0.7f), 1.5f);
                 ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
                 ImGui.spacing();
 
@@ -303,12 +366,14 @@ public class OverlayMenu {
                 if (checkX < 8f)
                         checkX = 8f;
                 ImGui.setCursorPosX(checkX);
+
+                float[] cbAccent = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,
-                                COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+                                cbAccent[0], cbAccent[1], cbAccent[2], 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
-                                COL_ACCENT[0] * 0.45f, COL_ACCENT[1] * 0.45f, COL_ACCENT[2] * 0.45f, 1f);
+                                cbAccent[0] * 0.45f, cbAccent[1] * 0.45f, cbAccent[2] * 0.45f, 1f);
                 if (ImGui.checkbox("Enable " + module.getName(), module.getEnabledWrapper())) {
                         // Checkbox was just toggled — fire a notification
                         NotificationManager.push(module.getName(), module.isEnabled());
@@ -353,19 +418,20 @@ public class OverlayMenu {
                         ImGui.setCursorPosX(settingX);
                         ImGui.setNextItemWidth(settingW);
 
-                        // Orange slider grabs
+                        // Slider grabs / checkboxes inside settings
+                        float[] sAccent = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,
-                                        COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+                                        sAccent[0], sAccent[1], sAccent[2], 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrab,
-                                        COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+                                        sAccent[0], sAccent[1], sAccent[2], 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrabActive,
-                                        Math.min(COL_ACCENT[0] * 1.15f, 1f),
-                                        Math.min(COL_ACCENT[1] * 1.15f, 1f),
-                                        Math.min(COL_ACCENT[2] * 1.15f, 1f), 1f);
+                                        Math.min(sAccent[0] * 1.15f, 1f),
+                                        Math.min(sAccent[1] * 1.15f, 1f),
+                                        Math.min(sAccent[2] * 1.15f, 1f), 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
                         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
-                                        COL_ACCENT[0] * 0.4f, COL_ACCENT[1] * 0.4f, COL_ACCENT[2] * 0.4f, 1f);
+                                        sAccent[0] * 0.4f, sAccent[1] * 0.4f, sAccent[2] * 0.4f, 1f);
                         setting.renderImGui();
                         ImGui.popStyleColor(6);
                         if (disabled)
@@ -425,10 +491,12 @@ public class OverlayMenu {
                 // ── "Set Bind" button ─────────────────────────────────────────────────
                 boolean listening = module.isListeningForBind();
 
-                // Red while listening, accent cyan otherwise
+                // Red while listening, green for debug modules, accent cyan otherwise
+                boolean isDebug = (module.getCategory() == ModuleCategory.DEBUG);
+                float[] baseColor = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
                 float[] btnR = listening
                         ? new float[]{ 0.80f, 0.16f, 0.16f }
-                        : new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] };
+                        : baseColor;
                 ImGui.setCursorPosX(startX);
                 ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
                         btnR[0], btnR[1], btnR[2], 1f);
