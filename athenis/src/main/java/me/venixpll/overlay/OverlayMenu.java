@@ -6,7 +6,6 @@ import imgui.ImVec2;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImBoolean;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
