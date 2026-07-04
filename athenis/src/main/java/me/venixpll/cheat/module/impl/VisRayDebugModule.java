@@ -63,7 +63,7 @@ public class VisRayDebugModule extends CheatModule {
     public final ModeSetting saveKey = new ModeSetting(
             "Save Bind##visray", 10, KEY_NAMES); // Default index 10: "S"
     public final ModeSetting restoreKey = new ModeSetting(
-            "Restore Bind##visray", 9, KEY_NAMES); // Default index 9: "R"
+            "Restore Bind##visray", 2, KEY_NAMES); // Default index 9: "R"
 
     // ── Reusable projection scratch buffers ───────────────────────────────────
     private final float[] scrA      = new float[2];
