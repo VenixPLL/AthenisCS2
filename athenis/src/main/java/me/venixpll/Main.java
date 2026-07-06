@@ -3,6 +3,8 @@ package me.venixpll;
 import me.venixpll.launcher.LauncherWindow;
 
 import javax.swing.*;
+import java.io.InputStream;
+import java.util.Properties;
 
 /**
  * Application entry point.
@@ -14,9 +16,22 @@ import javax.swing.*;
 public class Main {
 
     /**
-     * The current version of the program.
+     * The current version of the program, dynamically loaded from project properties.
      */
-    public static final String VERSION = "1.2.0";
+    public static final String VERSION = loadVersion();
+
+    private static String loadVersion() {
+        try (InputStream is = Main.class.getResourceAsStream("/version.properties")) {
+            if (is != null) {
+                Properties prop = new Properties();
+                prop.load(is);
+                return prop.getProperty("version", "unknown");
+            }
+        } catch (Exception e) {
+            // Fallback if resource could not be loaded
+        }
+        return "unknown";
+    }
 
     /**
      * Program entry point.
