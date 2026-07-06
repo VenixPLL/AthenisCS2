@@ -28,7 +28,7 @@ public class Main {
                 return prop.getProperty("version", "unknown");
             }
         } catch (Exception e) {
-            // Fallback if resource could not be loaded
+            System.exit(-1);
         }
         return "unknown";
     }
