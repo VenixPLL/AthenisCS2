@@ -1,6 +1,6 @@
 # Athenis CS2
 
-🤖 **External Counter-Strike 2 Overlay** written in Java. Renders with Dear ImGui (GLFW/OpenGL3) & reads memory using JNA.
+**External Counter-Strike 2 Overlay** written in Java. Renders with Dear ImGui (GLFW/OpenGL3) & reads memory using JNA.
 
 [![Java Version](https://img.shields.io/badge/Java-21%2B-orange.svg)](https://adoptium.net/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg)]()
@@ -15,21 +15,21 @@
 
 ---
 
-## 🚀 Recent Updates
+## Recent Updates
 
 <details open>
 <summary><b>Click to toggle recent changelog details (last ~20 commits)</b></summary>
 
 Here are the key changes introduced in the latest version:
 
-- 🎨 **External Skin Changer**: Added a dedicated, tabbed Skin Changer interface to easily assign and apply custom skins to weapons for both Terrorists and Counter-Terrorists.
-- 💥 **Dynamic Damage ESP**: Implemented damage text indicators (floating numbers) that dynamically track target player models in screen-space as they float upward, alongside a centered HUD damage card.
-- 🎯 **VisCheck Map Editor & Debugger**: Built the interactive `VisRay Debug` module to visualize ray-casts, hit coordinates, and intersecting map triangles. Includes the ability to delete/restore triangles in real-time.
-- 🧩 **Runtime Geometry Patch Merging**: The physics engine now automatically merges "hard" patches (bundled inside the `.jar` resource path under `/physics/patches/` and `/patches/`) with dynamic user-configured local patches (saved in `%APPDATA%\Athenis\patches\`).
-- 🗺️ **New Map Collision Meshes**: Added optimized map geometry `.opt` files for `de_anubis` and `de_vertigo`.
-- 📡 **Grenade ESP**: Added scanning for active throwables (HE, Smoke, Flash, Molotov, Decoy) displaying circle timer widgets with colored trajectory-tracking arcs.
-- 👁️ **Spectator List & Crosshair Modules**: Integrated a real-time spectator tracker panel and a customizable crosshair overlay (modes: Sniper Only or Always).
-- 🧹 **Refactoring & UI Enhancements**:
+- **External Skin Changer**: Added a dedicated, tabbed Skin Changer interface to easily assign and apply custom skins to weapons for both Terrorists and Counter-Terrorists.
+- **Dynamic Damage ESP**: Implemented damage text indicators (floating numbers) that dynamically track target player models in screen-space as they float upward, alongside a centered HUD damage card.
+- **VisCheck Map Editor & Debugger**: Built the interactive `VisRay Debug` module to visualize ray-casts, hit coordinates, and intersecting map triangles. Includes the ability to delete/restore triangles in real-time.
+- **Runtime Geometry Patch Merging**: The physics engine now automatically merges "hard" patches (bundled inside the `.jar` resource path under `/physics/patches/` and `/patches/`) with dynamic user-configured local patches (saved in `%APPDATA%\Athenis\patches\`).
+- **New Map Collision Meshes**: Added optimized map geometry `.opt` files for `de_anubis` and `de_vertigo`.
+- **Grenade ESP**: Added scanning for active throwables (HE, Smoke, Flash, Molotov, Decoy) displaying circle timer widgets with colored trajectory-tracking arcs.
+- **Spectator List & Crosshair Modules**: Integrated a real-time spectator tracker panel and a customizable crosshair overlay (modes: Sniper Only or Always).
+- **Refactoring & UI Enhancements**:
   - Organized UI layout by creating a dedicated **Debug** section in the menu.
   - Removed outdated Silent Aimbot, old debug tools, and FPS counter.
   - Cleaned up build configs (removed ProGuard, optimized Maven dependency configuration).
@@ -43,17 +43,17 @@ Here are the key changes introduced in the latest version:
 
 | Category | Module | Description |
 |---|---|---|
-| 👁️ **Visuals** | **ESP Overlay** | 2D bounding boxes with health bars, player names. Features enemy-only filter, configurable colors, and forward position extrapolation to compensate for tick lag. Integrates **VisCheck** to filter visible/hidden targets. |
+| **Visuals** | **ESP Overlay** | 2D bounding boxes with health bars, player names. Features enemy-only filter, configurable colors, and forward position extrapolation to compensate for tick lag. Integrates **VisCheck** to filter visible/hidden targets. |
 | | **Damage ESP** | Displays cumulative damage cards below the crosshair and spawns 3D floating damage numbers that dynamically follow target player models. |
 | | **Grenade ESP** | Scans for active throwables (HE, Smoke, Flash, Molotov, Decoy) and renders circular countdown timers with fading color-shifting progress arcs. |
 | | **Radar Hack** | Minimap overlay radar with per-map automatic alignment offsets, customizable rotation, zoom, and C4 carrier highlighting. |
 | | **Bomb Timer** | Screen overlay timer for planted C4 with a pulsing alert bar and warning banner when off-screen. |
 | | **Crosshair** | Configurable center-screen crosshair overlay supporting multiple styles (Cross, Dot, Circle + Cross, T-Shape) and activation modes (Sniper Only, Always). |
-| 🎯 **Combat** | **Aimbot** | Screen-space aim assist using bone projections. Includes dynamic FOV, smoothing, custom target bones (Head, Neck, Chest, Stomach, Closest), randomized humanized mouse drift, and VisCheck filtering. |
+| **Combat** | **Aimbot** | Screen-space aim assist using bone projections. Includes dynamic FOV, smoothing, custom target bones (Head, Neck, Chest, Stomach, Closest), randomized humanized mouse drift, and VisCheck filtering. |
 | | **TriggerBot** | Automatically fires when the crosshair crosses an enemy hitbox. Features customizable reaction delay, click duration, shot cooldown, and Stop-When-Moving safety check. |
-| 🛡️ **Misc / Utility** | **BunnyHop** | Automated bunnyhop script that sends precise jump signals when Spacebar is held down. |
+| **Misc / Utility** | **BunnyHop** | Automated bunnyhop script that sends precise jump signals when Spacebar is held down. |
 | | **Skin Changer** | Built-in external skin changer tool with an interactive tabbed menu to easily select and apply custom finishes to weapons for both CT and T teams. |
-| 🛠️ **Developer / Debug** | **VisCheck Map Physics** | Real-time line-of-sight check engine using custom map geometry `.opt` files compiled from Valve `.vphys` data. Highlights visible enemies in yellow. |
+| **Developer / Debug** | **VisCheck Map Physics** | Real-time line-of-sight check engine using custom map geometry `.opt` files compiled from Valve `.vphys` data. Highlights visible enemies in yellow. |
 | | **VisRay Debug** | Visual debugger displaying active raycasts, hit points, and target triangles. Includes a real-time mesh editor to delete/restore geometry triangles on-the-fly and save local/runtime merge patches. |
 | | **Spectator List** | A dedicated UI panel tracking and listing players who are currently spectating the local player's point of view. |
 
@@ -122,10 +122,10 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 ### ESP Overlay
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Show Box Outline | ✅ | Draw 2D bounding box |
-| Show Health Indicators | ✅ | Left-side health bar (green → red) |
-| Show Player Names | ✅ | Name + HP above box |
-| Enemy-Only Team Filter | ✅ | Skip teammates |
+| Show Box Outline | Yes | Draw 2D bounding box |
+| Show Health Indicators | Yes | Left-side health bar (green → red) |
+| Show Player Names | Yes | Name + HP above box |
+| Enemy-Only Team Filter | Yes | Skip teammates |
 | Extrapolation (ms) | `20` | Forward prediction to counter tick lag. Increase if boxes lag; decrease if they lead. |
 | Enemy Color | Red | RGB color for enemy boxes |
 | Team Color | Blue | RGB color for teammate boxes |
@@ -133,9 +133,9 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 ### Damage ESP
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Show Damage Card | ✅ | Centered HUD card displaying total damage, remaining HP, and shot count |
-| Show Floating Numbers | ✅ | Spawns damage indicators on the target model that float up and fade out |
-| Show Teammates Damage | ❌ | Process and display damage dealt to teammate players |
+| Show Damage Card | Yes | Centered HUD card displaying total damage, remaining HP, and shot count |
+| Show Floating Numbers | Yes | Spawns damage indicators on the target model that float up and fade out |
+| Show Teammates Damage | No | Process and display damage dealt to teammate players |
 | Damage Color | Orange | RGB color of the damage text values |
 | Shots Color | Light Blue | RGB color of the shot counter label |
 | Text Scale | `2.0` | Global size multiplier for overlay text elements |
@@ -144,7 +144,7 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 ### Grenade ESP
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Show HE Grenade / Flashbang / Smoke / Molotov / Decoy | ✅ | Enable/disable tracking for specific grenade types |
+| Show HE Grenade / Flashbang / Smoke / Molotov / Decoy | Yes | Enable/disable tracking for specific grenade types |
 | Max Distance (units) | `3000.0` | Maximum tracking distance in world units (1 unit ≈ 1 inch) |
 | Min Scale | `0.25` | Minimum scale factor applied to the widget at max distance to keep it unobtrusive |
 
@@ -152,14 +152,14 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Target Zone | `Head` | Body region that triggers a shot (Head, Body, Legs, All) |
-| One-Shot Mode | ❌ | Ignore target after shot until crosshair leaves and re-enters |
+| One-Shot Mode | No | Ignore target after shot until crosshair leaves and re-enters |
 | Reaction Delay (ms) | `10.0` | Pause between target detection and simulated mouse click |
 | Click Duration (ms) | `40.0` | Mouse button down duration |
 | Cooldown (ms) | `100.0` | Cooldown period before allowing the next shot |
 | Bone Radius (% box) | `0.06` | Hitbox radius as a fraction of the player's screen box height |
-| Enemy Only | ✅ | Ignore teammates |
-| VisCheck Filter | ✅ | Require geometric line-of-sight visibility before firing |
-| Stop When Moving | ❌ | Disable firing if local player velocity exceeds threshold |
+| Enemy Only | Yes | Ignore teammates |
+| VisCheck Filter | Yes | Require geometric line-of-sight visibility before firing |
+| Stop When Moving | No | Disable firing if local player velocity exceeds threshold |
 | Max Move Speed (u/s) | `50.0` | Velocity threshold for the movement check |
 
 ### Aimbot
@@ -172,11 +172,11 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 | FOV Min | `0.3` | Minimum field of view threshold to prevent jitter near center |
 | Smooth | `6.0` | Smoothing factor (1.0 = instant snap, higher = slower movement) |
 | Sensitivity | `1.0` | Game mouse sensitivity modifier |
-| Humanize | ❌ | Introduce randomized human-like mouse offset noise |
+| Humanize | No | Introduce randomized human-like mouse offset noise |
 | Humanize Strength | `20.0` | Scaling factor for humanized mouse drift |
-| Enemy Only | ✅ | Filter targeting to opponents only |
-| VisCheck | ✅ | Ensure line-of-sight visibility before locking onto a bone |
-| Spotted Fallback | ✅ | Fall back to client `m_bSpotted` flag if map geometry is missing |
+| Enemy Only | Yes | Filter targeting to opponents only |
+| VisCheck | Yes | Ensure line-of-sight visibility before locking onto a bone |
+| Spotted Fallback | Yes | Fall back to client `m_bSpotted` flag if map geometry is missing |
 
 ### Crosshair Overlay
 | Setting | Default | Description |
@@ -187,8 +187,8 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 | Gap | `4.0` | Distance between center and start of each arm in pixels |
 | Thickness | `1.5` | Thickness of the crosshair lines in pixels |
 | Color | Green | Primary color of the crosshair |
-| Outline | ✅ | Renders a 1px black outline shadow behind lines for visibility |
-| Center Dot | ✅ | Displays a filled dot at the exact center (for Cross and T-Shape) |
+| Outline | Yes | Renders a 1px black outline shadow behind lines for visibility |
+| Center Dot | Yes | Displays a filled dot at the exact center (for Cross and T-Shape) |
 | Dot Size | `2.0` | Radius of the center dot in pixels |
 | Opacity | `1.0` | Overall alpha opacity multiplier |
 
@@ -203,11 +203,11 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 |---------|---------|-------------|
 | Ray Mode | `Enemy` | Targets for debugging ray-casts (Enemy, Crosshair) |
 | Crosshair Range | `4096.0` | Maximum raycast range when debugging via crosshair direction |
-| Show Ray Line | ✅ | Render lines tracing the casted ray |
-| Show Hit Triangle | ✅ | Render the exact hit triangle mesh in red/blue |
-| Show Hit Point | ✅ | Render a small sphere at the collision intersection |
-| Show All Deleted | ✅ | Renders all currently deleted triangles in gray |
-| Nearest Enemy Only | ✅ | Restrict enemy-raycast debugging to the closest player |
+| Show Ray Line | Yes | Render lines tracing the casted ray |
+| Show Hit Triangle | Yes | Render the exact hit triangle mesh in red/blue |
+| Show Hit Point | Yes | Render a small sphere at the collision intersection |
+| Show All Deleted | Yes | Renders all currently deleted triangles in gray |
+| Nearest Enemy Only | Yes | Restrict enemy-raycast debugging to the closest player |
 | Delete Bind / Restore Bind / Save Bind | `F` / `H` / `S` | Keybind configurations to delete the hit triangle, restore it, or save changes |
 
 ---
