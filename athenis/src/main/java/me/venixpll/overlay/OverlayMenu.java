@@ -10,6 +10,7 @@ import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.Setting;
+import me.venixpll.cheat.module.impl.ESPModule;
 import com.sun.jna.platform.win32.User32;
 import java.util.List;
 
@@ -382,45 +383,122 @@ public class OverlayMenu {
                 ImGui.spacing();
                 ImGui.spacing();
 
-                // Settings width = 60% of panel, centred
-                float settingW = availW * 0.60f;
+                // Settings width = 48% of panel, shifted left to allow room for labels on the right
+                float settingW = availW * 0.48f;
                 if (settingW < 160f)
                         settingW = 160f;
-                float settingX = (availW - settingW) * 0.5f;
+                float settingX = availW * 0.16f;
                 if (settingX < 8f)
                         settingX = 8f;
-                for (Setting<?> setting : module.getSettings()) {
-                        boolean disabled = shouldDisable(module, setting);
-                        if (disabled)
-                                ImGui.beginDisabled(true);
 
-                        // Centre each setting widget
-                        ImGui.setCursorPosX(settingX);
-                        ImGui.setNextItemWidth(settingW);
-
-                        // Slider grabs / checkboxes inside settings
-                        float[] sAccent = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,
-                                        sAccent[0], sAccent[1], sAccent[2], 1f);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrab,
-                                        sAccent[0], sAccent[1], sAccent[2], 1f);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrabActive,
-                                        Math.min(sAccent[0] * 1.15f, 1f),
-                                        Math.min(sAccent[1] * 1.15f, 1f),
-                                        Math.min(sAccent[2] * 1.15f, 1f), 1f);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
-                        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
-                                        sAccent[0] * 0.4f, sAccent[1] * 0.4f, sAccent[2] * 0.4f, 1f);
-                        setting.renderImGui();
-                        ImGui.popStyleColor(6);
-                        if (disabled)
-                                ImGui.endDisabled();
-                        ImGui.spacing();
+                if (module instanceof ESPModule) {
+                        renderESPModuleSettings((ESPModule) module, settingX, settingW, isDebug);
+                } else {
+                        for (Setting<?> setting : module.getSettings()) {
+                                renderSingleSetting(module, setting, settingX, settingW, isDebug);
+                        }
                 }
 
-        // ── Bottom padding — keeps the last widget off the panel edge ─────────
+                // ── Bottom padding — keeps the last widget off the panel edge ─────────
                 ImGui.dummy(0f, 16f);
+        }
+
+        private static void renderSingleSetting(CheatModule module, Setting<?> setting, float settingX, float settingW, boolean isDebug) {
+                boolean disabled = shouldDisable(module, setting);
+                if (disabled)
+                        ImGui.beginDisabled(true);
+
+                // Centre each setting widget
+                ImGui.setCursorPosX(settingX);
+                ImGui.setNextItemWidth(settingW);
+
+                // Slider grabs / checkboxes inside settings
+                float[] sAccent = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,
+                                sAccent[0], sAccent[1], sAccent[2], 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrab,
+                                sAccent[0], sAccent[1], sAccent[2], 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrabActive,
+                                Math.min(sAccent[0] * 1.15f, 1f),
+                                Math.min(sAccent[1] * 1.15f, 1f),
+                                Math.min(sAccent[2] * 1.15f, 1f), 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
+                                sAccent[0] * 0.4f, sAccent[1] * 0.4f, sAccent[2] * 0.4f, 1f);
+                setting.renderImGui();
+                ImGui.popStyleColor(6);
+                if (disabled)
+                        ImGui.endDisabled();
+                ImGui.spacing();
+        }
+
+        private static void renderESPModuleSettings(ESPModule esp, float settingX, float settingW, boolean isDebug) {
+                ImGui.setCursorPosX(settingX);
+                if (ImGui.beginTabBar("##ESPModeTabs")) {
+                        if (ImGui.beginTabItem("Player ESP")) {
+                                ImGui.spacing();
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.playerEsp, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.boxEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.skeletonEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.healthEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.nameEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.teamCheck, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.extrapolationBias, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.enemyColor, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.teamColor, settingX, settingW, isDebug);
+
+                                ImGui.spacing();
+                                float[] hAccent = isDebug ? COL_DEBUG_GREEN : COL_ACCENT;
+                                ImGui.setCursorPosX(settingX);
+                                ImGui.textColored(hAccent[0], hAccent[1], hAccent[2], 0.85f, "Player Flags:");
+                                ImGui.spacing();
+                                
+                                renderSingleSetting(esp, esp.flagsEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.flagBlind, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.flagScoped, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.flagDefusing, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.flagKit, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.flagMoney, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                ImGui.endTabItem();
+                        }
+
+                        if (ImGui.beginTabItem("Grenade ESP")) {
+                                ImGui.spacing();
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.grenadeEsp, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.showHE, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showFlash, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showSmoke, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showMolotov, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showDecoy, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.maxDistance, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.minScale, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                ImGui.endTabItem();
+                        }
+
+                        if (ImGui.beginTabItem("Damage ESP")) {
+                                ImGui.spacing();
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.damageEsp, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                renderSingleSetting(esp, esp.showDamage, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showFloating, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.showTeammates, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.damageColor, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.shotsColor, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.textScale, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.crosshairRadius, settingX, settingW, isDebug);
+                                ImGui.spacing();
+                                ImGui.endTabItem();
+                        }
+                        ImGui.endTabBar();
+                }
         }
 
         // ─────────────────────────────────────────────────────────────────────────
@@ -603,6 +681,34 @@ public class OverlayMenu {
          * auto-map mode is overriding manual positioning.
          */
         private static boolean shouldDisable(CheatModule module, Setting<?> setting) {
+                if (module instanceof me.venixpll.cheat.module.impl.ESPModule) {
+                        me.venixpll.cheat.module.impl.ESPModule esp = (me.venixpll.cheat.module.impl.ESPModule) module;
+                        String name = setting.getName();
+
+                        if (name.equals("Show Player ESP") || name.equals("Show Grenade ESP") || name.equals("Show Damage ESP")) {
+                                return false;
+                        }
+
+                        if (name.equals("Render Box") || name.equals("Render Skeleton") || name.equals("Show Health Indicators") ||
+                            name.equals("Show Player Names") || name.equals("Enemy-Only Team Filter") || name.equals("Show Player Flags") ||
+                            name.startsWith("Flag:") || name.equals("Extrapolation (ms)") || name.equals("Enemy Color") ||
+                            name.equals("Team Color")) {
+                                return !esp.playerEsp.getValue();
+                        }
+
+                        if (name.equals("Show HE Grenade") || name.equals("Show Flashbang") || name.equals("Show Smoke") ||
+                            name.equals("Show Molotov") || name.equals("Show Decoy") || name.equals("Max Distance (units)") ||
+                            name.equals("Min Scale")) {
+                                return !esp.grenadeEsp.getValue();
+                        }
+
+                        if (name.equals("Show Damage Card") || name.equals("Show Floating Numbers") || name.equals("Show Teammates Damage") ||
+                            name.startsWith("Damage Color") || name.startsWith("Shots Color") || name.startsWith("Text Scale") ||
+                            name.startsWith("Crosshair Radius")) {
+                                return !esp.damageEsp.getValue();
+                        }
+                }
+
                 if (!(module instanceof me.venixpll.cheat.module.impl.RadarHackModule))
                         return false;
                 me.venixpll.cheat.module.impl.RadarHackModule r = (me.venixpll.cheat.module.impl.RadarHackModule) module;
