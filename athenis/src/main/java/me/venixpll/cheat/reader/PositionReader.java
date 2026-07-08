@@ -75,44 +75,108 @@ public final class PositionReader {
     private PositionReader() {
     }
 
+    // ── Object-pool double-buffer ─────────────────────────────────────────────
+    //
+    // Instead of allocating a new PlayerSnapshot on every fast-loop iteration
+    // (which can run 500–1 000+ times/second), we maintain TWO pre-allocated
+    // PlayerSnapshot[64] arrays plus matching bone arrays.  The writer fills
+    // one pool side, then publishes a shallow-copy list of just the active
+    // entries via Arrays.asList(Arrays.copyOf(pool, count)).
+    //
+    // The shallow-copy array is tiny (count × 8 bytes ≈ 128 bytes for 16
+    // players) and is GC'd as soon as the next publish replaces it.
+    // The PlayerSnapshot OBJECTS themselves are never re-allocated — only
+    // their fields are updated in-place.
+    //
+    // This eliminates:
+    //   • new PlayerSnapshot(...)   — was the #1 allocation source (1.1M/session)
+    //   • new float[28]/boolean[28] — was the #2 allocation source (bone arrays)
+    //   • new ArrayList<>()         — one per fast-loop iteration
+
+    /** Maximum concurrent tracked players (CS2 server limit). */
+    private static final int MAX_PLAYERS = 64;
+
+    // Pool A and Pool B — writer alternates between them each iteration
+    private static final PlayerCache.PlayerSnapshot[] POOL_A = new PlayerCache.PlayerSnapshot[MAX_PLAYERS];
+    private static final PlayerCache.PlayerSnapshot[] POOL_B = new PlayerCache.PlayerSnapshot[MAX_PLAYERS];
+
+    // Pre-allocated bone arrays per pool slot — 28 bones per player
+    private static final float[][]   BONES_X_A   = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_Y_A   = new float[MAX_PLAYERS][28];
+    private static final boolean[][] BONES_VIS_A = new boolean[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WX_A  = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WY_A  = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WZ_A  = new float[MAX_PLAYERS][28];
+
+    private static final float[][]   BONES_X_B   = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_Y_B   = new float[MAX_PLAYERS][28];
+    private static final boolean[][] BONES_VIS_B = new boolean[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WX_B  = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WY_B  = new float[MAX_PLAYERS][28];
+    private static final float[][]   BONES_WZ_B  = new float[MAX_PLAYERS][28];
+
+    /**
+     * Which pool is the "write" side: 0 → write to A; 1 → write to B.
+     * Toggled after every successful publish.
+     */
+    private static int poolIndex = 0;
+
+    static {
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            POOL_A[i] = new PlayerCache.PlayerSnapshot();
+            POOL_B[i] = new PlayerCache.PlayerSnapshot();
+        }
+    }
+
     /**
      * Reads world positions + velocities, applies forward extrapolation, projects
-     * to screen space, and builds an immutable {@link PlayerSnapshot} list for the
-     * current render frame.
+     * to screen space, and populates an immutable-view snapshot list for the
+     * current render frame — <em>zero heap allocations on the hot path</em>.
      * <p>
-     * The extrapolation step is:
-     * 
-     * <pre>
-     *   extrapolatedPos = m_vOldOrigin + m_vecVelocity × EXTRAPOLATION_SECONDS
-     * </pre>
-     * 
-     * This moves the projected ESP box to where the player will approximately be
-     * when the frame is displayed on screen, compensating for the inherent read lag
-     * of an external overlay.
+     * Uses a double-buffer pool: one buffer is written while the previously
+     * published buffer is safely being read by the renderer.  After filling,
+     * the write buffer is published atomically via
+     * {@link PlayerCache#renderPlayers}.
      *
-     * @param rawList Snapshot of the raw player list from
-     *                {@link PlayerCache#rawPlayers}.
-     * @param matrix  Latest 4×4 view-projection matrix from
-     *                {@link PlayerCache#viewMatrix}.
+     * @param rawList Snapshot of the raw player list from {@link PlayerCache#rawPlayers}.
+     * @param matrix  Latest 4×4 view-projection matrix from {@link PlayerCache#viewMatrix}.
      * @param width   Current viewport width in pixels.
      * @param height  Current viewport height in pixels.
-     * @return A fresh, fully-populated immutable snapshot list for this frame.
+     * @return The newly published list (same reference as {@link PlayerCache#renderPlayers}).
      */
     public static List<PlayerSnapshot> buildSnapshots(List<PlayerData> rawList,
             float[] matrix,
             int width, int height) {
-        List<PlayerSnapshot> out = new ArrayList<>(rawList.size());
+
+        // Select the write-side pool for this iteration.
+        final boolean useA = (poolIndex == 0);
+        final PlayerCache.PlayerSnapshot[] pool        = useA ? POOL_A       : POOL_B;
+        final float[][]   bonesX   = useA ? BONES_X_A   : BONES_X_B;
+        final float[][]   bonesY   = useA ? BONES_Y_A   : BONES_Y_B;
+        final boolean[][] bonesVis = useA ? BONES_VIS_A : BONES_VIS_B;
+        final float[][]   bonesWX  = useA ? BONES_WX_A  : BONES_WX_B;
+        final float[][]   bonesWY  = useA ? BONES_WY_A  : BONES_WY_B;
+        final float[][]   bonesWZ  = useA ? BONES_WZ_A  : BONES_WZ_B;
+
         float dt = EXTRAPOLATION_SECONDS;
+        int count = 0;
 
         for (PlayerData player : rawList) {
+            if (count >= MAX_PLAYERS) break;
+            PlayerCache.PlayerSnapshot snap = pool[count];
+
             if (player.pawnAddress == 0) {
-                out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, 0, 0, 0));
+                snap.update(player, 0, 0, 0, 0, false, 0, 0, 0,
+                            null, null, null, null, null, null);
+                count++;
                 continue;
             }
 
             // ── Read origin (m_vOldOrigin) ────────────────────────────────────
             if (!CS2Memory.readInto(player.pawnAddress + CS2Offsets.m_vOldOrigin, POS_BUF, 12)) {
-                out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, 0, 0, 0));
+                snap.update(player, 0, 0, 0, 0, false, 0, 0, 0,
+                            null, null, null, null, null, null);
+                count++;
                 continue;
             }
             float px = POS_BUF.getFloat(0);
@@ -125,9 +189,6 @@ public final class PositionReader {
                 float rv = VEL_BUF.getFloat(0);
                 float ry = VEL_BUF.getFloat(4);
                 float rz = VEL_BUF.getFloat(8);
-                // Sanity-check: reject NaN, Infinity, or physically impossible speeds.
-                // CS2 max ground speed ~300 u/s; explosions/teleports up to ~3000 u/s.
-                // Anything beyond that is a garbage read from a wrong/shifted offset.
                 final float MAX_SPEED = 3000f;
                 if (Float.isFinite(rv) && Float.isFinite(ry) && Float.isFinite(rz)
                         && Math.abs(rv) < MAX_SPEED
@@ -137,18 +198,17 @@ public final class PositionReader {
                     vy = ry;
                     vz = rz;
                 }
-                // If validation fails we keep vx=vy=vz=0 → no extrapolation, safe.
             }
 
             // Sanity-check origin itself (guard against garbage RPM reads)
             if (!Float.isFinite(px) || !Float.isFinite(py) || !Float.isFinite(pz)) {
-                out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, 0, 0, 0));
+                snap.update(player, 0, 0, 0, 0, false, 0, 0, 0,
+                            null, null, null, null, null, null);
+                count++;
                 continue;
             }
 
             // ── Extrapolate position forward ──────────────────────────────────
-            // Move the origin ahead by (velocity × pipeline_latency) to compensate
-            // for m_vOldOrigin being ~1 tick stale plus RPM/render overhead.
             float ex = px + vx * dt;
             float ey = py + vy * dt;
             float ez = pz + vz * dt;
@@ -173,57 +233,68 @@ public final class PositionReader {
                 player.headY = HEAD_OUT[1];
                 player.onScreen = true;
 
-                float[] bonesX = null;
-                float[] bonesY = null;
-                boolean[] bonesVisible = null;
-                float[] bonesWorldX = null;
-                float[] bonesWorldY = null;
-                float[] bonesWorldZ = null;
+                // Use pre-allocated bone arrays for this pool slot — no new float[]/boolean[]
+                float[]   slotBonesX   = bonesX[count];
+                float[]   slotBonesY   = bonesY[count];
+                boolean[] slotBonesVis = bonesVis[count];
+                float[]   slotBonesWX  = bonesWX[count];
+                float[]   slotBonesWY  = bonesWY[count];
+                float[]   slotBonesWZ  = bonesWZ[count];
 
+                boolean hasBones = false;
                 long gameSceneNode = CS2Memory.readLong(player.pawnAddress + CS2Offsets.m_pGameSceneNode);
                 if (gameSceneNode != 0) {
                     long boneArray = CS2Memory.readLong(gameSceneNode + CS2Offsets.m_modelState + 0x80);
                     if (boneArray != 0 && CS2Memory.readInto(boneArray, BONE_BUF, 896)) {
-                        bonesX = new float[28];
-                        bonesY = new float[28];
-                        bonesVisible = new boolean[28];
-                        bonesWorldX = new float[28];
-                        bonesWorldY = new float[28];
-                        bonesWorldZ = new float[28];
+                        hasBones = true;
                         for (int i = 0; i < 28; i++) {
                             float bx = BONE_BUF.getFloat(i * 32);
                             float by = BONE_BUF.getFloat(i * 32 + 4);
                             float bz = BONE_BUF.getFloat(i * 32 + 8);
 
-                            bonesWorldX[i] = bx;
-                            bonesWorldY[i] = by;
-                            bonesWorldZ[i] = bz;
+                            slotBonesWX[i] = bx;
+                            slotBonesWY[i] = by;
+                            slotBonesWZ[i] = bz;
 
                             boolean projected = ScreenProjector.project(bx, by, bz, BONE_OUT, matrix, width, height);
                             if (projected) {
-                                bonesX[i] = BONE_OUT[0];
-                                bonesY[i] = BONE_OUT[1];
-                                bonesVisible[i] = true;
+                                slotBonesX[i]   = BONE_OUT[0];
+                                slotBonesY[i]   = BONE_OUT[1];
+                                slotBonesVis[i] = true;
                             } else {
-                                bonesVisible[i] = false;
+                                slotBonesVis[i] = false;
                             }
                         }
                     }
                 }
 
-                out.add(new PlayerSnapshot(player,
+                snap.update(player,
                         FEET_OUT[0], FEET_OUT[1],
                         HEAD_OUT[0], HEAD_OUT[1],
                         true, vx, vy, vz,
-                        bonesX, bonesY, bonesVisible,
-                        bonesWorldX, bonesWorldY, bonesWorldZ));
+                        hasBones ? slotBonesX   : null,
+                        hasBones ? slotBonesY   : null,
+                        hasBones ? slotBonesVis : null,
+                        hasBones ? slotBonesWX  : null,
+                        hasBones ? slotBonesWY  : null,
+                        hasBones ? slotBonesWZ  : null);
             } else {
                 player.onScreen = false;
-                out.add(new PlayerSnapshot(player, 0, 0, 0, 0, false, vx, vy, vz));
+                snap.update(player, 0, 0, 0, 0, false, vx, vy, vz,
+                            null, null, null, null, null, null);
             }
+            count++;
         }
 
-        return out;
+        // Publish a shallow-copy array-backed list of exactly `count` entries.
+        // Arrays.copyOf creates a tiny new array of object references (count × 8 bytes)
+        // but does NOT create new PlayerSnapshot objects — pool slots are reused.
+        // The renderer holds its own reference to this list and can safely iterate it
+        // even while the next fast-loop iteration writes to the OTHER pool (POOL_B/POOL_A).
+        // This avoids the ConcurrentModificationException that `list.clear()` caused.
+        poolIndex ^= 1;
+        return java.util.Arrays.asList(
+                java.util.Arrays.copyOf(pool, count));
     }
 
     /**

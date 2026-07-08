@@ -59,6 +59,23 @@ public final class EntityDataReader {
 
     private EntityDataReader() {}
 
+    // ── Pre-allocated PlayerData pool ───────────────────────────────────────────
+    // The slow data loop runs at ~10 Hz. Each tick previously allocated a new
+    // PlayerData object (and inside it two new Vector3 instances) per player.
+    // We instead maintain a fixed pool of 64 slots whose fields are reset and
+    // reused each tick. The returned ArrayList is a fresh small list (just
+    // object references, ~128 bytes for 16 players) so the fast loop's iterator
+    // is never invalidated by the slow loop clearing a shared list.
+
+    private static final int MAX_POOL = 64;
+    private static final PlayerCache.PlayerData[] DATA_POOL = new PlayerCache.PlayerData[MAX_POOL];
+
+    static {
+        for (int i = 0; i < MAX_POOL; i++) {
+            DATA_POOL[i] = new PlayerCache.PlayerData(0, 0, 0, "", null, false, 0L);
+        }
+    }
+
     /**
      * Traverses the CS2 entity list (controller slots 1–64) and returns a fresh
      * {@link PlayerCache.PlayerData} list populated with health, team, name, and pawn
@@ -84,12 +101,16 @@ public final class EntityDataReader {
 
         // Compute the contiguous pawn metadata range at call-time so that any
         // offset changes applied by CS2Offsets.load() are automatically respected.
-        int batchBaseOffset = CS2Offsets.m_iHealth; // lowest pawn field we need
+        int batchBaseOffset = CS2Offsets.m_iHealth;
         int batchSize = Math.min(
-                (CS2Offsets.m_iTeamNum - CS2Offsets.m_iHealth) + 4, // span + one int
+                (CS2Offsets.m_iTeamNum - CS2Offsets.m_iHealth) + 4,
                 PAWN_META_CAP);
 
+        // Fresh list of references each tick — the fast loop holds its own reference
+        // so the next slow-loop tick can safely create a new list without invalidating
+        // any iterator the fast loop may be holding.
         List<PlayerCache.PlayerData> result = new ArrayList<>(16);
+        int poolSlot = 0;
 
         for (int i = 1; i <= 64; i++) {
 
@@ -112,7 +133,6 @@ public final class EntityDataReader {
             if (playerPawn == 0) continue;
 
             // Step 4 — batch-read pawn metadata block (health + team) in ONE RPM call.
-            // Both values live within a ~163-byte window so a single syscall covers both.
             if (!CS2Memory.readInto(playerPawn + batchBaseOffset, PAWN_META_BUF, batchSize)) continue;
 
             int health = PAWN_META_BUF.getInt((long) (CS2Offsets.m_iHealth  - batchBaseOffset));
@@ -122,7 +142,7 @@ public final class EntityDataReader {
             if (health <= 0 || health > 100) continue;
             if (team != 2 && team != 3)       continue;
 
-            // Step 5 — read the player name string from the controller (different base address).
+            // Step 5 — read the player name string from the controller.
             String name = readName(playerController + CS2Offsets.m_iszPlayerName);
 
             boolean isLocal = (playerPawn == localPlayerPawn);
@@ -161,9 +181,9 @@ public final class EntityDataReader {
                 }
             }
 
-            // ── Step 7 — Player Flags ────────────────────────────────────────────────
+            // ── Step 7 — Player Flags ─────────────────────────────────────────
 
-            // 7a. Blind: read m_flFlashMaxAlpha and m_flFlashDuration directly from the pawn.
+            // 7a. Blind
             float flashMaxAlpha = 0f;
             float flashDuration = 0f;
             int flashMaxAlphaRaw = readInt(playerPawn + CS2Offsets.m_flFlashMaxAlpha);
@@ -173,43 +193,77 @@ public final class EntityDataReader {
             if (!Float.isFinite(flashMaxAlpha) || flashMaxAlpha < 0f) flashMaxAlpha = 0f;
             if (!Float.isFinite(flashDuration) || flashDuration < 0f) flashDuration = 0f;
 
-            // 7b. Defusing/Planting: read m_iProgressBarDuration directly from the pawn.
+            // 7b. Defusing/Planting
             int progressBarDuration = readInt(playerPawn + CS2Offsets.m_iProgressBarDuration);
             boolean isDefusingOrPlanting = progressBarDuration > 0;
 
-            // 7c. Scoped: read m_bIsScoped directly from the pawn.
+            // 7c. Scoped
             int scopedByte = readInt(playerPawn + CS2Offsets.m_bIsScoped);
             boolean isScoped = (scopedByte & 0xFF) != 0;
 
-            // 7d. Kit: read m_bPawnHasDefuser directly from the player controller.
+            // 7d. Kit
             int hasDefuserByte = readInt(playerController + CS2Offsets.m_bPawnHasDefuser);
             boolean hasKit = (hasDefuserByte & 0xFF) != 0;
 
-            // 7e. Money: controller → m_pInGameMoneyServices → m_iAccount (int).
+            // 7e. Money
             int money = 0;
             long moneyServices = readLong(playerController + CS2Offsets.m_pInGameMoneyServices_ctrl);
             if (moneyServices != 0) {
                 money = readInt(moneyServices + CS2Offsets.m_iAccount);
-                if (money < 0 || money > 99999) money = 0; // sanity clamp
+                if (money < 0 || money > 99999) money = 0;
             }
 
-            // Position and screen coords start at zero; PositionReader fills them next tick.
-            PlayerCache.PlayerData player = new PlayerCache.PlayerData(
-                    i, health, team, name, new Vector3(), isLocal, playerPawn);
-            player.hasBomb              = hasBomb;
-            player.flashMaxAlpha        = flashMaxAlpha;
-            player.flashDuration        = flashDuration;
-            player.isScoped             = isScoped;
-            player.isDefusingOrPlanting = isDefusingOrPlanting;
-            player.hasKit               = hasKit;
-            player.money                = money;
-            player.controllerAddress    = playerController;
+            // ── Reuse a pre-allocated PlayerData slot from the pool ────────────
+            // This avoids `new PlayerData(...)` and the `new Vector3()` inside it.
+            PlayerCache.PlayerData player;
+            if (poolSlot < MAX_POOL) {
+                player = DATA_POOL[poolSlot++];
+                // Reset all fields in-place — position Vector3 objects are reused.
+                player.index    = i;
+                player.health   = health;
+                player.team     = team;
+                player.name     = name;
+                player.position.x = 0f;
+                player.position.y = 0f;
+                player.position.z = 0f;
+                player.isLocal  = isLocal;
+                player.onScreen = false;
+                player.feetX    = 0f;
+                player.feetY    = 0f;
+                player.headX    = 0f;
+                player.headY    = 0f;
+                player.headWorldPos.x = 0f;
+                player.headWorldPos.y = 0f;
+                player.headWorldPos.z = 0f;
+                player.pawnAddress  = playerPawn;
+                player.yaw          = 0f;
+                player.hasBomb      = hasBomb;
+                player.flashMaxAlpha        = flashMaxAlpha;
+                player.flashDuration        = flashDuration;
+                player.isScoped             = isScoped;
+                player.isDefusingOrPlanting = isDefusingOrPlanting;
+                player.hasKit               = hasKit;
+                player.money                = money;
+                player.controllerAddress    = playerController;
+            } else {
+                // Fallback for edge cases beyond MAX_POOL (should never happen in CS2)
+                player = new PlayerCache.PlayerData(i, health, team, name, null, isLocal, playerPawn);
+                player.hasBomb              = hasBomb;
+                player.flashMaxAlpha        = flashMaxAlpha;
+                player.flashDuration        = flashDuration;
+                player.isScoped             = isScoped;
+                player.isDefusingOrPlanting = isDefusingOrPlanting;
+                player.hasKit               = hasKit;
+                player.money                = money;
+                player.controllerAddress    = playerController;
+            }
 
             result.add(player);
         }
 
         return result;
     }
+
 
     // ── Private buffer-reusing read helpers ───────────────────────────────────
     // These helpers call CS2Memory.readInto() with the class-owned buffers so no

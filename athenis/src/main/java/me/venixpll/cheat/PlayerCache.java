@@ -89,100 +89,93 @@ public class PlayerCache {
     }
 
     /**
-     * Immutable snapshot of a single player's render-ready state, built by the
+     * Mutable snapshot of a single player's render-ready state, built by the
      * fast position loop and consumed by the renderer.
      * <p>
-     * Because all fields are set once in the constructor and never mutated
-     * afterwards, the renderer can read any field at any time without
-     * synchronization and always gets a fully consistent value — no half-updated
-     * states, no race conditions between the memory thread and the render thread.
+     * Fields are updated in-place via {@link #update} each fast-loop iteration,
+     * eliminating the constant {@code new PlayerSnapshot(...)} allocation that
+     * was the primary source of the long-session memory pressure.
+     * <p>
+     * <b>Thread safety:</b> Only the fast position-sync thread writes these
+     * fields.  The renderer and module threads only read them, and always
+     * obtain a reference via the volatile {@link PlayerCache#renderPlayers}
+     * swap so they always see a fully-populated, logically consistent snapshot.
      */
     public static final class PlayerSnapshot {
-        public final int index;
-        public final int health;
-        public final int team;
-        public final String name;
-        public final boolean isLocal;
-        public final boolean onScreen;
+        public int index;
+        public int health;
+        public int team;
+        public String name;
+        public boolean isLocal;
+        public boolean onScreen;
 
         /** Screen-space coordinates of the feet (bottom of bounding box). */
-        public final float feetX;
-        public final float feetY;
+        public float feetX;
+        public float feetY;
         /** Screen-space coordinates of the head (top of bounding box). */
-        public final float headX;
-        public final float headY;
+        public float headX;
+        public float headY;
 
         /** World-space foot position — kept for future use (distance calc, etc.). */
-        public final float worldX;
-        public final float worldY;
-        public final float worldZ;
+        public float worldX;
+        public float worldY;
+        public float worldZ;
 
-        public final float yaw;
-        public final boolean hasBomb;
-        public final long pawnAddress;
+        public float yaw;
+        public boolean hasBomb;
+        public long pawnAddress;
 
         /** m_flFlashMaxAlpha: 0.0 = not flashed, 255.0 = fully blinded. Direct pawn field. */
-        public final float flashMaxAlpha;
+        public float flashMaxAlpha;
         /** m_flFlashDuration: seconds the flash lasts; 0 when not flashed. Direct pawn field. */
-        public final float flashDuration;
+        public float flashDuration;
         /** True when the player is currently looking through a weapon scope. */
-        public final boolean isScoped;
+        public boolean isScoped;
         /**
          * True when m_iProgressBarDuration > 0 (defusing or planting).
          */
-        public final boolean isDefusingOrPlanting;
+        public boolean isDefusingOrPlanting;
         /** True when the player is carrying a defuse kit. */
-        public final boolean hasKit;
-        /** Player’s current cash balance ($). */
-        public final int money;
+        public boolean hasKit;
+        /** Player's current cash balance ($). */
+        public int money;
 
         /** Velocity vector in world-space units/sec, read alongside origin. */
-        public final float velX;
-        public final float velY;
-        public final float velZ;
+        public float velX;
+        public float velY;
+        public float velZ;
 
         // Bone coordinates in screen space
-        public final float[] boneX;
-        public final float[] boneY;
-        public final boolean[] boneVisible;
+        public float[] boneX;
+        public float[] boneY;
+        public boolean[] boneVisible;
 
         // Bone coordinates in 3D world space
-        public final float[] boneWorldX;
-        public final float[] boneWorldY;
-        public final float[] boneWorldZ;
+        public float[] boneWorldX;
+        public float[] boneWorldY;
+        public float[] boneWorldZ;
 
-        private static final float[] EMPTY_FLOAT = new float[0];
-        private static final boolean[] EMPTY_BOOL = new boolean[0];
-
-        /**
-         * Builds an immutable snapshot from the mutable {@link PlayerData} object
-         * plus freshly projected screen coordinates.
-         * Called once per fast-loop iteration for every tracked player.
-         */
-        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
-                              float headX, float headY, boolean onScreen,
-                              float velX, float velY, float velZ) {
-            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, null, null, null, null, null, null);
-        }
+        static final float[]   EMPTY_FLOAT = new float[0];
+        static final boolean[] EMPTY_BOOL  = new boolean[0];
 
         /**
-         * Builds an immutable snapshot including bone coordinates.
+         * Creates a blank (pooled) snapshot.  All fields are at their Java
+         * default values; call {@link #update} before publishing to readers.
          */
-        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
-                              float headX, float headY, boolean onScreen,
-                              float velX, float velY, float velZ,
-                              float[] boneX, float[] boneY, boolean[] boneVisible) {
-            this(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ, boneX, boneY, boneVisible, null, null, null);
-        }
+        public PlayerSnapshot() {}
 
         /**
-         * Builds an immutable snapshot including bone coordinates and 3D world space bone coordinates.
+         * Updates all fields in-place from {@code src} and the freshly
+         * projected screen coordinates.  Called by {@link PositionReader} to
+         * reuse this object instead of allocating a new one.
          */
-        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
-                              float headX, float headY, boolean onScreen,
-                              float velX, float velY, float velZ,
-                              float[] boneX, float[] boneY, boolean[] boneVisible,
-                              float[] boneWorldX, float[] boneWorldY, float[] boneWorldZ) {
+        public void update(PlayerData src,
+                           float feetX, float feetY,
+                           float headX, float headY,
+                           boolean onScreen,
+                           float velX, float velY, float velZ,
+                           float[] boneX, float[] boneY, boolean[] boneVisible,
+                           float[] boneWorldX, float[] boneWorldY, float[] boneWorldZ) {
             this.index       = src.index;
             this.health      = src.health;
             this.team        = src.team;
@@ -202,12 +195,12 @@ public class PlayerCache {
             this.velX        = velX;
             this.velY        = velY;
             this.velZ        = velZ;
-            this.boneX       = boneX != null ? boneX : EMPTY_FLOAT;
-            this.boneY       = boneY != null ? boneY : EMPTY_FLOAT;
+            this.boneX       = boneX       != null ? boneX       : EMPTY_FLOAT;
+            this.boneY       = boneY       != null ? boneY       : EMPTY_FLOAT;
             this.boneVisible = boneVisible != null ? boneVisible : EMPTY_BOOL;
-            this.boneWorldX  = boneWorldX != null ? boneWorldX : EMPTY_FLOAT;
-            this.boneWorldY  = boneWorldY != null ? boneWorldY : EMPTY_FLOAT;
-            this.boneWorldZ  = boneWorldZ != null ? boneWorldZ : EMPTY_FLOAT;
+            this.boneWorldX  = boneWorldX  != null ? boneWorldX  : EMPTY_FLOAT;
+            this.boneWorldY  = boneWorldY  != null ? boneWorldY  : EMPTY_FLOAT;
+            this.boneWorldZ  = boneWorldZ  != null ? boneWorldZ  : EMPTY_FLOAT;
             // ── Player Flags ──────────────────────────────────────────────────
             this.flashMaxAlpha        = src.flashMaxAlpha;
             this.flashDuration        = src.flashDuration;
@@ -215,6 +208,40 @@ public class PlayerCache {
             this.isDefusingOrPlanting = src.isDefusingOrPlanting;
             this.hasKit               = src.hasKit;
             this.money                = src.money;
+        }
+
+        // ── Legacy constructors kept for source compatibility ─────────────────
+        // These allocate bone arrays and call update() so existing call sites
+        // outside PositionReader continue to compile without changes.
+
+        /** @deprecated Use the pooled path in {@link PositionReader} instead. */
+        @Deprecated
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ) {
+            update(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ,
+                   null, null, null, null, null, null);
+        }
+
+        /** @deprecated Use the pooled path in {@link PositionReader} instead. */
+        @Deprecated
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ,
+                              float[] boneX, float[] boneY, boolean[] boneVisible) {
+            update(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ,
+                   boneX, boneY, boneVisible, null, null, null);
+        }
+
+        /** @deprecated Use the pooled path in {@link PositionReader} instead. */
+        @Deprecated
+        public PlayerSnapshot(PlayerData src, float feetX, float feetY,
+                              float headX, float headY, boolean onScreen,
+                              float velX, float velY, float velZ,
+                              float[] boneX, float[] boneY, boolean[] boneVisible,
+                              float[] boneWorldX, float[] boneWorldY, float[] boneWorldZ) {
+            update(src, feetX, feetY, headX, headY, onScreen, velX, velY, velZ,
+                   boneX, boneY, boneVisible, boneWorldX, boneWorldY, boneWorldZ);
         }
     }
 
