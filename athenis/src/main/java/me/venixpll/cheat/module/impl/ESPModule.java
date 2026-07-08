@@ -42,6 +42,8 @@ public class ESPModule extends CheatModule {
     public final BooleanSetting boxEsp    = new BooleanSetting("Render Box", true);
     /** Toggle to show/hide player skeletons */
     public final BooleanSetting skeletonEsp = new BooleanSetting("Render Skeleton", true);
+    /** Toggle to render only invisible bone parts */
+    public final BooleanSetting invisibleBonesOnly = new BooleanSetting("Invisible Bones Only", false);
     /** Toggle to show/hide player health bars */
     public final BooleanSetting healthEsp = new BooleanSetting("Show Health Indicators", true);
     /** Toggle to show/hide player names */
@@ -244,6 +246,7 @@ public class ESPModule extends CheatModule {
         // ── Player ESP Settings ─────────────────────────────────────────────
         addSetting(boxEsp);
         addSetting(skeletonEsp);
+        addSetting(invisibleBonesOnly);
         addSetting(healthEsp);
         addSetting(nameEsp);
         addSetting(teamCheck);
@@ -401,6 +404,10 @@ public class ESPModule extends CheatModule {
                             float y2 = player.boneY[bone2] + espOffsetY;
 
                             boolean isBlocked = boneVisBlocked[bone1] || boneVisBlocked[bone2];
+                            if (invisibleBonesOnly.getValue() && !isBlocked) {
+                                continue;
+                            }
+
                             int lineCol;
                             if (isBlocked) {
                                 lineCol = isEnemy
@@ -423,18 +430,20 @@ public class ESPModule extends CheatModule {
                     float headRadius = Math.max(3.0f, Math.min(12.0f, height / 12.0f));
 
                     boolean isHeadBlocked = boneVisBlocked[7];
-                    int headCol;
-                    if (isHeadBlocked) {
-                        headCol = isEnemy
-                                ? ImColor.rgba(1.0f, 0.2f, 0.2f, 0.80f)
-                                : ImColor.rgba(0.15f, 0.40f, 0.75f, 0.75f);
-                    } else {
-                        headCol = colorInt;
-                    }
+                    if (!invisibleBonesOnly.getValue() || isHeadBlocked) {
+                        int headCol;
+                        if (isHeadBlocked) {
+                            headCol = isEnemy
+                                    ? ImColor.rgba(1.0f, 0.2f, 0.2f, 0.80f)
+                                    : ImColor.rgba(0.15f, 0.40f, 0.75f, 0.75f);
+                        } else {
+                            headCol = colorInt;
+                        }
 
-                    drawList.addCircle(headCX, headCY, headRadius - 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
-                    drawList.addCircle(headCX, headCY, headRadius + 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
-                    drawList.addCircle(headCX, headCY, headRadius,        headCol,                    16, 1.5f);
+                        drawList.addCircle(headCX, headCY, headRadius - 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
+                        drawList.addCircle(headCX, headCY, headRadius + 0.5f, ImColor.rgba(0, 0, 0, 150), 16, 1.5f);
+                        drawList.addCircle(headCX, headCY, headRadius,        headCol,                    16, 1.5f);
+                    }
                 }
             }
 

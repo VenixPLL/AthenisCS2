@@ -443,6 +443,7 @@ public class OverlayMenu {
                                 ImGui.spacing();
                                 renderSingleSetting(esp, esp.boxEsp, settingX, settingW, isDebug);
                                 renderSingleSetting(esp, esp.skeletonEsp, settingX, settingW, isDebug);
+                                renderSingleSetting(esp, esp.invisibleBonesOnly, settingX, settingW, isDebug);
                                 renderSingleSetting(esp, esp.healthEsp, settingX, settingW, isDebug);
                                 renderSingleSetting(esp, esp.nameEsp, settingX, settingW, isDebug);
                                 renderSingleSetting(esp, esp.teamCheck, settingX, settingW, isDebug);
