@@ -1,0 +1,21 @@
+{
+  "map": "de_cache",
+  "deleted": [
+    {"mesh": 4, "tri": 7878},
+    {"mesh": 8, "tri": 0},
+    {"mesh": 8, "tri": 1},
+    {"mesh": 4, "tri": 7908},
+    {"mesh": 4, "tri": 8010},
+    {"mesh": 4, "tri": 7883},
+    {"mesh": 4, "tri": 8009},
+    {"mesh": 4, "tri": 8046},
+    {"mesh": 4, "tri": 8047},
+    {"mesh": 4, "tri": 7884},
+    {"mesh": 4, "tri": 7891},
+    {"mesh": 4, "tri": 7893},
+    {"mesh": 4, "tri": 7898},
+    {"mesh": 4, "tri": 7899},
+    {"mesh": 4, "tri": 7897},
+    {"mesh": 4, "tri": 7900}
+  ]
+}

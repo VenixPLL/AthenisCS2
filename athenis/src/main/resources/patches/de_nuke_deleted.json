@@ -1,0 +1,10 @@
+{
+  "map": "de_nuke",
+  "deleted": [
+    {"mesh": 1, "tri": 2717},
+    {"mesh": 4, "tri": 4},
+    {"mesh": 1, "tri": 2718},
+    {"mesh": 4, "tri": 5},
+    {"mesh": 0, "tri": 5341}
+  ]
+}

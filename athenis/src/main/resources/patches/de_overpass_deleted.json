@@ -1,0 +1,30 @@
+{
+  "map": "de_overpass",
+  "deleted": [
+    {"mesh": 1, "tri": 7644},
+    {"mesh": 1, "tri": 9372},
+    {"mesh": 1, "tri": 7645},
+    {"mesh": 1, "tri": 9373},
+    {"mesh": 1, "tri": 9374},
+    {"mesh": 1, "tri": 7647},
+    {"mesh": 1, "tri": 9375},
+    {"mesh": 1, "tri": 7636},
+    {"mesh": 1, "tri": 7637},
+    {"mesh": 1, "tri": 7638},
+    {"mesh": 1, "tri": 7639},
+    {"mesh": 1, "tri": 7628},
+    {"mesh": 1, "tri": 7629},
+    {"mesh": 1, "tri": 7630},
+    {"mesh": 1, "tri": 7631},
+    {"mesh": 1, "tri": 8121},
+    {"mesh": 1, "tri": 8122},
+    {"mesh": 1, "tri": 8123},
+    {"mesh": 1, "tri": 8124},
+    {"mesh": 1, "tri": 11696},
+    {"mesh": 1, "tri": 8114},
+    {"mesh": 1, "tri": 8115},
+    {"mesh": 1, "tri": 7656},
+    {"mesh": 1, "tri": 7657},
+    {"mesh": 1, "tri": 7663}
+  ]
+}
