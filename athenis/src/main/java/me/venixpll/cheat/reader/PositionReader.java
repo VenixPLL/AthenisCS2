@@ -8,7 +8,6 @@ import me.venixpll.cheat.PlayerCache.PlayerData;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.projection.ScreenProjector;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
