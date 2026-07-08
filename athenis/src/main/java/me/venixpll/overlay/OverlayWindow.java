@@ -386,6 +386,7 @@ public class OverlayWindow extends Application {
         // Render GUI Menu
         if (menuOpen) {
             OverlayMenu.render();
+            PerformanceMonitor.render();
             me.venixpll.skinchanger.SkinChangerWindow.render();
         }
 
