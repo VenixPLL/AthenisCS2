@@ -305,6 +305,7 @@ public class AimbotModule extends CheatModule {
                     break;
                 } catch (Exception e) {
                     System.err.println("[Aimbot] Error: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
 

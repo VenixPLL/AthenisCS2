@@ -295,7 +295,8 @@ public class TriggerBotModule extends CheatModule {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
-                    System.err.println("[TriggerBot] Error: " + e.getMessage());
+                    System.err.println("[TriggerBot] Error: " + e.getMessage()); 
+                    e.printStackTrace();
                 }
             }
 
