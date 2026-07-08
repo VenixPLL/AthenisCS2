@@ -4,7 +4,6 @@ import com.sun.jna.Memory;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
-import me.venixpll.cheat.Vector3;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

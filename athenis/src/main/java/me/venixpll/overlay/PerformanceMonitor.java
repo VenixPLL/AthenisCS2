@@ -8,11 +8,9 @@ import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 
-import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
-import java.util.List;
 
 /**
  * Separate ImGui window displayed while the overlay menu is open.
@@ -49,8 +47,6 @@ public final class PerformanceMonitor {
             ManagementFactory.getMemoryMXBean();
     private static final OperatingSystemMXBean OS_BEAN  =
             ManagementFactory.getOperatingSystemMXBean();
-    private static final List<GarbageCollectorMXBean> GC_BEANS =
-            ManagementFactory.getGarbageCollectorMXBeans();
 
     // ── Sampling throttle ─────────────────────────────────────────────────
     private static long lastSampleNs = 0L;
