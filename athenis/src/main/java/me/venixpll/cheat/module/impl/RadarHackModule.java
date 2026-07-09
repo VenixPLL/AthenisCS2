@@ -358,6 +358,9 @@ public class RadarHackModule extends CheatModule {
         }
 
         private boolean isValidMapString(String trimmed) {
+                if (trimmed.isEmpty() || trimmed.contains("<empty>") || trimmed.contains("empty")) {
+                        return false;
+                }
                 return trimmed.startsWith("maps/") || trimmed.startsWith("de_") || trimmed.startsWith("cs_")
                                 || trimmed.contains("workshop") || trimmed.endsWith(".vpk");
         }

@@ -33,6 +33,7 @@ public class CS2Memory {
     private static final ThreadLocal<Memory> MEM_12 = ThreadLocal.withInitial(() -> new Memory(12));
     private static final ThreadLocal<Memory> MEM_64 = ThreadLocal.withInitial(() -> new Memory(64));
     private static final ThreadLocal<Memory> STRING_BUF = new ThreadLocal<>();
+    private static final ThreadLocal<IntByReference> EXIT_CODE_BUF = ThreadLocal.withInitial(IntByReference::new);
 
     private static Memory getStringBuffer(int size) {
         Memory mem = STRING_BUF.get();
@@ -144,7 +145,7 @@ public class CS2Memory {
         if (processHandle == null) {
             return false;
         }
-        IntByReference exitCode = new IntByReference();
+        IntByReference exitCode = EXIT_CODE_BUF.get();
         if (Kernel32.INSTANCE.GetExitCodeProcess(processHandle, exitCode)) {
             return exitCode.getValue() == WinBase.STILL_ACTIVE;
         }
