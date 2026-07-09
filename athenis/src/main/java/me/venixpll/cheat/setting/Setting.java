@@ -8,6 +8,8 @@ package me.venixpll.cheat.setting;
  */
 public abstract class Setting<T> {
     private final String name;
+    /** When true the setting is not rendered in the GUI at all. */
+    private volatile boolean hidden = false;
 
     /**
      * Constructs a new setting option.
@@ -16,6 +18,24 @@ public abstract class Setting<T> {
      */
     public Setting(String name) {
         this.name = name;
+    }
+
+    /**
+     * Returns whether this setting should be hidden from the GUI.
+     *
+     * @return {@code true} if this setting is currently hidden.
+     */
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    /**
+     * Controls GUI visibility of this setting.
+     *
+     * @param hidden {@code true} to hide from the GUI, {@code false} to show.
+     */
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 
     /**

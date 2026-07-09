@@ -395,6 +395,8 @@ public class OverlayMenu {
                         renderESPModuleSettings((ESPModule) module, settingX, settingW, isDebug);
                 } else {
                         for (Setting<?> setting : module.getSettings()) {
+                                if (setting.isHidden())
+                                        continue;
                                 renderSingleSetting(module, setting, settingX, settingW, isDebug);
                         }
                 }
