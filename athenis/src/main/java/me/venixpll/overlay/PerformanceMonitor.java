@@ -42,11 +42,37 @@ public final class PerformanceMonitor {
     /** Next write position in the ring buffer. */
     private static int head = 0;
 
-    // ── MXBeans (cached at class-load) ────────────────────────────────────
-    private static final MemoryMXBean       MEM_BEAN =
+    // ── MXBeans ───────────────────────────────────────────────────────────────
+    // MemoryMXBean is lightweight — safe to init on any thread.
+    private static final MemoryMXBean MEM_BEAN =
             ManagementFactory.getMemoryMXBean();
-    private static final OperatingSystemMXBean OS_BEAN  =
-            ManagementFactory.getOperatingSystemMXBean();
+
+    // OperatingSystemMXBean first access triggers a PDH/WMI counter
+    // initialization on Windows that can block for hundreds of milliseconds.
+    // We warm it up in a background daemon thread so the render thread never
+    // blocks when the overlay menu is opened for the first time.
+    private static volatile com.sun.management.OperatingSystemMXBean SUN_OS_BEAN = null;
+    private static volatile boolean beanReady = false;
+
+    static {
+        Thread warmup = new Thread(() -> {
+            try {
+                OperatingSystemMXBean raw = ManagementFactory.getOperatingSystemMXBean();
+                if (raw instanceof com.sun.management.OperatingSystemMXBean) {
+                    com.sun.management.OperatingSystemMXBean sunBean =
+                            (com.sun.management.OperatingSystemMXBean) raw;
+                    // Prime the bean: first call returns -1 but forces counter init
+                    sunBean.getProcessCpuLoad();
+                    sunBean.getCpuLoad();
+                    SUN_OS_BEAN = sunBean;
+                }
+            } catch (Exception ignored) {}
+            beanReady = true;
+        }, "Athenis-PerfMonWarmup");
+        warmup.setDaemon(true);
+        warmup.setPriority(Thread.MIN_PRIORITY);
+        warmup.start();
+    }
 
     // ── Sampling throttle ─────────────────────────────────────────────────
     private static long lastSampleNs = 0L;
@@ -295,13 +321,12 @@ public final class PerformanceMonitor {
         heapUsedMb[head] = usedBytes / (1024f * 1024f);
         heapMaxMb[head]  = cmmtBytes / (1024f * 1024f);
 
-        // CPU via com.sun.management extension (available on all HotSpot JVMs)
+        // CPU — only sample once the background warmup has finished;
+        // until then keep the arrays at 0 so the graph renders cleanly.
         double proc = 0.0, sys = 0.0;
-        if (OS_BEAN instanceof com.sun.management.OperatingSystemMXBean) {
-            com.sun.management.OperatingSystemMXBean sunOs =
-                    (com.sun.management.OperatingSystemMXBean) OS_BEAN;
-            proc = sunOs.getProcessCpuLoad();
-            sys  = sunOs.getCpuLoad();
+        if (beanReady && SUN_OS_BEAN != null) {
+            proc = SUN_OS_BEAN.getProcessCpuLoad();
+            sys  = SUN_OS_BEAN.getCpuLoad();
             if (proc < 0) proc = 0;
             if (sys  < 0) sys  = 0;
         }
