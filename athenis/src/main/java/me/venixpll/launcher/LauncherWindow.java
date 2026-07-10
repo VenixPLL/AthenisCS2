@@ -444,6 +444,58 @@ public class LauncherWindow extends JFrame {
         });
         left.add(convertBtn);
 
+        JButton offsetsBtn = buildFlatButton(ConfigManager.offsetsFolder.isEmpty() ? "OFFSETS: DEFAULT" : "OFFSETS: CUSTOM", C_TEXT_DIM, C_SURFACE2);
+        if (!ConfigManager.offsetsFolder.isEmpty()) {
+            offsetsBtn.setToolTipText("Folder: " + ConfigManager.offsetsFolder);
+        }
+        offsetsBtn.addActionListener(e -> {
+            LookAndFeel oldLaF = UIManager.getLookAndFeel();
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {
+            }
+
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setDialogTitle("Select Offsets Directory (must contain offsets.json, client_dll.json, buttons.json)");
+            if (!ConfigManager.offsetsFolder.isEmpty()) {
+                chooser.setCurrentDirectory(new File(ConfigManager.offsetsFolder));
+            }
+
+            int result = chooser.showOpenDialog(LauncherWindow.this);
+
+            try {
+                UIManager.setLookAndFeel(oldLaF);
+            } catch (Exception ignored) {
+            }
+
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedDir = chooser.getSelectedFile();
+                if (selectedDir != null) {
+                    ConfigManager.offsetsFolder = selectedDir.getAbsolutePath();
+                    ConfigManager.save();
+                    offsetsBtn.setText("OFFSETS: CUSTOM");
+                    offsetsBtn.setToolTipText("Folder: " + ConfigManager.offsetsFolder);
+                    log("INFO", "Offsets folder set to: " + ConfigManager.offsetsFolder);
+                }
+            } else if (result == JFileChooser.CANCEL_OPTION) {
+                int option = JOptionPane.showConfirmDialog(
+                    LauncherWindow.this,
+                    "Would you like to clear the custom offsets folder and revert to default/online?",
+                    "Clear Custom Offsets",
+                    JOptionPane.YES_NO_OPTION
+                );
+                if (option == JOptionPane.YES_OPTION) {
+                    ConfigManager.offsetsFolder = "";
+                    ConfigManager.save();
+                    offsetsBtn.setText("OFFSETS: DEFAULT");
+                    offsetsBtn.setToolTipText(null);
+                    log("INFO", "Custom offsets folder cleared. Reverted to online/default offsets.");
+                }
+            }
+        });
+        left.add(offsetsBtn);
+
         // Primary (right) actions
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setBackground(C_SURFACE);

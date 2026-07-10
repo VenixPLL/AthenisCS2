@@ -211,6 +211,12 @@ public class CS2Offsets {
      * or hardcoded defaults when the network is unavailable.
      */
     public static void load() {
+        if (me.venixpll.config.ConfigManager.offsetsFolder != null && !me.venixpll.config.ConfigManager.offsetsFolder.trim().isEmpty()) {
+            if (loadFromFolder(me.venixpll.config.ConfigManager.offsetsFolder)) {
+                return;
+            }
+        }
+
         System.out.println("[CS2Offsets] Attempting to download latest offsets from GitHub...");
 
         Path cacheDir = getCacheDir();
@@ -273,6 +279,38 @@ public class CS2Offsets {
         // ── Last resort: built-in hardcoded defaults ───────────────────────
         System.out.println("[CS2Offsets] No cache available — using built-in hardcoded offsets.");
         logOffsets();
+    }
+
+    public static boolean loadFromFolder(String pathStr) {
+        if (pathStr == null || pathStr.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            Path folder = Paths.get(pathStr);
+            Path offsetsFile = folder.resolve(CACHE_OFFSETS);
+            Path clientDllFile = folder.resolve(CACHE_CLIENT_DLL);
+            Path buttonsFile = folder.resolve(CACHE_BUTTONS);
+
+            if (!Files.exists(offsetsFile) || !Files.exists(clientDllFile) || !Files.exists(buttonsFile)) {
+                System.err.println("[CS2Offsets] Missing required offsets files in custom folder: " + pathStr);
+                return false;
+            }
+
+            System.out.println("[CS2Offsets] Loading overriden offsets from custom folder: " + pathStr);
+            String offsetsJson = Files.readString(offsetsFile, StandardCharsets.UTF_8);
+            String clientDllJson = Files.readString(clientDllFile, StandardCharsets.UTF_8);
+            String buttonsJson = Files.readString(buttonsFile, StandardCharsets.UTF_8);
+
+            parseOffsets(offsetsJson);
+            parseClientDll(clientDllJson);
+            parseButtons(buttonsJson);
+            System.out.println("[CS2Offsets] Successfully loaded offsets from custom folder!");
+            logOffsets();
+            return true;
+        } catch (Exception e) {
+            System.err.println("[CS2Offsets] Failed to load offsets from custom folder: " + e.getMessage());
+            return false;
+        }
     }
 
     // ── Network helpers ───────────────────────────────────────────────────────

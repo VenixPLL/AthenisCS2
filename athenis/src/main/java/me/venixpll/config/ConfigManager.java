@@ -50,6 +50,7 @@ import java.nio.file.Paths;
 public final class ConfigManager {
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    public static String offsetsFolder = "";
 
     /** Returns the settings file, creating its parent directories if needed. */
     private static File resolveFile() {
@@ -74,6 +75,7 @@ public final class ConfigManager {
         try {
             JsonObject root    = new JsonObject();
             root.addProperty("toggleKeyJava", OverlayWindow.toggleKeyJava);
+            root.addProperty("offsetsFolder", offsetsFolder);
             JsonObject modules = new JsonObject();
 
             for (CheatModule module : ModuleManager.getModules()) {
@@ -133,6 +135,10 @@ public final class ConfigManager {
 
             if (root.has("toggleKeyJava")) {
                 OverlayWindow.toggleKeyJava = root.get("toggleKeyJava").getAsInt();
+            }
+
+            if (root.has("offsetsFolder")) {
+                offsetsFolder = root.get("offsetsFolder").getAsString();
             }
 
             if (root.has("modules")) {
