@@ -11,33 +11,27 @@ import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleCategory;
+import me.venixpll.cheat.module.impl.aimbot.AimMode;
+import me.venixpll.cheat.module.impl.aimbot.AimType;
+import me.venixpll.cheat.module.impl.aimbot.ClassicAimMode;
+import me.venixpll.cheat.module.impl.aimbot.PidSpringAimMode;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
+import me.venixpll.cheat.setting.Setting;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.overlay.OverlayWindow;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 
 /**
  * Aimbot Module — screen-space aim assist for CS2.
  *
- * <p><b>Classic mode</b>: proportional smooth approach with optional humanise jitter.
- * Mouse deltas: screen_offset_px * hFOV / (screenWidth * 0.022 * sensitivity)
- *
- * <p><b>PID Spring mode</b>: models the mouse as a mass on a spring.
- * The spring pulls the cursor toward the target bone; critically-damped or
- * under-damped tuning produces natural overshoot-then-settle behaviour.
- * State: velocity accumulates across ticks so momentum is preserved.
- * Equation per axis:
- * <pre>
- *   force  = kP * (target - position) - kD * velocity
- *   velocity += force / mass * dt
- *   position += velocity * dt
- * </pre>
- * where position is the accumulated sub-pixel error in mouse-counts.
+ * <p>Supports modular aimbot modes (e.g. Classic, PID Spring) implemented via
+ * individual {@link AimMode} strategy classes.
  *
  * <p>Rate-limit : 500 Hz nanosecond gate (same principle as DragonBurn AimDelay).
  * Sub-pixel  : fractional-px accumulator prevents stalling at zero.
@@ -64,10 +58,13 @@ public class AimbotModule extends CheatModule {
     /** Windows VK codes for each aim-key option (matches aimKey setting order). */
     private static final int[] AIM_KEY_VK = { 0x02, 0x04, 0xA4, 0xA0, 0x58, 0x5A, 0x11 };
 
+    // ── Aim Modes Registry ───────────────────────────────────────────────────
+    private final List<AimMode> aimModes = new ArrayList<>();
+    private final ClassicAimMode classicMode = new ClassicAimMode();
+    private final PidSpringAimMode pidSpringMode = new PidSpringAimMode();
+
     // ── Mode selector ─────────────────────────────────────────────────────────
-    /** 0 = Classic, 1 = PID Spring */
-    public final ModeSetting aimMode = new ModeSetting(
-            "Aim Mode##aimbot", 0, "Classic", "PID Spring");
+    public final ModeSetting aimMode;
 
     // ── Shared settings (always visible) ─────────────────────────────────────
     public final ModeSetting targetBone = new ModeSetting(
@@ -93,64 +90,21 @@ public class AimbotModule extends CheatModule {
     public final BooleanSetting showFov = new BooleanSetting(
             "Show FOV Circle##aimbot", true);
 
-    // ── Classic-mode settings ─────────────────────────────────────────────────
-    public final FloatSetting smooth = new FloatSetting(
-            "Smooth##aimbot", 6.5f, 1.0f, 30.0f);
-    public final FloatSetting sensitivity = new FloatSetting(
-            "Sensitivity##aimbot", 1.5f, 0.1f, 10.0f);
-    public final BooleanSetting humanize = new BooleanSetting(
-            "Humanize##aimbot", true);
-    public final FloatSetting humanizeStrength = new FloatSetting(
-            "Humanize Strength##aimbot", 3.6f, 0.0f, 20.0f);
+    // ── Mode settings aliases (for direct access & backward compatibility) ─────
+    public final FloatSetting smooth = classicMode.smooth;
+    public final FloatSetting sensitivity = classicMode.sensitivity;
+    public final BooleanSetting humanize = classicMode.humanize;
+    public final FloatSetting humanizeStrength = classicMode.humanizeStrength;
 
-    // ── PID Spring settings ───────────────────────────────────────────────────
-    /**
-     * Spring stiffness (kP) — how hard the spring pulls toward target.
-     * Higher = stiffer spring, faster approach and more overshoot.
-     */
-    public final FloatSetting pidStiffness = new FloatSetting(
-            "Stiffness (kP)##aimbot", 75.0f, 1.0f, 149.0f);
-    /**
-     * Spring damping (kD) — how quickly oscillation decays.
-     * Set to 2*sqrt(kP*mass) for critically-damped (no overshoot).
-     * Lower values allow natural overshoot-and-settle.
-     */
-    public final FloatSetting pidDamping = new FloatSetting(
-            "Damping (kD)##aimbot", 35.0f, 0.5f, 70.0f);
-    /**
-     * Virtual mass of the cursor. Higher mass = more sluggish, more overshoot.
-     */
-    public final FloatSetting pidMass = new FloatSetting(
-            "Mass##aimbot", 0.2f, 0.01f, 0.4f);
-    /**
-     * Maximum force cap (mouse-counts per tick²) — prevents insane initial
-     * kick on very large target deltas.
-     */
-    public final FloatSetting pidMaxForce = new FloatSetting(
-            "Max Force##aimbot", 1800.0f, 1.0f, 3600.0f);
-    /**
-     * Sensitivity used in PID mode to convert screen-px offsets to mouse-counts.
-     */
-    public final FloatSetting pidSensitivity = new FloatSetting(
-            "Sensitivity##aimbot_pid", 0.1f, 0.01f, 0.2f);
+    public final FloatSetting pidStiffness = pidSpringMode.pidStiffness;
+    public final FloatSetting pidDamping = pidSpringMode.pidDamping;
+    public final FloatSetting pidMass = pidSpringMode.pidMass;
+    public final FloatSetting pidMaxForce = pidSpringMode.pidMaxForce;
+    public final FloatSetting pidSensitivity = pidSpringMode.pidSensitivity;
 
     // ── Internal state ────────────────────────────────────────────────────────
     private volatile boolean aimThreadRunning = false;
     private Thread aimThread;
-    private final Random rng = new Random();
-
-    // Classic sub-pixel accumulators
-    private volatile float prevDeltaX = 0f;
-    private volatile float prevDeltaY = 0f;
-    private float accumX = 0f;
-    private float accumY = 0f;
-
-    // PID Spring state — velocity (mouse-counts / s) and position error (mouse-counts)
-    private volatile float springVelX = 0f;
-    private volatile float springVelY = 0f;
-    // PID sub-pixel accumulator
-    private float pidAccumX = 0f;
-    private float pidAccumY = 0f;
 
     private long lastAimNs = 0L;
     private static final long AIM_INTERVAL_NS = 2_000_000L; // 2 ms = 500 Hz cap
@@ -159,7 +113,12 @@ public class AimbotModule extends CheatModule {
     public AimbotModule() {
         super("Aimbot", ModuleCategory.EXTERNAL, false);
 
+        // Register default aim modes
+        registerAimModeInternal(classicMode);
+        registerAimModeInternal(pidSpringMode);
+
         // Mode selector (always visible)
+        aimMode = new ModeSetting("Aim Mode##aimbot", 0, AimType.getDisplayNames());
         addSetting(aimMode);
 
         // Shared settings (always visible)
@@ -174,44 +133,59 @@ public class AimbotModule extends CheatModule {
         addSetting(cancelOnShoot);
         addSetting(showFov);
 
-        // Classic mode settings
-        addSetting(smooth);
-        addSetting(sensitivity);
-        addSetting(humanize);
-        addSetting(humanizeStrength);
-
-        // PID Spring mode settings (hidden initially — Classic is default)
-        addSetting(pidStiffness);
-        addSetting(pidDamping);
-        addSetting(pidMass);
-        addSetting(pidMaxForce);
-        addSetting(pidSensitivity);
+        // Register settings for each registered aim mode
+        for (AimMode mode : aimModes) {
+            for (Setting<?> setting : mode.getSettings()) {
+                addSetting(setting);
+            }
+        }
 
         // Apply initial visibility
         applyModeVisibility();
     }
 
+    /**
+     * Registers a new AimMode into the aimbot module dynamically.
+     */
+    public void registerAimMode(AimMode mode) {
+        if (mode == null || aimModes.contains(mode)) return;
+        registerAimModeInternal(mode);
+        for (Setting<?> setting : mode.getSettings()) {
+            addSetting(setting);
+        }
+        applyModeVisibility();
+    }
+
+    private void registerAimModeInternal(AimMode mode) {
+        aimModes.add(mode);
+    }
+
+    public List<AimMode> getAimModes() {
+        return Collections.unmodifiableList(aimModes);
+    }
+
+    public AimMode getActiveAimMode() {
+        int index = aimMode.getValue();
+        if (index >= 0 && index < aimModes.size()) {
+            return aimModes.get(index);
+        }
+        return aimModes.isEmpty() ? null : aimModes.get(0);
+    }
+
     // ── Mode visibility management ────────────────────────────────────────────
 
     /**
-     * Shows Classic settings and hides PID settings, or vice-versa, depending
-     * on the current aimMode selection. Called whenever aimMode changes.
+     * Shows settings belonging to the active AimMode and hides settings of unselected modes.
+     * Called whenever aimMode selection changes on tick.
      */
     private void applyModeVisibility() {
-        boolean pid = aimMode.getValue() == 1;
-
-        // Classic settings: visible when NOT pid
-        smooth.setHidden(pid);
-        sensitivity.setHidden(pid);
-        humanize.setHidden(pid);
-        humanizeStrength.setHidden(pid);
-
-        // PID settings: visible only when pid
-        pidStiffness.setHidden(!pid);
-        pidDamping.setHidden(!pid);
-        pidMass.setHidden(!pid);
-        pidMaxForce.setHidden(!pid);
-        pidSensitivity.setHidden(!pid);
+        int selectedIndex = aimMode.getValue();
+        for (int i = 0; i < aimModes.size(); i++) {
+            boolean isSelected = (i == selectedIndex);
+            for (Setting<?> setting : aimModes.get(i).getSettings()) {
+                setting.setHidden(!isSelected);
+            }
+        }
     }
 
     // ── Module lifecycle ──────────────────────────────────────────────────────
@@ -233,9 +207,6 @@ public class AimbotModule extends CheatModule {
     /**
      * Draws one or two concentric circles at the screen centre to visualise
      * the aimbot's outer FOV limit and the inner dead-zone (FOV Min).
-     *
-     * <p>The radius in pixels is computed with the same hFOV formula used by
-     * the aim thread, so the circle always matches exactly what the bot targets.
      *
      * @param drawList ImGui foreground draw list.
      */
@@ -280,14 +251,9 @@ public class AimbotModule extends CheatModule {
     }
 
     private void resetState() {
-        prevDeltaX = 0f;
-        prevDeltaY = 0f;
-        accumX = 0f;
-        accumY = 0f;
-        springVelX = 0f;
-        springVelY = 0f;
-        pidAccumX = 0f;
-        pidAccumY = 0f;
+        for (AimMode mode : aimModes) {
+            mode.reset();
+        }
     }
 
     // ── Aim thread ────────────────────────────────────────────────────────────
@@ -356,9 +322,6 @@ public class AimbotModule extends CheatModule {
                     boolean chkSpot  = spottedFallback.getValue();
 
                     // 6. Derive horizontal FOV from screen aspect ratio.
-                    // Assumes CS2 default cl_fov = 90 at 4:3 (CS:GO/CS2 standard).
-                    // vFOV_half(4:3) = atan(tan(45°) * 3/4) = 36.87°
-                    // hFOV(AR) = 2 * atan(tan(vFOV_half) * AR)
                     int sw = Math.max(PlayerCache.screenWidth, 1280);
                     int sh = Math.max(PlayerCache.screenHeight, 720);
                     float ar = (float) sw / (float) sh;
@@ -420,21 +383,17 @@ public class AimbotModule extends CheatModule {
                     lastAimNs = nowNs;
                     float dt = dtNs * 1e-9f; // seconds
 
-                    // 10. Dispatch to Classic or PID spring logic
-                    int mx, my;
-                    if (aimMode.getValue() == 1) {
-                        int[] pidMove = tickPidSpring(bestDX, bestDY, hf, sw, dt);
-                        mx = pidMove[0];
-                        my = pidMove[1];
-                    } else {
-                        int[] classicMove = tickClassic(bestDX, bestDY, bestDist, fovPx, hf, sw);
-                        mx = classicMove[0];
-                        my = classicMove[1];
-                    }
+                    // 10. Dispatch to active AimMode
+                    AimMode activeMode = getActiveAimMode();
+                    if (activeMode != null) {
+                        int[] move = activeMode.tick(bestDX, bestDY, bestDist, fovPx, hf, sw, dt);
+                        int mx = move[0];
+                        int my = move[1];
 
-                    // 11. Inject relative mouse movement (raw-input compatible)
-                    if (mx != 0 || my != 0)
-                        Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
+                        // 11. Inject relative mouse movement (raw-input compatible)
+                        if (mx != 0 || my != 0)
+                            Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
+                    }
 
                     Thread.yield();
 
@@ -454,126 +413,6 @@ public class AimbotModule extends CheatModule {
         aimThread.setDaemon(true);
         aimThread.setPriority(Thread.MAX_PRIORITY);
         aimThread.start();
-    }
-
-    // ── Classic aim tick ──────────────────────────────────────────────────────
-
-    /**
-     * One tick of the Classic proportional-smooth algorithm.
-     *
-     * @param bestDX  screen-pixel offset X toward target
-     * @param bestDY  screen-pixel offset Y toward target
-     * @param bestDist Euclidean distance to target in screen pixels
-     * @param fovPx   FOV radius in screen pixels
-     * @param hf      horizontal FOV in degrees
-     * @param sw      screen width in pixels
-     * @return {intMouseX, intMouseY} ready for mouse_event
-     */
-    private int[] tickClassic(float bestDX, float bestDY, float bestDist, float fovPx,
-                               float hf, int sw) {
-        float sens = sensitivity.getValue();
-        float mpp  = hf / (sw * 0.022f * sens);
-
-        float rawX = bestDX * mpp;
-        float rawY = bestDY * mpp;
-
-        // Smooth — far targets approach fast, close targets fine-tune
-        float sf = smooth.getValue();
-        if (sf > 1.0f) {
-            float dr  = bestDist / fovPx; // 0 = centre, 1 = FOV edge
-            float spf = 1.0f + dr;        // 1 = slow, 2 = fast
-            rawX /= (sf * spf);
-            rawY /= (sf * spf);
-        }
-
-        // Humanise
-        if (humanize.getValue()) {
-            float[] h = humanise(rawX, rawY);
-            rawX = h[0];
-            rawY = h[1];
-        }
-
-        // Sub-pixel accumulation
-        accumX += rawX;
-        accumY += rawY;
-        int mx = (int) accumX;
-        int my = (int) accumY;
-        accumX -= mx;
-        accumY -= my;
-
-        return new int[]{ mx, my };
-    }
-
-    // ── PID Spring aim tick ───────────────────────────────────────────────────
-
-    /**
-     * One tick of the PID spring integrator.
-     *
-     * <p>Models the mouse as a mass attached to a spring anchored at the
-     * target bone (in mouse-count space).  On each tick we compute the
-     * spring force, integrate velocity, integrate position, and emit the
-     * integer part of the accumulated position as the actual mouse delta.
-     *
-     * <p>Under-damped tuning (damping &lt; 2*sqrt(kP*mass)) produces the
-     * characteristic overshoot-and-settle behavior requested.
-     *
-     * @param bestDX  screen-pixel offset X toward target
-     * @param bestDY  screen-pixel offset Y toward target
-     * @param hf      horizontal FOV in degrees
-     * @param sw      screen width in pixels
-     * @param dt      time elapsed since last tick in seconds
-     * @return {intMouseX, intMouseY} ready for mouse_event
-     */
-    private int[] tickPidSpring(float bestDX, float bestDY, float hf, int sw, float dt) {
-        float sens     = pidSensitivity.getValue();
-        float mpp      = hf / (sw * 0.022f * sens);
-
-        // Target in mouse-count space (how far we need to move)
-        float targetX  = bestDX * mpp;
-        float targetY  = bestDY * mpp;
-
-        float kP       = pidStiffness.getValue();
-        float kD       = pidDamping.getValue();
-        float mass     = pidMass.getValue();
-        float maxForce = pidMaxForce.getValue();
-
-        // Clamp dt to a safe range to avoid instability on lag spikes
-        float dtClamped = Math.min(dt, 0.020f); // max 20 ms step
-
-        // Spring force = kP * error - kD * velocity
-        // "error" here is the remaining distance to target in mouse-counts
-        float forceX = kP * targetX - kD * springVelX;
-        float forceY = kP * targetY - kD * springVelY;
-
-        // Cap force magnitude
-        float forceMag = (float) Math.sqrt(forceX * forceX + forceY * forceY);
-        if (forceMag > maxForce) {
-            float scale = maxForce / forceMag;
-            forceX *= scale;
-            forceY *= scale;
-        }
-
-        // Euler integration: v += (F/m) * dt
-        springVelX += (forceX / mass) * dtClamped;
-        springVelY += (forceY / mass) * dtClamped;
-
-        // Integrate position delta for this tick: delta = v * dt
-        float deltaX = springVelX * dtClamped;
-        float deltaY = springVelY * dtClamped;
-
-        // Overshoot guard: if delta would overshoot in the opposite direction
-        // after the target is very close, let velocity decay naturally — do NOT
-        // clamp here; that is what produces the satisfying rebound.
-
-        // Sub-pixel accumulator
-        pidAccumX += deltaX;
-        pidAccumY += deltaY;
-        int mx = (int) pidAccumX;
-        int my = (int) pidAccumY;
-        pidAccumX -= mx;
-        pidAccumY -= my;
-
-        return new int[]{ mx, my };
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -616,28 +455,6 @@ public class AimbotModule extends CheatModule {
             return s != 0;
         }
         return true;
-    }
-
-    private float[] humanise(float rawX, float rawY) {
-        float str = humanizeStrength.getValue() / 100.0f;
-        if (str <= 0f) {
-            prevDeltaX = rawX;
-            prevDeltaY = rawY;
-            return new float[]{ rawX, rawY };
-        }
-        float md = (float) Math.sqrt(rawX * rawX + rawY * rawY);
-        float ms = Math.min(md * 0.12f, 3.0f) * str;
-        float mx = (float) rng.nextGaussian() * ms;
-        float my = (float) rng.nextGaussian() * ms;
-        float ps = 0.10f * str;
-        float px = -rawY * ps * (float) rng.nextGaussian();
-        float py =  rawX * ps * (float) rng.nextGaussian();
-        float bl = 0.75f + rng.nextFloat() * 0.20f;
-        float sx = rawX * bl + prevDeltaX * (1.0f - bl);
-        float sy = rawY * bl + prevDeltaY * (1.0f - bl);
-        prevDeltaX = rawX;
-        prevDeltaY = rawY;
-        return new float[]{ sx + mx + px, sy + my + py };
     }
 
     private boolean isAimKeyHeld() {
