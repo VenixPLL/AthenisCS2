@@ -106,6 +106,12 @@ public class TriggerBotModule extends CheatModule {
     public final BooleanSetting useVisCheck = new BooleanSetting("VisCheck Filter##triggerbot", true);
 
     /**
+     * When enabled, the triggerbot will NOT fire if the local player is currently
+     * blinded by a flashbang.
+     */
+    public final BooleanSetting flashCheck = new BooleanSetting("Flashbang Check##triggerbot", true);
+
+    /**
      * When enabled, the triggerbot will NOT fire if the local player is moving
      * faster than {@link #maxMoveSpeed} units/sec. Useful for rifles where
      * accuracy is penalised while moving.
@@ -143,6 +149,7 @@ public class TriggerBotModule extends CheatModule {
         addSetting(boneRadiusFrac);
         addSetting(enemyOnly);
         addSetting(useVisCheck);
+        addSetting(flashCheck);
         addSetting(stopWhenMoving);
         addSetting(maxMoveSpeed);
     }
@@ -198,6 +205,23 @@ public class TriggerBotModule extends CheatModule {
 
                     float cx = PlayerCache.screenWidth * 0.5f;
                     float cy = PlayerCache.screenHeight * 0.5f;
+
+                    // ── Flashbang check: skip if local player is blinded ───────────
+                    if (flashCheck.getValue()) {
+                        boolean isFlashed = false;
+                        for (PlayerSnapshot lp : players) {
+                            if (!lp.isLocal)
+                                continue;
+                            if (lp.flashDuration > 0.1f && lp.flashMaxAlpha > 50.0f) {
+                                isFlashed = true;
+                            }
+                            break;
+                        }
+                        if (isFlashed) {
+                            Thread.yield();
+                            continue;
+                        }
+                    }
 
                     // ── Velocity check: skip if local player is moving too fast ────
                     if (stopWhenMoving.getValue()) {
