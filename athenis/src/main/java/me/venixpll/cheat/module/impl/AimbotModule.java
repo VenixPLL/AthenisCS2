@@ -89,6 +89,9 @@ public class AimbotModule extends CheatModule {
             "Spotted Fallback##aimbot", true);
     public final BooleanSetting cancelOnShoot = new BooleanSetting(
             "Cancel on Shoot##aimbot", true);
+    /** When true, aimbot will pause while the local player is blinded by a flashbang. */
+    public final BooleanSetting flashCheck = new BooleanSetting(
+            "Flashbang Check##aimbot", true);
     /** When true, draws the FOV circle on the overlay. */
     public final BooleanSetting showFov = new BooleanSetting(
             "Show FOV Circle##aimbot", true);
@@ -135,6 +138,7 @@ public class AimbotModule extends CheatModule {
         addSetting(useVisCheck);
         addSetting(spottedFallback);
         addSetting(cancelOnShoot);
+        addSetting(flashCheck);
         addSetting(showFov);
 
         // Register settings for each registered aim mode
@@ -296,6 +300,24 @@ public class AimbotModule extends CheatModule {
                         resetState();
                         Thread.yield();
                         continue;
+                    }
+
+                    // 2c. Flashbang Check: pause aimbot while local player is blinded
+                    if (flashCheck.getValue()) {
+                        boolean isFlashed = false;
+                        for (PlayerSnapshot lp : PlayerCache.renderPlayers) {
+                            if (!lp.isLocal)
+                                continue;
+                            if (lp.flashDuration > 0.1f && lp.flashMaxAlpha > 50.0f) {
+                                isFlashed = true;
+                            }
+                            break;
+                        }
+                        if (isFlashed) {
+                            resetState();
+                            Thread.yield();
+                            continue;
+                        }
                     }
 
                     // 3. Local pawn
