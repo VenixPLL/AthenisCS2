@@ -305,13 +305,13 @@ public class AimbotModule extends CheatModule {
                     // 2c. Flashbang Check: pause aimbot while local player is blinded
                     if (flashCheck.getValue()) {
                         boolean isFlashed = false;
-                        for (PlayerSnapshot lp : PlayerCache.renderPlayers) {
-                            if (!lp.isLocal)
-                                continue;
-                            if (lp.flashDuration > 0.1f && lp.flashMaxAlpha > 50.0f) {
+                        long lpAddr = PlayerCache.localPlayerPawnAddress;
+                        if (lpAddr != 0) {
+                            float fDur = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashDuration);
+                            float fAlpha = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashMaxAlpha);
+                            if (fDur > 0.1f && fAlpha > 50.0f) {
                                 isFlashed = true;
                             }
-                            break;
                         }
                         if (isFlashed) {
                             resetState();
@@ -372,15 +372,22 @@ public class AimbotModule extends CheatModule {
                             continue;
                         if (p.health <= 0)
                             continue;
+
+                        float[] bx = p.boneX;
+                        float[] by = p.boneY;
+                        boolean[] bv = p.boneVisible;
+                        if (bx == null || by == null || bv == null)
+                            continue;
+
                         int bone = resolveBone(boneMode, p);
-                        if (bone < 0 || bone >= p.boneX.length || !p.boneVisible[bone])
+                        if (bone < 0 || bone >= bx.length || bone >= by.length || bone >= bv.length || !bv[bone])
                             continue;
 
                         if (chkVis && !isBoneVisible(p, bone, localCamera, localPawn, chkSpot))
                             continue;
 
-                        float sdx = p.boneX[bone] - cx;
-                        float sdy = p.boneY[bone] - cy;
+                        float sdx = bx[bone] - cx;
+                        float sdy = by[bone] - cy;
                         float dist = (float) Math.sqrt(sdx * sdx + sdy * sdy);
                         if (dist >= fovPx)
                             continue;
@@ -450,11 +457,15 @@ public class AimbotModule extends CheatModule {
         float cy = PlayerCache.screenHeight * 0.5f;
         int bestBone = BONE_HEAD;
         float bestD  = Float.MAX_VALUE;
+        float[] bx = p.boneX;
+        float[] by = p.boneY;
+        boolean[] bv = p.boneVisible;
+        if (bx == null || by == null || bv == null) return BONE_HEAD;
         for (int b : new int[]{ BONE_HEAD, BONE_NECK, BONE_CHEST, BONE_STOMACH }) {
-            if (b >= p.boneX.length || !p.boneVisible[b])
+            if (b < 0 || b >= bx.length || b >= by.length || b >= bv.length || !bv[b])
                 continue;
-            float d = (p.boneX[b] - cx) * (p.boneX[b] - cx)
-                    + (p.boneY[b] - cy) * (p.boneY[b] - cy);
+            float d = (bx[b] - cx) * (bx[b] - cx)
+                    + (by[b] - cy) * (by[b] - cy);
             if (d < bestD) {
                 bestD    = d;
                 bestBone = b;

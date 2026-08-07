@@ -209,13 +209,13 @@ public class TriggerBotModule extends CheatModule {
                     // ── Flashbang check: skip if local player is blinded ───────────
                     if (flashCheck.getValue()) {
                         boolean isFlashed = false;
-                        for (PlayerSnapshot lp : players) {
-                            if (!lp.isLocal)
-                                continue;
-                            if (lp.flashDuration > 0.1f && lp.flashMaxAlpha > 50.0f) {
+                        long localPawn = PlayerCache.localPlayerPawnAddress;
+                        if (localPawn != 0) {
+                            float fDur = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashDuration);
+                            float fAlpha = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashMaxAlpha);
+                            if (fDur > 0.1f && fAlpha > 50.0f) {
                                 isFlashed = true;
                             }
-                            break;
                         }
                         if (isFlashed) {
                             Thread.yield();
@@ -226,14 +226,13 @@ public class TriggerBotModule extends CheatModule {
                     // ── Velocity check: skip if local player is moving too fast ────
                     if (stopWhenMoving.getValue()) {
                         float threshold = maxMoveSpeed.getValue();
-                        // Approximate local speed from the local player snapshot
                         float localSpeed = 0f;
-                        for (PlayerSnapshot lp : players) {
-                            if (!lp.isLocal)
-                                continue;
-                            float vx = lp.velX, vy = lp.velY; // horizontal only
-                            localSpeed = (float) Math.sqrt(vx * vx + vy * vy);
-                            break;
+                        long localPawn = PlayerCache.localPlayerPawnAddress;
+                        if (localPawn != 0) {
+                            Vector3 vel = CS2Memory.readVector(localPawn + CS2Offsets.m_vecVelocity);
+                            if (vel != null && Float.isFinite(vel.x) && Float.isFinite(vel.y)) {
+                                localSpeed = (float) Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+                            }
                         }
                         if (localSpeed > threshold) {
                             Thread.yield();
@@ -339,19 +338,22 @@ public class TriggerBotModule extends CheatModule {
     private int getAimedBone(PlayerSnapshot p,
             float cx, float cy,
             int[] bones, float radFrac) {
-        if (p.boneX.length == 0)
+        float[] bx = p.boneX;
+        float[] by = p.boneY;
+        boolean[] bv = p.boneVisible;
+        if (bx == null || by == null || bv == null || bx.length == 0)
             return -1;
 
         float boxHeight = p.feetY - p.headY;
 
         for (int bone : bones) {
-            if (bone >= p.boneX.length)
+            if (bone < 0 || bone >= bx.length || bone >= by.length || bone >= bv.length)
                 continue;
-            if (!p.boneVisible[bone])
+            if (!bv[bone])
                 continue;
 
-            float bx = p.boneX[bone];
-            float by = p.boneY[bone];
+            float bX = bx[bone];
+            float bY = by[bone];
 
             float r;
             if (bone == BONE_HEAD) {
@@ -361,8 +363,8 @@ public class TriggerBotModule extends CheatModule {
                 r = boxHeight * radFrac;
             }
 
-            float dx = cx - bx;
-            float dy = cy - by;
+            float dx = cx - bX;
+            float dy = cy - bY;
             if (dx * dx + dy * dy <= r * r)
                 return bone;
         }

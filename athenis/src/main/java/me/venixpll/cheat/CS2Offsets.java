@@ -648,9 +648,13 @@ public class CS2Offsets {
         m_iItemIDHigh = getField(classes, "C_EconItemView", "m_iItemIDHigh", 0x1D0);
         m_nSubclassID = getField(classes, "C_BaseEntity", "m_nSubclassID", 0x3B8);
 
-        // Direct pawn fields from C_CSPlayerPawnBase (flash + progress bar):
-        m_flFlashMaxAlpha     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashMaxAlpha",     0x13FC);
-        m_flFlashDuration     = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
+        // Direct pawn fields:
+        m_vecVelocity          = getField(classes, "C_CSPlayerPawn", "m_vecVelocity",
+                                 getField(classes, "C_CSPlayerPawnBase", "m_vecVelocity",
+                                 getField(classes, "C_BasePlayerPawn", "m_vecVelocity",
+                                 getField(classes, "C_BaseEntity", "m_vecAbsVelocity", 0x3C8))));
+        m_flFlashMaxAlpha      = getField(classes, "C_CSPlayerPawnBase", "m_flFlashMaxAlpha",     0x13FC);
+        m_flFlashDuration      = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
         m_iProgressBarDuration = getField(classes, "C_CSPlayerPawnBase", "m_iProgressBarDuration", 0x13E0);
         m_iShotsFired          = getField(classes, "C_CSPlayerPawnBase", "m_iShotsFired",          0x1488);
 
