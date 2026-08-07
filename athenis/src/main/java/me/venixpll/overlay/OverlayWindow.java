@@ -387,7 +387,6 @@ public class OverlayWindow extends Application {
         if (menuOpen) {
             OverlayMenu.render();
             PerformanceMonitor.render();
-            me.venixpll.skinchanger.SkinChangerWindow.render();
         }
 
         // Draw Watermark in top-left corner
