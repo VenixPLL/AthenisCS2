@@ -144,7 +144,7 @@ public class RadarHackModule extends CheatModule {
 
         private String lastMapName = "";
         private volatile MapOverviewData currentMapData = null;
-        private int mapLogTicks = 0;
+        private boolean mapDetectionLogged = false;
         private long detectedOffset = -1;
         private boolean detectedIsDirect = false;
 
@@ -320,14 +320,9 @@ public class RadarHackModule extends CheatModule {
                         currentMapData = null;
                         lastMapName = "";
                         VisCheckAdapter.update("");
-                        mapLogTicks++;
-                        if (mapLogTicks % 30 == 0) {
-                                long base1 = CS2Memory.readLong(clientBase + CS2Offsets.dwGlobalVars);
-                                long base2 = clientBase + CS2Offsets.dwGlobalVars;
-                                System.out.println("[RadarHackModule] Map detection active. dwGlobalVars = 0x"
-                                                + Long.toHexString(CS2Offsets.dwGlobalVars)
-                                                + ", base1 (pointer value) = 0x" + Long.toHexString(base1)
-                                                + ", base2 (direct value) = 0x" + Long.toHexString(base2));
+                        if (!mapDetectionLogged) {
+                                System.out.println("[RadarHackModule] Map detection active.");
+                                mapDetectionLogged = true;
                         }
                         return;
                 }
@@ -342,6 +337,7 @@ public class RadarHackModule extends CheatModule {
 
                 if (!cleanMap.equals(lastMapName)) {
                         lastMapName = cleanMap;
+                        mapDetectionLogged = false;
                         VisCheckAdapter.update(cleanMap);
                         currentMapData = MAPS.get(cleanMap);
                         if (currentMapData != null) {
