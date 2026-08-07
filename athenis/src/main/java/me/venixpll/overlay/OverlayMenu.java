@@ -36,36 +36,36 @@ import java.util.List;
 public class OverlayMenu {
 
     // ── Window geometry ────────────────────────────────────────────────────────
-    private static final float WINDOW_W   = 820f;
-    private static final float WINDOW_H   = 520f;
-    private static final float SIDEBAR_W  = 190f;
-    private static final float TOPBAR_H   = 34f;
+    private static final float WINDOW_W = 820f;
+    private static final float WINDOW_H = 520f;
+    private static final float SIDEBAR_W = 190f;
+    private static final float TOPBAR_H = 34f;
 
     // ── Colour palette — exact match with LauncherWindow (Catppuccin Mocha) ───
-    // C_BG        #0A0B0E
-    private static final float[] COL_BG        = { 0.039f, 0.043f, 0.055f, 0.97f };
-    // C_SURFACE   #111318  — sidebar / topbar
-    private static final float[] COL_SIDEBAR   = { 0.067f, 0.075f, 0.094f, 1.00f };
-    // C_SURFACE2  #161B22  — content area
-    private static final float[] COL_CONTENT   = { 0.086f, 0.106f, 0.133f, 1.00f };
+    // C_BG #0A0B0E
+    private static final float[] COL_BG = { 0.039f, 0.043f, 0.055f, 0.97f };
+    // C_SURFACE #111318 — sidebar / topbar
+    private static final float[] COL_SIDEBAR = { 0.067f, 0.075f, 0.094f, 1.00f };
+    // C_SURFACE2 #161B22 — content area
+    private static final float[] COL_CONTENT = { 0.086f, 0.106f, 0.133f, 1.00f };
     // Top-bar: same as sidebar surface
-    private static final float[] COL_TOPBAR    = { 0.067f, 0.075f, 0.094f, 1.00f };
+    private static final float[] COL_TOPBAR = { 0.067f, 0.075f, 0.094f, 1.00f };
 
-    // C_ACCENT    #00B4D8  — cyan (matches launcher exactly)
-    private static final float[] COL_ACCENT    = { 0.000f, 0.706f, 0.847f, 1.00f };
+    // C_ACCENT #00B4D8 — cyan (matches launcher exactly)
+    private static final float[] COL_ACCENT = { 0.000f, 0.706f, 0.847f, 1.00f };
     // Logo background: slightly darker cyan shade for the header badge
-    private static final float[] COL_LOGO_BG   = { 0.000f, 0.580f, 0.700f, 1.00f };
+    private static final float[] COL_LOGO_BG = { 0.000f, 0.580f, 0.700f, 1.00f };
 
     // Active sidebar item background (slightly above C_SURFACE2)
-    private static final float[] COL_ITEM_ACT  = { 0.095f, 0.118f, 0.148f, 1.00f };
+    private static final float[] COL_ITEM_ACT = { 0.095f, 0.118f, 0.148f, 1.00f };
     // Hover sidebar item background
-    private static final float[] COL_ITEM_HOV  = { 0.110f, 0.135f, 0.165f, 1.00f };
+    private static final float[] COL_ITEM_HOV = { 0.110f, 0.135f, 0.165f, 1.00f };
 
-    // C_BORDER    #21262D
-    private static final float[] COL_BORDER    = { 0.129f, 0.149f, 0.176f, 1.00f };
+    // C_BORDER #21262D
+    private static final float[] COL_BORDER = { 0.129f, 0.149f, 0.176f, 1.00f };
 
-    // C_TEXT_DIM  #6C7086
-    private static final float[] COL_DIM       = { 0.424f, 0.439f, 0.525f, 1.00f };
+    // C_TEXT_DIM #6C7086
+    private static final float[] COL_DIM = { 0.424f, 0.439f, 0.525f, 1.00f };
 
     // Debug glow green (unchanged)
     private static final float[] COL_DBG_GREEN = { 0.18f, 0.80f, 0.44f, 1.00f };
@@ -97,7 +97,6 @@ public class OverlayMenu {
 
         List<CheatModule> modules = ModuleManager.getModules();
 
-
         // Clamp module selection
         if (selectedModuleIdx >= modules.size()) {
             selectedModuleIdx = modules.isEmpty() ? SYSTEM_SETTINGS_IDX : 0;
@@ -115,9 +114,9 @@ public class OverlayMenu {
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0f, 0f);
         ImGui.begin("##AthenisMenu",
                 ImGuiWindowFlags.NoTitleBar
-                | ImGuiWindowFlags.NoResize
-                | ImGuiWindowFlags.NoScrollbar
-                | ImGuiWindowFlags.NoScrollWithMouse);
+                        | ImGuiWindowFlags.NoResize
+                        | ImGuiWindowFlags.NoScrollbar
+                        | ImGuiWindowFlags.NoScrollWithMouse);
         ImVec2 winPos = ImGui.getWindowPos();
 
         // ── Full window background ─────────────────────────────────────────────
@@ -152,7 +151,8 @@ public class OverlayMenu {
 
         // Render each non-empty MenuGroup in declaration order
         for (MenuGroup group : MenuGroup.values()) {
-            if (group == MenuGroup.SYSTEM) continue; // handled separately at bottom
+            if (group == MenuGroup.SYSTEM)
+                continue; // handled separately at bottom
             renderSidebarGroup(modules, group);
         }
 
@@ -161,12 +161,13 @@ public class OverlayMenu {
 
         ImGui.endChild();
         ImGui.popStyleColor(); // ChildBg
-        ImGui.popStyleVar(2);  // ItemSpacing, FramePadding
+        ImGui.popStyleVar(2); // ItemSpacing, FramePadding
 
         // ── MAIN CONTENT AREA ─────────────────────────────────────────────────
         ImGui.setCursorPos(SIDEBAR_W, 0f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.ChildBg, 0f, 0f, 0f, 0f);
-        // Zero ItemSpacing + WindowPadding so no gap appears between topbar and settings children
+        // Zero ItemSpacing + WindowPadding so no gap appears between topbar and
+        // settings children
         ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, 0f, 0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0f, 0f);
         ImGui.beginChild("##mainarea", WINDOW_W - SIDEBAR_W, WINDOW_H, false, NO_SCROLL);
@@ -198,7 +199,7 @@ public class OverlayMenu {
         ImGui.popStyleVar(3);
         ImGui.popStyleColor(); // ChildBg settings
         ImGui.endChild(); // ##mainarea
-        ImGui.popStyleVar(2);  // ItemSpacing + WindowPadding mainarea
+        ImGui.popStyleVar(2); // ItemSpacing + WindowPadding mainarea
         ImGui.popStyleColor(); // ChildBg mainarea
         ImGui.end();
 
@@ -242,9 +243,11 @@ public class OverlayMenu {
         // Count visible items
         int count = 0;
         for (CheatModule mod : modules) {
-            if (mod.getMenuGroup() == group) count++;
+            if (mod.getMenuGroup() == group)
+                count++;
         }
-        if (count == 0) return;
+        if (count == 0)
+            return;
 
         // Category header label (e.g. "VISUALS")
         renderCategoryHeader(group.label);
@@ -252,7 +255,8 @@ public class OverlayMenu {
         // Items
         for (int i = 0; i < modules.size(); i++) {
             CheatModule mod = modules.get(i);
-            if (mod.getMenuGroup() != group) continue;
+            if (mod.getMenuGroup() != group)
+                continue;
             renderSidebarItem(modules, i, group);
         }
 
@@ -282,9 +286,9 @@ public class OverlayMenu {
     /** Renders a single module item row in the sidebar. */
     private static void renderSidebarItem(List<CheatModule> modules, int idx, MenuGroup group) {
         CheatModule mod = modules.get(idx);
-        boolean isActive  = (selectedModuleIdx == idx);
+        boolean isActive = (selectedModuleIdx == idx);
         boolean isEnabled = mod.isEnabled();
-        boolean isDebug   = (mod.getCategory() == ModuleCategory.DEBUG);
+        boolean isDebug = (mod.getCategory() == ModuleCategory.DEBUG);
 
         float itemH = 34f;
 
@@ -332,9 +336,12 @@ public class OverlayMenu {
             int g1 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.15f);
             int g2 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.40f);
             int g3 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 1.00f);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 6f, g1, 12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4f, g2, 12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 2.5f, g3, 8);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 6f, g1,
+                    12);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4f, g2,
+                    12);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 2.5f, g3,
+                    8);
         } else {
             int dotCol = isEnabled
                     ? ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f)
@@ -466,7 +473,6 @@ public class OverlayMenu {
 
         // ── Menu Toggle Key row ───────────────────────────────────────────────
         float settingX = availW * 0.12f;
-        float settingW = availW * 0.76f;
         ImGui.setCursorPosX(settingX);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
                 COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
@@ -528,12 +534,13 @@ public class OverlayMenu {
         // Enable checkbox
         float checkLabelW = ImGui.calcTextSize("Enable " + module.getName()).x + 24f;
         float checkX = (availW - checkLabelW) * 0.5f;
-        if (checkX < 8f) checkX = 8f;
+        if (checkX < 8f)
+            checkX = 8f;
         ImGui.setCursorPosX(checkX);
 
         float[] cbAccent = isDebug ? COL_DBG_GREEN : COL_ACCENT;
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,  cbAccent[0], cbAccent[1], cbAccent[2], 1f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg,        0.18f, 0.18f, 0.18f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark, cbAccent[0], cbAccent[1], cbAccent[2], 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
                 cbAccent[0] * 0.45f, cbAccent[1] * 0.45f, cbAccent[2] * 0.45f, 1f);
@@ -562,15 +569,18 @@ public class OverlayMenu {
         ImGui.spacing();
 
         float settingW = availW * 0.48f;
-        if (settingW < 160f) settingW = 160f;
+        if (settingW < 160f)
+            settingW = 160f;
         float settingX = availW * 0.16f;
-        if (settingX < 8f) settingX = 8f;
+        if (settingX < 8f)
+            settingX = 8f;
 
         if (module instanceof ESPModule) {
             renderESPModuleSettings((ESPModule) module, settingX, settingW, isDebug);
         } else {
             for (Setting<?> setting : module.getSettings()) {
-                if (setting.isHidden()) continue;
+                if (setting.isHidden())
+                    continue;
                 renderSingleSetting(module, setting, settingX, settingW, isDebug);
             }
         }
@@ -579,27 +589,29 @@ public class OverlayMenu {
     }
 
     private static void renderSingleSetting(CheatModule module, Setting<?> setting,
-                                            float settingX, float settingW, boolean isDebug) {
+            float settingX, float settingW, boolean isDebug) {
         boolean disabled = shouldDisable(module, setting);
-        if (disabled) ImGui.beginDisabled(true);
+        if (disabled)
+            ImGui.beginDisabled(true);
 
         ImGui.setCursorPosX(settingX);
         ImGui.setNextItemWidth(settingW);
 
         float[] sAccent = isDebug ? COL_DBG_GREEN : COL_ACCENT;
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark,      sAccent[0], sAccent[1], sAccent[2], 1f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrab,     sAccent[0], sAccent[1], sAccent[2], 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.CheckMark, sAccent[0], sAccent[1], sAccent[2], 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrab, sAccent[0], sAccent[1], sAccent[2], 1f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.SliderGrabActive,
                 Math.min(sAccent[0] * 1.15f, 1f), Math.min(sAccent[1] * 1.15f, 1f),
                 Math.min(sAccent[2] * 1.15f, 1f), 1f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg,         0.18f, 0.18f, 0.18f, 1f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered,  0.23f, 0.23f, 0.23f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBg, 0.18f, 0.18f, 0.18f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgHovered, 0.23f, 0.23f, 0.23f, 1f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.FrameBgActive,
                 sAccent[0] * 0.4f, sAccent[1] * 0.4f, sAccent[2] * 0.4f, 1f);
         setting.renderImGui();
         ImGui.popStyleColor(6);
 
-        if (disabled) ImGui.endDisabled();
+        if (disabled)
+            ImGui.endDisabled();
         ImGui.spacing();
     }
 
@@ -607,56 +619,59 @@ public class OverlayMenu {
         ImGui.setCursorPosX(settingX);
         if (ImGui.beginTabBar("##ESPModeTabs")) {
             if (ImGui.beginTabItem("Player ESP")) {
-                ImGui.spacing(); ImGui.spacing();
-                renderSingleSetting(esp, esp.playerEsp,          settingX, settingW, isDebug);
                 ImGui.spacing();
-                renderSingleSetting(esp, esp.boxEsp,             settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.skeletonEsp,        settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.playerEsp, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.boxEsp, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.skeletonEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.invisibleBonesOnly, settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.healthEsp,          settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.nameEsp,            settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.teamCheck,          settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.extrapolationBias,  settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.enemyColor,         settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.teamColor,          settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.healthEsp, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.nameEsp, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.teamCheck, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.extrapolationBias, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.enemyColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.teamColor, settingX, settingW, isDebug);
                 ImGui.spacing();
                 float[] hAccent = isDebug ? COL_DBG_GREEN : COL_ACCENT;
                 ImGui.setCursorPosX(settingX);
                 ImGui.textColored(hAccent[0], hAccent[1], hAccent[2], 0.85f, "Player Flags:");
                 ImGui.spacing();
-                renderSingleSetting(esp, esp.flagsEsp,      settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.flagBlind,     settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.flagScoped,    settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.flagDefusing,  settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.flagKit,       settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.flagMoney,     settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagsEsp, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagBlind, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagScoped, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagDefusing, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagKit, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagMoney, settingX, settingW, isDebug);
                 ImGui.spacing();
                 ImGui.endTabItem();
             }
             if (ImGui.beginTabItem("Grenade ESP")) {
-                ImGui.spacing(); ImGui.spacing();
-                renderSingleSetting(esp, esp.grenadeEsp,   settingX, settingW, isDebug);
                 ImGui.spacing();
-                renderSingleSetting(esp, esp.showHE,       settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showFlash,    settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showSmoke,    settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showMolotov,  settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showDecoy,    settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.maxDistance,  settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.minScale,     settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.grenadeEsp, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.showHE, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showFlash, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showSmoke, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showMolotov, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showDecoy, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.maxDistance, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.minScale, settingX, settingW, isDebug);
                 ImGui.spacing();
                 ImGui.endTabItem();
             }
             if (ImGui.beginTabItem("Damage ESP")) {
-                ImGui.spacing(); ImGui.spacing();
-                renderSingleSetting(esp, esp.damageEsp,       settingX, settingW, isDebug);
                 ImGui.spacing();
-                renderSingleSetting(esp, esp.showDamage,      settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showFloating,    settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.showTeammates,   settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.damageColor,     settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.shotsColor,      settingX, settingW, isDebug);
-                renderSingleSetting(esp, esp.textScale,       settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.damageEsp, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.showDamage, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showFloating, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.showTeammates, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.damageColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.shotsColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.textScale, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.crosshairRadius, settingX, settingW, isDebug);
                 ImGui.spacing();
                 ImGui.endTabItem();
@@ -675,7 +690,8 @@ public class OverlayMenu {
      * – the current bind label (VK hex / key name), and
      * – a "Clear" button to remove the bind.
      *
-     * <p>When listening is active, every Windows VK in range 1–254 is polled
+     * <p>
+     * When listening is active, every Windows VK in range 1–254 is polled
      * via {@code GetAsyncKeyState} every GUI frame. The first key that reads
      * as pressed is captured and assigned; listening then stops automatically.
      * Escape cancels without changing the bind.
@@ -699,18 +715,19 @@ public class OverlayMenu {
             }
         }
 
-        float btnW    = 80f;
-        float clearW  = 50f;
+        float btnW = 80f;
+        float clearW = 50f;
         float spacing = 8f;
-        float labelW  = 110f;
-        float rowW    = btnW + spacing + labelW + spacing + clearW;
-        float startX  = (availW - rowW) * 0.5f;
-        if (startX < 8f) startX = 8f;
+        float labelW = 110f;
+        float rowW = btnW + spacing + labelW + spacing + clearW;
+        float startX = (availW - rowW) * 0.5f;
+        if (startX < 8f)
+            startX = 8f;
 
         boolean listening = module.isListeningForBind();
-        boolean isDebug   = (module.getCategory() == ModuleCategory.DEBUG);
+        boolean isDebug = (module.getCategory() == ModuleCategory.DEBUG);
         float[] baseColor = isDebug ? COL_DBG_GREEN : COL_ACCENT;
-        float[] btnR = listening ? new float[]{ 0.80f, 0.16f, 0.16f } : baseColor;
+        float[] btnR = listening ? new float[] { 0.80f, 0.16f, 0.16f } : baseColor;
 
         ImGui.setCursorPosX(startX);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,
@@ -724,7 +741,8 @@ public class OverlayMenu {
         String btnLabel = listening ? "Press key..." : "Set Bind";
         if (ImGui.button(btnLabel + "##bind_" + module.getName(), btnW, 0f)) {
             for (CheatModule m : ModuleManager.getModules()) {
-                if (m != module) m.setListeningForBind(false);
+                if (m != module)
+                    m.setListeningForBind(false);
             }
             module.setListeningForBind(!listening);
         }
@@ -738,15 +756,15 @@ public class OverlayMenu {
         String keyLabel = listening ? "(waiting...)" : (vk == -1 ? "None" : vkName(vk));
         ImGui.setNextItemWidth(labelW);
         float labelTextW = ImGui.calcTextSize(keyLabel).x;
-        float labelOffX  = (labelW - labelTextW) * 0.5f;
+        float labelOffX = (labelW - labelTextW) * 0.5f;
         ImGui.setCursorPosX(ImGui.getCursorPosX() + Math.max(0f, labelOffX));
         ImGui.text(keyLabel);
         ImGui.popStyleColor();
 
         ImGui.sameLine(startX + btnW + spacing + labelW + spacing, 0f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button,        0.22f, 0.22f, 0.22f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.22f, 0.22f, 0.22f, 1f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.30f, 0.30f, 0.30f, 1f);
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive,  0.16f, 0.16f, 0.16f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonActive, 0.16f, 0.16f, 0.16f, 1f);
         ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
         if (ImGui.button("Clear##bindclear_" + module.getName(), clearW, 0f)) {
             module.setBindKey(-1);
@@ -809,27 +827,55 @@ public class OverlayMenu {
      * @return Human-readable key name string.
      */
     private static String vkName(int vk) {
-        if (vk >= 0x41 && vk <= 0x5A) return String.valueOf((char) vk);
-        if (vk >= 0x30 && vk <= 0x39) return String.valueOf((char) vk);
-        if (vk >= 0x70 && vk <= 0x7B) return "F" + (vk - 0x6F);
-        if (vk >= 0x60 && vk <= 0x69) return "Num" + (vk - 0x60);
+        if (vk >= 0x41 && vk <= 0x5A)
+            return String.valueOf((char) vk);
+        if (vk >= 0x30 && vk <= 0x39)
+            return String.valueOf((char) vk);
+        if (vk >= 0x70 && vk <= 0x7B)
+            return "F" + (vk - 0x6F);
+        if (vk >= 0x60 && vk <= 0x69)
+            return "Num" + (vk - 0x60);
         return switch (vk) {
-            case 0x01 -> "LMB";     case 0x02 -> "RMB";    case 0x04 -> "MMB";
-            case 0x05 -> "X1";      case 0x06 -> "X2";
-            case 0x08 -> "Backspace"; case 0x09 -> "Tab";   case 0x0D -> "Enter";
-            case 0x10 -> "Shift";   case 0x11 -> "Ctrl";   case 0x12 -> "Alt";
-            case 0x14 -> "CapsLock"; case 0x1B -> "Escape"; case 0x20 -> "Space";
-            case 0x21 -> "PgUp";    case 0x22 -> "PgDn";   case 0x23 -> "End";
-            case 0x24 -> "Home";    case 0x25 -> "Left";   case 0x26 -> "Up";
-            case 0x27 -> "Right";   case 0x28 -> "Down";   case 0x2D -> "Insert";
+            case 0x01 -> "LMB";
+            case 0x02 -> "RMB";
+            case 0x04 -> "MMB";
+            case 0x05 -> "X1";
+            case 0x06 -> "X2";
+            case 0x08 -> "Backspace";
+            case 0x09 -> "Tab";
+            case 0x0D -> "Enter";
+            case 0x10 -> "Shift";
+            case 0x11 -> "Ctrl";
+            case 0x12 -> "Alt";
+            case 0x14 -> "CapsLock";
+            case 0x1B -> "Escape";
+            case 0x20 -> "Space";
+            case 0x21 -> "PgUp";
+            case 0x22 -> "PgDn";
+            case 0x23 -> "End";
+            case 0x24 -> "Home";
+            case 0x25 -> "Left";
+            case 0x26 -> "Up";
+            case 0x27 -> "Right";
+            case 0x28 -> "Down";
+            case 0x2D -> "Insert";
             case 0x2E -> "Delete";
-            case 0x6A -> "Num*";    case 0x6B -> "Num+";   case 0x6D -> "Num-";
-            case 0x6E -> "Num.";    case 0x6F -> "Num/";
-            case 0xA0 -> "LShift";  case 0xA1 -> "RShift";
-            case 0xA2 -> "LCtrl";   case 0xA3 -> "RCtrl";
-            case 0xA4 -> "LAlt";    case 0xA5 -> "RAlt";
-            case 0xBA -> ";";  case 0xBB -> "=";  case 0xBC -> ",";
-            case 0xDD -> "]";  case 0xDE -> "'";
+            case 0x6A -> "Num*";
+            case 0x6B -> "Num+";
+            case 0x6D -> "Num-";
+            case 0x6E -> "Num.";
+            case 0x6F -> "Num/";
+            case 0xA0 -> "LShift";
+            case 0xA1 -> "RShift";
+            case 0xA2 -> "LCtrl";
+            case 0xA3 -> "RCtrl";
+            case 0xA4 -> "LAlt";
+            case 0xA5 -> "RAlt";
+            case 0xBA -> ";";
+            case 0xBB -> "=";
+            case 0xBC -> ",";
+            case 0xDD -> "]";
+            case 0xDE -> "'";
             default -> String.format("VK_0x%02X", vk);
         };
     }
@@ -844,11 +890,11 @@ public class OverlayMenu {
      */
     private static void loadIcons() {
         String[] iconFiles = {
-            "eye-48.png",       // VISUALS
-            "lightning-50.png", // COMBAT
-            "globe-50.png",     // OTHER
-            "settings-48.png",  // SYSTEM
-            "keyboard-48.png",  // spare
+                "eye-48.png", // VISUALS
+                "lightning-50.png", // COMBAT
+                "globe-50.png", // OTHER
+                "settings-48.png", // SYSTEM
+                "keyboard-48.png", // spare
         };
 
         for (String name : iconFiles) {
@@ -867,11 +913,13 @@ public class OverlayMenu {
     private static int loadTextureFromClasspath(String resourcePath) {
         try {
             InputStream is = OverlayMenu.class.getClassLoader().getResourceAsStream(resourcePath);
-            if (is == null) return 0;
+            if (is == null)
+                return 0;
 
             BufferedImage img = ImageIO.read(is);
             is.close();
-            if (img == null) return 0;
+            if (img == null)
+                return 0;
 
             int w = img.getWidth();
             int h = img.getHeight();
@@ -893,22 +941,22 @@ public class OverlayMenu {
             ByteBuffer buf = ByteBuffer.allocateDirect(w * h * 4);
             for (int pixel : pixels) {
                 int r = (pixel >> 16) & 0xFF;
-                int g = (pixel >>  8) & 0xFF;
-                int b = (pixel)       & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = (pixel) & 0xFF;
                 int a = (pixel >> 24) & 0xFF;
 
                 int alphaMask;
                 if (isWhiteOnTransparent) {
                     alphaMask = a;
                 } else {
-                    int lum = (int)(0.299f * r + 0.587f * g + 0.114f * b);
+                    int lum = (int) (0.299f * r + 0.587f * g + 0.114f * b);
                     alphaMask = (a * (255 - lum)) / 255;
                 }
 
-                buf.put((byte) 0xFF);          // R = white
-                buf.put((byte) 0xFF);          // G = white
-                buf.put((byte) 0xFF);          // B = white
-                buf.put((byte) alphaMask);    // A = mask
+                buf.put((byte) 0xFF); // R = white
+                buf.put((byte) 0xFF); // G = white
+                buf.put((byte) 0xFF); // B = white
+                buf.put((byte) alphaMask); // A = mask
             }
             buf.flip();
 
