@@ -6,6 +6,7 @@ import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.FloatSetting;
 
@@ -38,7 +39,7 @@ public class BunnyHopModule extends CheatModule {
     private static final int CROUCHING = 65667;
 
     public BunnyHopModule() {
-        super("BunnyHop", ModuleCategory.EXTERNAL, false);
+        super("BunnyHop", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
         addSetting(plusJumpDelay);
         addSetting(minusJumpDelay);
     }

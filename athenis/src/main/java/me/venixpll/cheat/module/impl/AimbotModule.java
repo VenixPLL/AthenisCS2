@@ -10,6 +10,7 @@ import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.impl.aimbot.AimMode;
 import me.venixpll.cheat.module.impl.aimbot.AimType;
@@ -113,7 +114,7 @@ public class AimbotModule extends CheatModule {
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public AimbotModule() {
-        super("Aimbot", ModuleCategory.EXTERNAL, false);
+        super("Aimbot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
 
         // Register default aim modes
         registerAimModeInternal(classicMode);

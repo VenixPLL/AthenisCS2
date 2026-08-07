@@ -108,11 +108,11 @@ public final class PerformanceMonitor {
         // ── Window position — right of the main menu ───────────────────────
         float screenW = ImGui.getIO().getDisplaySizeX();
         float screenH = ImGui.getIO().getDisplaySizeY();
-        float menuX   = (screenW - 700f) * 0.5f;
-        float menuY   = (screenH - 480f) * 0.5f;
+        float menuX   = (screenW - 820f) * 0.5f;
+        float menuY   = (screenH - 520f) * 0.5f;
 
         ImGui.setNextWindowSize(WIN_W, WIN_H, ImGuiCond.FirstUseEver);
-        ImGui.setNextWindowPos(menuX + 700f + 12f, menuY, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowPos(menuX + 820f + 12f, menuY, ImGuiCond.FirstUseEver);
 
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.WindowBg, 0f, 0f, 0f, 0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 10f);

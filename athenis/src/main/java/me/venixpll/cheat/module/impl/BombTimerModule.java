@@ -9,6 +9,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
 import me.venixpll.cheat.setting.FloatSetting;
@@ -103,7 +104,7 @@ public class BombTimerModule extends CheatModule {
     private float dragOriginMouseY  = 0f;
 
     public BombTimerModule() {
-        super("Bomb Timer", ModuleCategory.EXTERNAL, false);
+        super("Bomb Timer", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
         addSetting(bannerX);
         addSetting(bannerY);
     }

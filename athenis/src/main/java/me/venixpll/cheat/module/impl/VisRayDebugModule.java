@@ -10,6 +10,7 @@ import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -82,7 +83,7 @@ public class VisRayDebugModule extends CheatModule {
     private volatile long   lastSaveMsgTime = 0L;
 
     public VisRayDebugModule() {
-        super("VisRay Debug", ModuleCategory.DEBUG, false);
+        super("VisRay Debug", ModuleCategory.DEBUG, MenuGroup.OTHER, false);
         addSetting(rayMode);
         addSetting(crosshairDist);
         addSetting(showRay);

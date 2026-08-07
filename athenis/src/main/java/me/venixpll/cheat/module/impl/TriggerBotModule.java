@@ -6,6 +6,7 @@ import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
@@ -133,7 +134,7 @@ public class TriggerBotModule extends CheatModule {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public TriggerBotModule() {
-        super("TriggerBot", ModuleCategory.EXTERNAL, false);
+        super("TriggerBot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
         addSetting(targetMode);
         addSetting(oneShotMode);
         addSetting(reactionDelay);

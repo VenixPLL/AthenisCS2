@@ -15,6 +15,7 @@ import java.util.List;
 public abstract class CheatModule {
     private final String name;
     private final ModuleCategory category;
+    private final MenuGroup menuGroup;
     private final ImBoolean enabledWrapper;
     private final List<Setting<?>> settings = new ArrayList<>();
     private boolean settingsExpanded = true;
@@ -32,16 +33,30 @@ public abstract class CheatModule {
     private boolean listeningForBind = false;
 
     /**
-     * Constructs a new CheatModule.
+     * Constructs a new CheatModule with an explicit sidebar menu group.
+     *
+     * @param name           Unique user-friendly name of the module.
+     * @param category       The safety/execution category (External/Internal).
+     * @param menuGroup      The sidebar category group this module appears in.
+     * @param defaultEnabled Initial state of the module.
+     */
+    public CheatModule(String name, ModuleCategory category, MenuGroup menuGroup, boolean defaultEnabled) {
+        this.name = name;
+        this.category = category;
+        this.menuGroup = menuGroup;
+        this.enabledWrapper = new ImBoolean(defaultEnabled);
+    }
+
+    /**
+     * Constructs a new CheatModule, defaulting the sidebar group to
+     * {@link MenuGroup#OTHER} for backward compatibility.
      *
      * @param name           Unique user-friendly name of the module.
      * @param category       The safety/execution category (External/Internal).
      * @param defaultEnabled Initial state of the module.
      */
     public CheatModule(String name, ModuleCategory category, boolean defaultEnabled) {
-        this.name = name;
-        this.category = category;
-        this.enabledWrapper = new ImBoolean(defaultEnabled);
+        this(name, category, MenuGroup.OTHER, defaultEnabled);
     }
 
     /**
@@ -60,6 +75,15 @@ public abstract class CheatModule {
      */
     public ModuleCategory getCategory() {
         return category;
+    }
+
+    /**
+     * Gets the sidebar menu group this module belongs to.
+     *
+     * @return The {@link MenuGroup} for sidebar grouping.
+     */
+    public MenuGroup getMenuGroup() {
+        return menuGroup;
     }
 
     /**

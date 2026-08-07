@@ -9,6 +9,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
@@ -200,7 +201,7 @@ public class RadarHackModule extends CheatModule {
         // ─────────────────────────────────────────────────────────────────────────
 
         public RadarHackModule() {
-                super("Radar Hack", ModuleCategory.EXTERNAL, false);
+                super("Radar Hack", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
                 addSetting(enemyOnly);
                 addSetting(showOverlay);
                 addSetting(rotateRadar);

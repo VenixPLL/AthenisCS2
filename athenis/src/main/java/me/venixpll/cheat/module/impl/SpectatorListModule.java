@@ -7,6 +7,7 @@ import imgui.flag.ImGuiWindowFlags;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.overlay.OverlayWindow;
 
@@ -20,7 +21,7 @@ import java.util.List;
 public class SpectatorListModule extends CheatModule {
 
     public SpectatorListModule() {
-        super("Spectator List", ModuleCategory.EXTERNAL, true);
+        super("Spectator List", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, true);
     }
 
     private static long getEntityByHandle(long entityList, int handle) {

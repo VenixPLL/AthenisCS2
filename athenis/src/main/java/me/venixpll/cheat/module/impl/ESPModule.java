@@ -11,6 +11,7 @@ import me.venixpll.cheat.Vector3;
 import me.venixpll.cheat.vischeck.VisCheck;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.projection.ScreenProjector;
 import me.venixpll.cheat.reader.PositionReader;
@@ -236,7 +237,7 @@ public class ESPModule extends CheatModule {
      * Instantiates the ESP module and registers settings.
      */
     public ESPModule() {
-        super("ESP Overlay", ModuleCategory.EXTERNAL, true);
+        super("ESP Overlay", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, true);
 
         // ── Master Toggles ──────────────────────────────────────────────────
         addSetting(playerEsp);
