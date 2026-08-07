@@ -30,15 +30,18 @@ import me.venixpll.overlay.OverlayWindow;
  *       menu (INSERT key) is open by clicking and dragging it.</li>
  * </ul>
  *
- * <h3>Pointer chain</h3>
+ * <h3>Pointer chain (updated after CS2 mid-2026 patch)</h3>
  * <pre>
- *  client.dll + dwPlantedC4 - 8      → planted flag byte (1 = planted)
- *  *(client.dll + dwPlantedC4)       → c4ListPtr  (CUtlVector base)
- *  *(c4ListPtr)                      → plantedC4  (C_PlantedC4*)
+ *  client.dll + dwPlantedC4 - 8      → planted flag byte (non-zero = planted)
+ *  *(client.dll + dwPlantedC4)       → plantedC4  (C_PlantedC4*)   ← single deref now
  *  *(plantedC4 + m_bBombTicking)     → ticking bool
  *  *(plantedC4 + m_flC4Blow)         → explosion game-timestamp (float)
  *  *(plantedC4 + m_pGameSceneNode)   → CGameSceneNode*
  *  *(sceneNode  + m_vecAbsOrigin)    → Vector3 world position
+ *
+ *  NOTE: Prior to the patch, dwPlantedC4 pointed at a CUtlVector whose
+ *  m_pMemory[0] held the C_PlantedC4*. The extra level of indirection was
+ *  removed by Valve — one readLong is now sufficient.
  *
  *  currentTime = serverTickCount / 64.0f  (from engine2.dll)
  * </pre>
@@ -117,9 +120,16 @@ public class BombTimerModule extends CheatModule {
     /** Absolute server time in seconds derived from the engine2.dll tick counter. */
     private static float getServerTime() {
         long engine2Base = CS2Memory.getEngine2Base();
-        if (engine2Base == 0) return 0f;
+        if (engine2Base == 0) {
+            System.out.println("[BombTimer][getServerTime] engine2Base=0 — engine2.dll not found!");
+            return 0f;
+        }
         long networkClient = CS2Memory.readLong(engine2Base + CS2Offsets.dwNetworkGameClient);
-        if (!isValidPtr(networkClient)) return 0f;
+        if (!isValidPtr(networkClient)) {
+            System.out.printf("[BombTimer][getServerTime] networkClient=0x%X  invalid! dwNetworkGameClient offset=0x%X%n",
+                    networkClient, CS2Offsets.dwNetworkGameClient);
+            return 0f;
+        }
         int serverTick = CS2Memory.readInt(networkClient + CS2Offsets.dwNetworkGameClient_serverTickCount);
         return serverTick / TICK_RATE;
     }
@@ -157,12 +167,14 @@ public class BombTimerModule extends CheatModule {
         if (clientBase == 0) return;
 
         // ── 1. Planted flag ───────────────────────────────────────────────────
+        //  client.dll + dwPlantedC4 - 8 holds a non-zero byte when a bomb is planted.
         if (CS2Memory.readByte(clientBase + CS2Offsets.dwPlantedC4 - 8) == 0) return;
 
-        // ── 2. CUtlVector → C_PlantedC4 entity (double-deref) ────────────────
-        long c4ListPtr = CS2Memory.readLong(clientBase + CS2Offsets.dwPlantedC4);
-        if (!isValidPtr(c4ListPtr)) return;
-        long plantedC4 = CS2Memory.readLong(c4ListPtr);
+        // ── 2. C_PlantedC4 entity pointer (single deref) ─────────────────────
+        //  After a CS2 update dwPlantedC4 changed from pointing at a CUtlVector
+        //  to pointing directly at the C_PlantedC4* entity.  One readLong is now
+        //  sufficient — the old double-deref via CUtlVector is no longer correct.
+        long plantedC4 = CS2Memory.readLong(clientBase + CS2Offsets.dwPlantedC4);
         if (!isValidPtr(plantedC4)) return;
 
         // ── 3. Ticking check ──────────────────────────────────────────────────
