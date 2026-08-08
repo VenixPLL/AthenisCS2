@@ -283,22 +283,25 @@ public class OverlayMenu {
         ImGui.setCursorPosY(ImGui.getCursorPosY() + 2f);
     }
 
-    /** Renders a single module item row in the sidebar. */
     private static void renderSidebarItem(List<CheatModule> modules, int idx, MenuGroup group) {
         CheatModule mod = modules.get(idx);
-        boolean isActive = (selectedModuleIdx == idx);
-        boolean isEnabled = mod.isEnabled();
-        boolean isDebug = (mod.getCategory() == ModuleCategory.DEBUG);
+        boolean isActive    = (selectedModuleIdx == idx);
+        boolean isEnabled   = mod.isEnabled();
+        boolean isDebug     = (mod.getCategory() == ModuleCategory.DEBUG);
+        boolean isDangerous = mod.isDangerous();
 
         float itemH = 34f;
 
         // Active / hover background
         if (isActive) {
             ImVec2 cp = ImGui.getCursorScreenPos();
-            // Left accent bar
+            // Left accent bar -- red for dangerous modules, cyan otherwise
+            float[] barCol = isDangerous
+                    ? new float[]{ 0.90f, 0.20f, 0.20f }
+                    : new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] };
             ImGui.getWindowDrawList().addRectFilled(
                     cp.x, cp.y, cp.x + 3f, cp.y + itemH,
-                    ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f), 2f);
+                    ImColor.rgba(barCol[0], barCol[1], barCol[2], 1f), 2f);
             // Row fill
             ImGui.getWindowDrawList().addRectFilled(
                     cp.x + 3f, cp.y, cp.x + SIDEBAR_W, cp.y + itemH,
@@ -319,42 +322,58 @@ public class OverlayMenu {
 
         ImVec2 itemMin = ImGui.getItemRectMin();
 
-        // Icon — PNG texture tinted cyan
+        // Icon -- tinted red for dangerous, cyan otherwise
         int iconTexId = getIconId(group.iconName);
         if (iconTexId > 0) {
-            float iconY = itemMin.y + (itemH - 16f) * 0.5f;
-            float iconX = itemMin.x + 12f;
+            float iconY     = itemMin.y + (itemH - 16f) * 0.5f;
+            float iconX     = itemMin.x + 12f;
             float iconAlpha = isActive ? 0.92f : 0.42f;
+            float[] iconTint = isDangerous
+                    ? new float[]{ 0.95f, 0.25f, 0.25f }
+                    : new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] };
             ImGui.getWindowDrawList().addImage(iconTexId,
                     iconX, iconY, iconX + 16f, iconY + 16f,
                     0f, 0f, 1f, 1f,
-                    ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], iconAlpha));
+                    ImColor.rgba(iconTint[0], iconTint[1], iconTint[2], iconAlpha));
         }
 
-        // Status dot (enabled indicator)
+        // Status dot
         if (isDebug && isEnabled) {
             int g1 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.15f);
             int g2 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.40f);
             int g3 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 1.00f);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 6f, g1,
-                    12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4f, g2,
-                    12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 2.5f, g3,
-                    8);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 6f, g1, 12);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4f, g2, 12);
+            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 2.5f, g3, 8);
+        } else if (isDangerous && isEnabled) {
+            // Pulsing red dot for dangerous+enabled
+            ImGui.getWindowDrawList().addCircleFilled(
+                    itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4.5f,
+                    ImColor.rgba(0.90f, 0.15f, 0.15f, 0.25f), 10);
+            ImGui.getWindowDrawList().addCircleFilled(
+                    itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 3f,
+                    ImColor.rgba(0.95f, 0.20f, 0.20f, 1.00f), 8);
         } else {
             int dotCol = isEnabled
-                    ? ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f)
+                    ? (isDangerous
+                            ? ImColor.rgba(0.90f, 0.20f, 0.20f, 1f)
+                            : ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f))
                     : ImColor.rgba(0.30f, 0.33f, 0.40f, 1f);
             ImGui.getWindowDrawList().addCircleFilled(
                     itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 3f, dotCol, 8);
         }
 
-        // Module name text
-        float nameBright = isEnabled ? (isActive ? 1f : 0.78f) : 0.38f;
-        int textCol = (isDebug && isEnabled)
-                ? ImColor.rgba(0.65f, 0.95f, 0.70f, 1f)
-                : ImColor.rgba(nameBright, nameBright, nameBright, 1f);
+        // Module name -- red when dangerous, white/grey otherwise
+        int textCol;
+        if (isDangerous) {
+            float r = isEnabled ? (isActive ? 1.00f : 0.85f) : 0.55f;
+            textCol = ImColor.rgba(r, isActive ? 0.20f : 0.15f, isActive ? 0.20f : 0.15f, 1f);
+        } else if (isDebug && isEnabled) {
+            textCol = ImColor.rgba(0.65f, 0.95f, 0.70f, 1f);
+        } else {
+            float nameBright = isEnabled ? (isActive ? 1f : 0.78f) : 0.38f;
+            textCol = ImColor.rgba(nameBright, nameBright, nameBright, 1f);
+        }
         ImGui.getWindowDrawList().addText(
                 itemMin.x + 34f, itemMin.y + (itemH - ImGui.getTextLineHeight()) * 0.5f,
                 textCol, mod.getName());
@@ -520,16 +539,47 @@ public class OverlayMenu {
         ImGui.popStyleColor();
         ImGui.spacing();
 
-        // Underline
+        // Underline -- red for dangerous modules
         ImVec2 ul = ImGui.getCursorScreenPos();
         float lineHalf = Math.min(100f, availW * 0.35f);
         float cx = ul.x + availW * 0.5f;
-        float[] underlineCol = isDebug ? COL_DBG_GREEN : COL_ACCENT;
+        boolean isDangerous = module.isDangerous();
+        float[] underlineCol = isDebug ? COL_DBG_GREEN : (isDangerous ? new float[]{ 0.90f, 0.20f, 0.20f, 1f } : COL_ACCENT);
         ImGui.getWindowDrawList().addLine(
                 cx - lineHalf, ul.y, cx + lineHalf, ul.y,
                 ImColor.rgba(underlineCol[0], underlineCol[1], underlineCol[2], 0.7f), 1.5f);
         ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
         ImGui.spacing();
+
+        // VAC warning banner for dangerous modules
+        if (isDangerous) {
+            ImGui.spacing();
+            float bannerW  = availW * 0.72f;
+            float bannerX  = (availW - bannerW) * 0.5f;
+            ImVec2 bannerPos = ImGui.getCursorScreenPos();
+            float bannerH  = 34f;
+            float bannerOX = bannerPos.x + (availW * 0.5f) - (bannerW * 0.5f);
+            // Dark red background
+            ImGui.getWindowDrawList().addRectFilled(
+                    bannerOX, bannerPos.y,
+                    bannerOX + bannerW, bannerPos.y + bannerH,
+                    ImColor.rgba(0.45f, 0.06f, 0.06f, 0.82f), 6f);
+            // Left red accent stripe
+            ImGui.getWindowDrawList().addRectFilled(
+                    bannerOX, bannerPos.y,
+                    bannerOX + 3f, bannerPos.y + bannerH,
+                    ImColor.rgba(0.95f, 0.18f, 0.18f, 1.00f), 3f);
+            // Warning text centred
+            String warn = "\u26A0  VAC DETECTED  --  USE AT OWN RISK";
+            float warnW = ImGui.calcTextSize(warn).x;
+            ImGui.getWindowDrawList().addText(
+                    bannerOX + (bannerW - warnW) * 0.5f,
+                    bannerPos.y + (bannerH - ImGui.getTextLineHeight()) * 0.5f,
+                    ImColor.rgba(1.00f, 0.35f, 0.35f, 1.00f),
+                    warn);
+            ImGui.dummy(0f, bannerH + 4f);
+            ImGui.spacing();
+        }
 
         // Enable checkbox
         float checkLabelW = ImGui.calcTextSize("Enable " + module.getName()).x + 24f;

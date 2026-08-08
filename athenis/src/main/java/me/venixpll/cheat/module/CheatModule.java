@@ -114,6 +114,19 @@ public abstract class CheatModule {
     }
 
     /**
+     * Returns {@code true} when this module is known to be detectable by
+     * VAC or other anti-cheat systems. Dangerous modules are displayed in
+     * red in the overlay menu and shown with a warning banner.
+     *
+     * <p>Override this in any module that carries significant detection risk.
+     *
+     * @return {@code false} by default; {@code true} if VAC-detected risk.
+     */
+    public boolean isDangerous() {
+        return false;
+    }
+
+    /**
      * Sets the enabled state of this module.
      *
      * @param enabled The new active state.

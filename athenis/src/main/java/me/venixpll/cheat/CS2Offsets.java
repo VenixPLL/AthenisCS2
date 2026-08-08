@@ -44,6 +44,12 @@ public class CS2Offsets {
     public static long dwLocalPlayerController = 36833056L;
     /** Offset to local player view angle struct {pitch, yaw, roll} in client.dll */
     public static long dwViewAngles = 37034408L;
+    /**
+     * Pointer to the singleton CCSGOInput instance inside client.dll.
+     * Used by SilentAimModule to read/write the view-angle struct directly.
+     * The view angles live at {@code clientBase + dwViewAngles}.
+     */
+    public static long dwCSGOInput = 37463952L;
     public static long dwGlobalVars = 0L;
     public static long dwForceJump = 33972128L;
     public static long dwPlantedC4 = 0L;
@@ -61,7 +67,9 @@ public class CS2Offsets {
     public static int m_iszPlayerName = 1780;
     public static int m_fFlags = 0x3EC;
     /** Offset to the recoil punch angle struct {pitch, yaw} inside player pawn */
-    public static int m_aimPunchAngle = 5296;
+    public static int m_aimPunchAngle = 0x1574;
+    /** Pointer from player pawn to CCSPlayer_AimPunchServices struct */
+    public static int m_pAimPunchServices = 5304; // 0x14B8
     /**
      * Offset to EntitySpottedState_t::m_bSpotted.
      * When true the game has determined at least one enemy can see this entity.
@@ -464,6 +472,9 @@ public class CS2Offsets {
         if (clientOffsets.has("dwViewAngles")) {
             dwViewAngles = clientOffsets.get("dwViewAngles").getAsLong();
         }
+        if (clientOffsets.has("dwCSGOInput")) {
+            dwCSGOInput = clientOffsets.get("dwCSGOInput").getAsLong();
+        }
         if (clientOffsets.has("dwGlobalVars")) {
             dwGlobalVars = clientOffsets.get("dwGlobalVars").getAsLong();
         }
@@ -526,13 +537,11 @@ public class CS2Offsets {
                     .get("m_fFlags").getAsInt();
         }
 
-        // Aim punch angle (recoil compensation)
-        if (classes.has("C_CSPlayerPawnBase") &&
-                classes.getAsJsonObject("C_CSPlayerPawnBase").getAsJsonObject("fields").has("m_aimPunchAngle")) {
-            m_aimPunchAngle = classes.getAsJsonObject("C_CSPlayerPawnBase")
-                    .getAsJsonObject("fields")
-                    .get("m_aimPunchAngle").getAsInt();
-        }
+        // Aim punch angle & services (recoil compensation)
+        m_pAimPunchServices = getField(classes, "C_CSPlayerPawn", "m_pAimPunchServices",
+                              getField(classes, "C_CSPlayerPawnBase", "m_pAimPunchServices", 5304));
+        m_aimPunchAngle     = getField(classes, "C_CSPlayerPawn", "m_aimPunchAngle",
+                              getField(classes, "C_CSPlayerPawnBase", "m_aimPunchAngle", 0x1574));
 
         // Spotted state
         if (classes.has("EntitySpottedState_t")) {
@@ -656,7 +665,8 @@ public class CS2Offsets {
         m_flFlashMaxAlpha      = getField(classes, "C_CSPlayerPawnBase", "m_flFlashMaxAlpha",     0x13FC);
         m_flFlashDuration      = getField(classes, "C_CSPlayerPawnBase", "m_flFlashDuration",     0x1400);
         m_iProgressBarDuration = getField(classes, "C_CSPlayerPawnBase", "m_iProgressBarDuration", 0x13E0);
-        m_iShotsFired          = getField(classes, "C_CSPlayerPawnBase", "m_iShotsFired",          0x1488);
+        m_iShotsFired          = getField(classes, "C_CSPlayerPawn", "m_iShotsFired",
+                                 getField(classes, "C_CSPlayerPawnBase", "m_iShotsFired", 7308));
 
         // Spectator/Observer offsets:
         m_pObserverServices = getField(classes, "C_BasePlayerPawn", "m_pObserverServices", 0x1118);
@@ -708,6 +718,7 @@ public class CS2Offsets {
         System.out.println(String.format("  > dwViewMatrix:          0x%X", dwViewMatrix));
         System.out.println(String.format("  > dwLocalPlayerPawn:     0x%X", dwLocalPlayerPawn));
         System.out.println(String.format("  > dwViewAngles:          0x%X", dwViewAngles));
+        System.out.println(String.format("  > dwCSGOInput:           0x%X", dwCSGOInput));
         System.out.println(String.format("  > dwGlobalVars:          0x%X", dwGlobalVars));
         System.out.println(String.format("  > dwForceJump:           0x%X", dwForceJump));
         System.out.println(String.format("  > m_hPlayerPawn:         0x%X", m_hPlayerPawn));
