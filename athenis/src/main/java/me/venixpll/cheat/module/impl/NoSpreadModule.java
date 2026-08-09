@@ -75,7 +75,7 @@ public class NoSpreadModule extends CheatModule {
     /** Marks this module as VAC-detected so the overlay shows a red warning. */
     @Override
     public boolean isDangerous() {
-        return true;
+        return false;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
