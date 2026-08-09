@@ -13,6 +13,10 @@ import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
+import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiWindowFlags;
+import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
+import java.util.ArrayList;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VisCheckAdapter;
 
@@ -54,6 +58,9 @@ public class RadarHackModule extends CheatModule {
 
         /** Draw the custom ImGui minimap overlay on-screen. */
         public final BooleanSetting showOverlay = new BooleanSetting("Overlay Mini-Radar", true);
+
+        /** Toggleable widget for showing enemy team money balance, current held weapon and health. */
+        public final BooleanSetting showEnemyWidget = new BooleanSetting("Enemy Status Widget", true);
 
         /**
          * Toggle to rotate the radar map matching the player's view yaw orientation.
@@ -204,6 +211,7 @@ public class RadarHackModule extends CheatModule {
                 super("Radar Hack", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
                 addSetting(enemyOnly);
                 addSetting(showOverlay);
+                addSetting(showEnemyWidget);
                 addSetting(rotateRadar);
                 addSetting(radarX);
                 addSetting(radarY);
@@ -374,11 +382,18 @@ public class RadarHackModule extends CheatModule {
          */
         @Override
         public void onRender(ImDrawList drawList) {
-                if (!isEnabled() || !showOverlay.getValue())
+                if (!isEnabled())
                         return;
                 if (!PlayerCache.tracking)
                         return;
                 if (lastMapName == null || lastMapName.isEmpty() || lastMapName.equalsIgnoreCase("<empty>"))
+                        return;
+
+                if (showEnemyWidget.getValue()) {
+                        renderEnemyStatusWidget();
+                }
+
+                if (!showOverlay.getValue())
                         return;
 
                 float rx_pos = radarX.getValue();
@@ -934,5 +949,169 @@ public class RadarHackModule extends CheatModule {
                 // "DRAG TO MOVE / RESIZE" hint text in the top-left of the radar
                 drawList.addText(rx + 6f, ry + size - 18f,
                                 ImColor.rgba(1.0f, 1.0f, 1.0f, 0.35f), "drag to move  \u2199resize");
+        }
+
+        // ── Enemy Status Widget ───────────────────────────────────────────────
+
+        /**
+         * Renders a pretty, compact overlay widget displaying the enemy team's
+         * health, active held weapon, and current money balance.
+         * Movable by dragging when the cheat overlay menu (INSERT key) is open.
+         */
+        private void renderEnemyStatusWidget() {
+                boolean isMenuOpen = OverlayWindow.isMenuOpen();
+
+                ImGui.setNextWindowPos(20.0f, 240.0f, ImGuiCond.FirstUseEver);
+
+                int windowFlags = ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize;
+                if (!isMenuOpen) {
+                        windowFlags |= ImGuiWindowFlags.NoTitleBar
+                                        | ImGuiWindowFlags.NoResize
+                                        | ImGuiWindowFlags.NoMove
+                                        | ImGuiWindowFlags.NoInputs;
+                }
+
+                if (ImGui.begin("Enemy Overview", windowFlags)) {
+                        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+                        List<PlayerSnapshot> enemies = new ArrayList<>();
+                        int totalMoney = 0;
+
+                        for (PlayerSnapshot p : players) {
+                                if (p.isLocal) continue;
+                                if (p.team == ESPModule.localTeam) continue;
+                                enemies.add(p);
+                                if (p.health > 0) {
+                                        totalMoney += p.money;
+                                }
+                        }
+
+                        int headerColor = ImColor.rgba(1.0f, 0.35f, 0.25f, 1.0f);
+                        if (ESPModule.localTeam == 2) {
+                                // Local team is Terrorist (2) -> Enemies are Counter-Terrorist (3)
+                                headerColor = ImColor.rgba(0.25f, 0.70f, 1.0f, 1.0f);
+                        }
+
+                        ImGui.textColored(headerColor, "ENEMY TEAM");
+                        ImGui.sameLine();
+                        ImGui.textColored(ImColor.rgba(0.2f, 0.95f, 0.55f, 1.0f), String.format(" ($%,d)", totalMoney));
+
+                        if (enemies.isEmpty()) {
+                                ImGui.textColored(ImColor.rgba(0.5f, 0.5f, 0.5f, 0.7f), "No Enemies Detected");
+                        } else {
+                                ImGui.separator();
+                                for (PlayerSnapshot enemy : enemies) {
+                                        int hp = Math.max(0, enemy.health);
+                                        int hpColor;
+                                        if (hp > 60) {
+                                                hpColor = ImColor.rgba(0.20f, 0.95f, 0.45f, 1.0f);
+                                        } else if (hp > 25) {
+                                                hpColor = ImColor.rgba(1.0f, 0.80f, 0.20f, 1.0f);
+                                        } else if (hp > 0) {
+                                                hpColor = ImColor.rgba(1.0f, 0.25f, 0.25f, 1.0f);
+                                        } else {
+                                                hpColor = ImColor.rgba(0.45f, 0.45f, 0.45f, 0.60f);
+                                        }
+
+                                        String name = enemy.name != null && !enemy.name.isEmpty() ? enemy.name : "Enemy " + enemy.index;
+                                        if (name.length() > 12) name = name.substring(0, 10) + "..";
+
+                                        String weapon = resolvePlayerWeapon(enemy.pawnAddress);
+
+                                        if (hp > 0) {
+                                                ImGui.textColored(hpColor, String.format("%3d HP", hp));
+                                                ImGui.sameLine();
+                                                ImGui.textColored(ImColor.rgba(0.9f, 0.9f, 0.95f, 1.0f), String.format("%-12s", name));
+                                                ImGui.sameLine();
+                                                ImGui.textColored(ImColor.rgba(0.95f, 0.85f, 0.4f, 1.0f), String.format("[%s]", weapon));
+                                                ImGui.sameLine();
+                                                ImGui.textColored(ImColor.rgba(0.3f, 0.95f, 0.6f, 1.0f), String.format("$%d", enemy.money));
+                                        } else {
+                                                ImGui.textColored(ImColor.rgba(0.45f, 0.45f, 0.45f, 0.6f), " DEAD ");
+                                                ImGui.sameLine();
+                                                ImGui.textColored(ImColor.rgba(0.45f, 0.45f, 0.45f, 0.6f), String.format("%-12s", name));
+                                                ImGui.sameLine();
+                                                ImGui.textColored(ImColor.rgba(0.45f, 0.45f, 0.45f, 0.6f), String.format("$%d", enemy.money));
+                                        }
+                                }
+                        }
+                }
+                ImGui.end();
+        }
+
+        private String resolvePlayerWeapon(long pawnAddress) {
+                if (pawnAddress == 0) return "Knife";
+                long weaponServices = CS2Memory.readLong(pawnAddress + CS2Offsets.m_pWeaponServices);
+                if (!isValidPtr(weaponServices)) return "Knife";
+                int activeHandle = CS2Memory.readInt(weaponServices + CS2Offsets.m_hActiveWeapon);
+                long weaponEntity = getEntityByHandle(activeHandle);
+                if (!isValidPtr(weaponEntity)) return "Knife";
+                long itemBase = weaponEntity + CS2Offsets.m_AttributeManager + CS2Offsets.m_Item;
+                int defIdx = CS2Memory.readShort(itemBase + CS2Offsets.m_iItemDefinitionIndex) & 0xFFFF;
+                return getWeaponName(defIdx);
+        }
+
+        private static long getEntityByHandle(int handle) {
+                if (handle == 0 || handle == -1) return 0;
+                long clientBase = CS2Memory.getClientBase();
+                long entityList = CS2Memory.readLong(clientBase + CS2Offsets.dwEntityList);
+                if (entityList == 0) return 0;
+                long listEntry = CS2Memory.readLong(entityList + 8L * ((handle & 0x7FFF) >> 9) + 0x10);
+                if (listEntry == 0) return 0;
+                return CS2Memory.readLong(listEntry + 0x70L * (handle & 0x1FF));
+        }
+
+        private static boolean isValidPtr(long ptr) {
+                return ptr > 0x10000L && ptr < 0x7FFF_FFFF_FFFFL;
+        }
+
+        private static String getWeaponName(int itemDefIndex) {
+                switch (itemDefIndex) {
+                        case 1:  return "Deagle";
+                        case 2:  return "Dualies";
+                        case 3:  return "Five-Seven";
+                        case 4:  return "Glock";
+                        case 7:  return "AK-47";
+                        case 8:  return "AUG";
+                        case 9:  return "AWP";
+                        case 10: return "FAMAS";
+                        case 11: return "G3SG1";
+                        case 13: return "Galil";
+                        case 14: return "M249";
+                        case 16: return "M4A4";
+                        case 17: return "MAC-10";
+                        case 19: return "P90";
+                        case 23: return "MP5-SD";
+                        case 24: return "UMP-45";
+                        case 25: return "XM1014";
+                        case 26: return "Bizon";
+                        case 27: return "MAG-7";
+                        case 28: return "Negev";
+                        case 29: return "Sawed-Off";
+                        case 30: return "Tec-9";
+                        case 31: return "Zeus";
+                        case 32: return "P2000";
+                        case 33: return "MP7";
+                        case 34: return "MP9";
+                        case 35: return "Nova";
+                        case 36: return "P250";
+                        case 38: return "SCAR-20";
+                        case 39: return "SG 553";
+                        case 40: return "Scout";
+                        case 43: return "Flashbang";
+                        case 44: return "HE Grenade";
+                        case 45: return "Smoke";
+                        case 46: return "Molotov";
+                        case 47: return "Decoy";
+                        case 48: return "Incendiary";
+                        case 49: return "C4";
+                        case 60: return "M4A1-S";
+                        case 61: return "USP-S";
+                        case 63: return "CZ75";
+                        case 64: return "Revolver";
+                        default:
+                                if (itemDefIndex >= 500) return "Knife";
+                                if (itemDefIndex == 42 || itemDefIndex == 59) return "Knife";
+                                return "Weapon";
+                }
         }
 }
