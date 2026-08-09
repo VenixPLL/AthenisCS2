@@ -16,6 +16,7 @@ import me.venixpll.cheat.module.impl.SilentAimModule;
 import me.venixpll.cheat.module.impl.NoSpreadModule;
 import me.venixpll.cheat.module.impl.VisRayDebugModule;
 import me.venixpll.cheat.module.impl.DistanceDebugModule;
+import me.venixpll.cheat.module.impl.AutoWeaponModule;
 import me.venixpll.config.ConfigManager;
 import me.venixpll.overlay.OverlayWindow;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
@@ -125,6 +126,7 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new CrosshairOverlayModule());
             ModuleManager.registerModule(new VisRayDebugModule());
             ModuleManager.registerModule(new DistanceDebugModule());
+            ModuleManager.registerModule(new AutoWeaponModule());
         }
         ConfigManager.load();
 
@@ -722,6 +724,7 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new CrosshairOverlayModule());
                     ModuleManager.registerModule(new VisRayDebugModule());
                     ModuleManager.registerModule(new DistanceDebugModule());
+                    ModuleManager.registerModule(new AutoWeaponModule());
                 }
 
                 // Restore user's last saved configuration before starting the engine.
