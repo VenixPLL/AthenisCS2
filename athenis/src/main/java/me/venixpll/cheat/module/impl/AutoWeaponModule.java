@@ -1,4 +1,4 @@
-﻿package me.venixpll.cheat.module.impl;
+package me.venixpll.cheat.module.impl;
 
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
