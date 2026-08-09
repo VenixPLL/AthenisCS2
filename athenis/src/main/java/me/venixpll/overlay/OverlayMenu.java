@@ -147,7 +147,10 @@ public class OverlayMenu {
         ImGui.beginChild("##sidebar", SIDEBAR_W, WINDOW_H, false, NO_SCROLL);
 
         renderSidebarLogo();
-        ImGui.setCursorPosY(ImGui.getCursorPosY() + 8f);
+
+        ImGui.setCursorPos(0f, TOPBAR_H);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0f, 0f);
+        ImGui.beginChild("##sidebar_content", SIDEBAR_W, WINDOW_H - TOPBAR_H, false, 0);
 
         // Render each non-empty MenuGroup in declaration order
         for (MenuGroup group : MenuGroup.values()) {
@@ -159,7 +162,10 @@ public class OverlayMenu {
         // Push SYSTEM section at the bottom — only "Settings"
         renderSidebarSystemGroup();
 
-        ImGui.endChild();
+        ImGui.endChild(); // ##sidebar_content
+        ImGui.popStyleVar(); // WindowPadding
+
+        ImGui.endChild(); // ##sidebar
         ImGui.popStyleColor(); // ChildBg
         ImGui.popStyleVar(2); // ItemSpacing, FramePadding
 
@@ -265,8 +271,13 @@ public class OverlayMenu {
 
     /** Renders the SYSTEM group — currently only a "Settings" item. */
     private static void renderSidebarSystemGroup() {
-        // Push SYSTEM section towards the bottom via a spacer
-        // (fill remaining space, leaving just enough for the section)
+        // Push SYSTEM section towards the bottom of the sidebar scrollable area
+        float targetY = (WINDOW_H - TOPBAR_H) - 64f;
+        if (ImGui.getCursorPosY() < targetY) {
+            ImGui.setCursorPosY(targetY);
+        } else {
+            ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
+        }
         renderCategoryHeader("SYSTEM");
         renderSidebarSystemItem();
         ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
@@ -338,20 +349,22 @@ public class OverlayMenu {
         }
 
         // Status dot
+        float dotX = itemMin.x + SIDEBAR_W - 18f;
+        float dotY = itemMin.y + itemH * 0.5f;
         if (isDebug && isEnabled) {
             int g1 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.15f);
             int g2 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 0.40f);
             int g3 = ImColor.rgba(COL_DBG_GREEN[0], COL_DBG_GREEN[1], COL_DBG_GREEN[2], 1.00f);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 6f, g1, 12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4f, g2, 12);
-            ImGui.getWindowDrawList().addCircleFilled(itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 2.5f, g3, 8);
+            ImGui.getWindowDrawList().addCircleFilled(dotX, dotY, 6f, g1, 12);
+            ImGui.getWindowDrawList().addCircleFilled(dotX, dotY, 4f, g2, 12);
+            ImGui.getWindowDrawList().addCircleFilled(dotX, dotY, 2.5f, g3, 8);
         } else if (isDangerous && isEnabled) {
             // Pulsing red dot for dangerous+enabled
             ImGui.getWindowDrawList().addCircleFilled(
-                    itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 4.5f,
+                    dotX, dotY, 4.5f,
                     ImColor.rgba(0.90f, 0.15f, 0.15f, 0.25f), 10);
             ImGui.getWindowDrawList().addCircleFilled(
-                    itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 3f,
+                    dotX, dotY, 3f,
                     ImColor.rgba(0.95f, 0.20f, 0.20f, 1.00f), 8);
         } else {
             int dotCol = isEnabled
@@ -360,7 +373,7 @@ public class OverlayMenu {
                             : ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f))
                     : ImColor.rgba(0.30f, 0.33f, 0.40f, 1f);
             ImGui.getWindowDrawList().addCircleFilled(
-                    itemMin.x + SIDEBAR_W - 14f, itemMin.y + itemH * 0.5f, 3f, dotCol, 8);
+                    dotX, dotY, 3f, dotCol, 8);
         }
 
         // Module name -- red when dangerous, white/grey otherwise
@@ -555,7 +568,6 @@ public class OverlayMenu {
         if (isDangerous) {
             ImGui.spacing();
             float bannerW  = availW * 0.72f;
-            float bannerX  = (availW - bannerW) * 0.5f;
             ImVec2 bannerPos = ImGui.getCursorScreenPos();
             float bannerH  = 34f;
             float bannerOX = bannerPos.x + (availW * 0.5f) - (bannerW * 0.5f);
