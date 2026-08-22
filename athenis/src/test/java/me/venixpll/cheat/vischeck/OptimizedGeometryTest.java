@@ -1,6 +1,5 @@
 package me.venixpll.cheat.vischeck;
 
-import me.venixpll.cheat.Vector3;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
