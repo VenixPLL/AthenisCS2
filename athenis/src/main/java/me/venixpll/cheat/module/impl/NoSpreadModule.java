@@ -5,7 +5,7 @@ import com.sun.jna.Native;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
-import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ManagedThreadModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -16,7 +16,7 @@ import me.venixpll.overlay.OverlayWindow;
  * Standalone Recoil Control System (RCS) & NoSpread Module for CS2.
  * Realtime hardware mouse compensation countering CS2 weapon recoil punch.
  */
-public class NoSpreadModule extends CheatModule {
+public class NoSpreadModule extends ManagedThreadModule {
 
     // ── Win32 relative mouse injection ────────────────────────────────────────
     private interface Win32Mouse extends Library {
@@ -55,12 +55,17 @@ public class NoSpreadModule extends CheatModule {
     public final BooleanSetting debugLog = new BooleanSetting(
             "Debug Log to Console##nospread", true);
 
-    // ── Thread state ─────────────────────────────────────────────────────────
-    private volatile boolean threadRunning = false;
-    private Thread workerThread;
+    // ── Worker state (lives across loop iterations) ──────────────────────────
+    private float lastPunchPitch = 0f;
+    private float lastPunchYaw   = 0f;
+    private boolean wasFiring    = false;
+
+    private float accumX = 0f;
+    private float accumY = 0f;
+    private long lastLogTime = 0;
 
     public NoSpreadModule() {
-        super("No Spread", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
+        super("No Spread", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-NoSpread");
         addSetting(recoilCompensate);
         addSetting(pitchScale);
         addSetting(yawScale);
@@ -78,158 +83,116 @@ public class NoSpreadModule extends CheatModule {
         return false;
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ── Worker loop ───────────────────────────────────────────────────────────
 
     @Override
-    public void onTick() {
-        if (isEnabled() && !threadRunning) {
-            startWorkerThread();
-        } else if (!isEnabled() && threadRunning) {
-            threadRunning = false;
+    protected void runLoop() throws Exception {
+        Thread.sleep(4);
+
+        if (!PlayerCache.tracking || OverlayWindow.isMenuOpen()) {
+            wasFiring = false;
+            lastPunchPitch = 0f;
+            lastPunchYaw   = 0f;
+            accumX = 0f;
+            accumY = 0f;
+            return;
         }
-    }
 
-    // ── Worker Thread ─────────────────────────────────────────────────────────
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (localPawn == 0) return;
 
-    private void startWorkerThread() {
-        if (workerThread != null && workerThread.isAlive()) return;
-        threadRunning = true;
+        boolean attackDown = isLmbDown();
+        int shotsFired = CS2Memory.readInt(localPawn + CS2Offsets.m_iShotsFired);
 
-        workerThread = new Thread(() -> {
-            System.out.println("[NoSpread] RCS Thread started.");
+        float[] punch = readPunchAngle(localPawn);
+        float curPunchPitch = punch[0]; // x = pitch (negative when gun kicks up)
+        float curPunchYaw   = punch[1]; // y = yaw (positive when gun sways right)
 
-            float lastPunchPitch = 0f;
-            float lastPunchYaw   = 0f;
-            boolean wasFiring    = false;
+        // Strict active firing check: ONLY process RCS while LMB is held
+        if (!attackDown || !recoilCompensate.getValue()) {
+            if (wasFiring && debugLog.getValue()) {
+                System.out.println("[NoSpread Debug] >>> SPRAY STOPPED <<<");
+            }
+            wasFiring = false;
+            lastPunchPitch = 0f;
+            lastPunchYaw   = 0f;
+            accumX = 0f;
+            accumY = 0f;
+            return;
+        }
 
-            float accumX = 0f;
-            float accumY = 0f;
-            long lastLogTime = 0;
+        // Log periodic state during active spray
+        long now = System.currentTimeMillis();
+        if (debugLog.getValue() && (now - lastLogTime > 250)) {
+            lastLogTime = now;
+            System.out.println(String.format(
+                    "[NoSpread Debug] LMB=%b | ShotsFired=%d | Punch=(%.3f, %.3f)",
+                    attackDown, shotsFired, curPunchPitch, curPunchYaw
+            ));
+        }
 
-            while (threadRunning && isEnabled()) {
-                try {
-                    Thread.sleep(4);
+        // When spray starts (or resumes after brief tap), initialize punch baseline
+        // to current memory punch so leftover punch doesn't cause a massive jump.
+        if (!wasFiring) {
+            lastPunchPitch = curPunchPitch;
+            lastPunchYaw   = curPunchYaw;
+            accumX = 0f;
+            accumY = 0f;
+            wasFiring = true;
+            if (debugLog.getValue()) {
+                System.out.println("[NoSpread Debug] >>> SPRAY STARTED <<< Baseline Punch=(" + curPunchPitch + ", " + curPunchYaw + ")");
+            }
+            return;
+        }
 
-                    if (!PlayerCache.tracking || OverlayWindow.isMenuOpen()) {
-                        wasFiring = false;
-                        lastPunchPitch = 0f;
-                        lastPunchYaw   = 0f;
-                        accumX = 0f;
-                        accumY = 0f;
-                        continue;
-                    }
+        int minBullet = (int) (float) startBullet.getValue();
+        if (shotsFired >= minBullet) {
+            float deltaPitch = curPunchPitch - lastPunchPitch;
+            float deltaYaw   = curPunchYaw   - lastPunchYaw;
 
-                    long localPawn = PlayerCache.localPlayerPawnAddress;
-                    if (localPawn == 0) continue;
+            // Sanity check on delta: ignore massive jumps caused by weapon reset / spectator swap / stale punch
+            if (Math.abs(deltaPitch) < 3.0f && Math.abs(deltaYaw) < 3.0f) {
+                float pScale = Math.max(0.01f, pitchScale.getValue());
+                float yScale = Math.max(0.01f, yawScale.getValue());
+                float sens   = Math.max(0.1f, sensitivity.getValue());
+                float mult   = rcsStrength.getValue();
 
-                    boolean attackDown = isLmbDown();
-                    int shotsFired = CS2Memory.readInt(localPawn + CS2Offsets.m_iShotsFired);
+                // Correct Win32 mouse movement direction:
+                // CS2 pitch punch is negative when weapon kicks UP -> moveY must be POSITIVE to pull mouse DOWN
+                // CS2 yaw punch is positive when weapon sways RIGHT -> moveX must be NEGATIVE to pull mouse LEFT
+                float moveY = (-deltaPitch * 2.0f / (pScale * sens)) * mult;
+                float moveX = (-deltaYaw   * 2.0f / (yScale * sens)) * mult;
 
-                    float[] punch = readPunchAngle(localPawn);
-                    float curPunchPitch = punch[0]; // x = pitch (negative when gun kicks up)
-                    float curPunchYaw   = punch[1]; // y = yaw (positive when gun sways right)
+                if (invertPitch.getValue()) moveY = -moveY;
+                if (invertYaw.getValue())   moveX = -moveX;
 
-                    // Strict active firing check: ONLY process RCS while LMB is held
-                    if (!attackDown || !recoilCompensate.getValue()) {
-                        if (wasFiring && debugLog.getValue()) {
-                            System.out.println("[NoSpread Debug] >>> SPRAY STOPPED <<<");
-                        }
-                        wasFiring = false;
-                        lastPunchPitch = 0f;
-                        lastPunchYaw   = 0f;
-                        accumX = 0f;
-                        accumY = 0f;
-                        continue;
-                    }
+                accumX += moveX;
+                accumY += moveY;
 
-                    // Log periodic state during active spray
-                    long now = System.currentTimeMillis();
-                    if (debugLog.getValue() && (now - lastLogTime > 250)) {
-                        lastLogTime = now;
+                int mx = Math.round(accumX);
+                int my = Math.round(accumY);
+
+                if (mx != 0 || my != 0) {
+                    accumX -= mx;
+                    accumY -= my;
+                    Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
+                    if (debugLog.getValue()) {
                         System.out.println(String.format(
-                                "[NoSpread Debug] LMB=%b | ShotsFired=%d | Punch=(%.3f, %.3f)",
-                                attackDown, shotsFired, curPunchPitch, curPunchYaw
+                                "[NoSpread Debug] mouse_event(%d, %d) | deltaPunch=(%.4f, %.4f)",
+                                mx, my, deltaPitch, deltaYaw
                         ));
                     }
-
-                    // When spray starts (or resumes after brief tap), initialize punch baseline
-                    // to current memory punch so leftover punch doesn't cause a massive jump.
-                    if (!wasFiring) {
-                        lastPunchPitch = curPunchPitch;
-                        lastPunchYaw   = curPunchYaw;
-                        accumX = 0f;
-                        accumY = 0f;
-                        wasFiring = true;
-                        if (debugLog.getValue()) {
-                            System.out.println("[NoSpread Debug] >>> SPRAY STARTED <<< Baseline Punch=(" + curPunchPitch + ", " + curPunchYaw + ")");
-                        }
-                        continue;
-                    }
-
-                    int minBullet = (int) (float) startBullet.getValue();
-                    if (shotsFired >= minBullet) {
-                        float deltaPitch = curPunchPitch - lastPunchPitch;
-                        float deltaYaw   = curPunchYaw   - lastPunchYaw;
-
-                        // Sanity check on delta: ignore massive jumps caused by weapon reset / spectator swap / stale punch
-                        if (Math.abs(deltaPitch) < 3.0f && Math.abs(deltaYaw) < 3.0f) {
-                            float pScale = Math.max(0.01f, pitchScale.getValue());
-                            float yScale = Math.max(0.01f, yawScale.getValue());
-                            float sens   = Math.max(0.1f, sensitivity.getValue());
-                            float mult   = rcsStrength.getValue();
-
-                            // Correct Win32 mouse movement direction:
-                            // CS2 pitch punch is negative when weapon kicks UP -> moveY must be POSITIVE to pull mouse DOWN
-                            // CS2 yaw punch is positive when weapon sways RIGHT -> moveX must be NEGATIVE to pull mouse LEFT
-                            float moveY = (-deltaPitch * 2.0f / (pScale * sens)) * mult;
-                            float moveX = (-deltaYaw   * 2.0f / (yScale * sens)) * mult;
-
-                            if (invertPitch.getValue()) moveY = -moveY;
-                            if (invertYaw.getValue())   moveX = -moveX;
-
-                            accumX += moveX;
-                            accumY += moveY;
-
-                            int mx = Math.round(accumX);
-                            int my = Math.round(accumY);
-
-                            if (mx != 0 || my != 0) {
-                                accumX -= mx;
-                                accumY -= my;
-                                Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
-                                if (debugLog.getValue()) {
-                                    System.out.println(String.format(
-                                            "[NoSpread Debug] mouse_event(%d, %d) | deltaPunch=(%.4f, %.4f)",
-                                            mx, my, deltaPitch, deltaYaw
-                                    ));
-                                }
-                            }
-                        } else if (debugLog.getValue()) {
-                            System.out.println(String.format(
-                                    "[NoSpread Debug] Ignored massive deltaPunch=(%.4f, %.4f)",
-                                    deltaPitch, deltaYaw
-                            ));
-                        }
-                    }
-
-                    lastPunchPitch = curPunchPitch;
-                    lastPunchYaw   = curPunchYaw;
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    System.err.println("[NoSpread] Error: " + e.getMessage());
                 }
+            } else if (debugLog.getValue()) {
+                System.out.println(String.format(
+                        "[NoSpread Debug] Ignored massive deltaPunch=(%.4f, %.4f)",
+                        deltaPitch, deltaYaw
+                ));
             }
+        }
 
-            threadRunning = false;
-            System.out.println("[NoSpread] RCS Thread stopped.");
-        }, "Athenis-NoSpread");
-
-        workerThread.setDaemon(true);
-        workerThread.setPriority(Thread.MAX_PRIORITY);
-        workerThread.start();
+        lastPunchPitch = curPunchPitch;
+        lastPunchYaw   = curPunchYaw;
     }
 
     private float[] readPunchAngle(long localPawn) {

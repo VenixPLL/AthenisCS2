@@ -7,7 +7,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
-import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ManagedThreadModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -34,7 +34,7 @@ import java.util.List;
  * <p>This module writes directly to dwViewAngles in CS2 memory.
  * It is VAC-detected and should only be used on non-VAC servers.
  */
-public class SilentAimModule extends CheatModule {
+public class SilentAimModule extends ManagedThreadModule {
 
     // ── Bone indices ─────────────────────────────────────────────────────────
     private static final int BONE_HEAD    = 7;
@@ -73,13 +73,22 @@ public class SilentAimModule extends CheatModule {
     public final BooleanSetting showFov = new BooleanSetting(
             "Show FOV Circle##silentaim", true);
 
-    // ── Thread state ─────────────────────────────────────────────────────────
-    private volatile boolean threadRunning = false;
-    private Thread workerThread;
+    // ── Worker state (lives across loop iterations) ──────────────────────────
+
+    // Pre-computed target cache (updated every iteration)
+    private float cachedPitch = 0f;
+    private float cachedYaw   = 0f;
+    private boolean hasTarget = false;
+
+    // Shot state
+    private boolean lastLmbDown   = false;
+    private boolean anglesPatched = false;
+    private float   savedPitch    = 0f;
+    private float   savedYaw      = 0f;
 
     // ── Constructor ──────────────────────────────────────────────────────────
     public SilentAimModule() {
-        super("Silent Aim", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
+        super("Silent Aim", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-SilentAim");
         addSetting(targetBone);
         addSetting(holdKey);
         addSetting(fov);
@@ -98,13 +107,19 @@ public class SilentAimModule extends CheatModule {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    /**
+     * Safety cleanup: restore the original view angles if the worker stops
+     * while the view-angle patch is still applied.
+     */
     @Override
-    public void onTick() {
-        if (isEnabled() && !threadRunning) {
-            startWorkerThread();
-        } else if (!isEnabled() && threadRunning) {
-            threadRunning = false;
+    protected void onWorkerStopping() {
+        try {
+            long cb = CS2Memory.getClientBase();
+            if (anglesPatched && cb != 0)
+                CS2Memory.writeAngles(cb + CS2Offsets.dwViewAngles, savedPitch, savedYaw);
+        } catch (Exception ignored) {
         }
+        anglesPatched = false;
     }
 
     // ── FOV circle ───────────────────────────────────────────────────────────
@@ -127,166 +142,125 @@ public class SilentAimModule extends CheatModule {
         drawList.addCircle(cx, cy, fovPx, ImColor.rgba(0.95f, 0.20f, 0.20f, 0.75f), 64, 1.0f);
     }
 
-    // ── Worker thread ────────────────────────────────────────────────────────
+    // ── Worker loop ──────────────────────────────────────────────────────────
 
-    private void startWorkerThread() {
-        if (workerThread != null && workerThread.isAlive()) return;
-        threadRunning = true;
+    @Override
+    protected void runLoop() throws Exception {
+        // ── 1. Guards ─────────────────────────────────────────
+        if (!PlayerCache.tracking) {
+            hasTarget = false;
+            lastLmbDown = false;
+            if (anglesPatched) {
+                long cb = CS2Memory.getClientBase();
+                if (cb != 0) CS2Memory.writeAngles(cb + CS2Offsets.dwViewAngles, savedPitch, savedYaw);
+                anglesPatched = false;
+            }
+            Thread.sleep(100);
+            return;
+        }
+        if (OverlayWindow.isMenuOpen()) {
+            hasTarget = false;
+            lastLmbDown = false;
+            Thread.sleep(50);
+            return;
+        }
 
-        workerThread = new Thread(() -> {
-            System.out.println("[SilentAim] Thread started.");
+        long clientBase = CS2Memory.getClientBase();
+        if (clientBase == 0) { Thread.yield(); return; }
 
-            // ── Pre-computed target cache (updated every frame) ───────────
-            float cachedPitch = 0f;
-            float cachedYaw   = 0f;
-            boolean hasTarget = false;
+        long localPawn = PlayerCache.localPlayerPawnAddress;
 
-            // ── Shot state ────────────────────────────────────────────────
-            boolean lastLmbDown   = false;
-            boolean anglesPatched = false;
-            float   savedPitch    = 0f;
-            float   savedYaw      = 0f;
+        // ── 2. Flashbang check ────────────────────────────────
+        boolean flashed = false;
+        if (flashCheck.getValue() && localPawn != 0) {
+            float fDur   = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashDuration);
+            float fAlpha = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashMaxAlpha);
+            flashed = fDur > 0.1f && fAlpha > 50.0f;
+        }
 
-            while (threadRunning && isEnabled()) {
-                try {
-                    // ── 1. Guards ─────────────────────────────────────────
-                    if (!PlayerCache.tracking) {
-                        hasTarget = false;
-                        lastLmbDown = false;
-                        if (anglesPatched) {
-                            long cb = CS2Memory.getClientBase();
-                            if (cb != 0) CS2Memory.writeAngles(cb + CS2Offsets.dwViewAngles, savedPitch, savedYaw);
-                            anglesPatched = false;
-                        }
-                        Thread.sleep(100);
-                        continue;
+        // ── 3. PRE-COMPUTE angles every frame ─────────────────
+        // All heavy work (target search, origin RPM, atan2) happens
+        // here, decoupled from the LMB press. When the click arrives,
+        // cachedPitch/cachedYaw are already ready for instant write.
+        hasTarget = false;
+        if (!flashed && localPawn != 0) {
+            List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+            if (!players.isEmpty()) {
+                int sw = Math.max(PlayerCache.screenWidth, 1280);
+                int sh = Math.max(PlayerCache.screenHeight, 720);
+                float ar   = (float) sw / (float) sh;
+                float vh   = (float) Math.atan(Math.tan(Math.toRadians(45.0)) * 0.75);
+                float hf   = 2.0f * (float) Math.toDegrees(Math.atan(Math.tan(vh) * ar));
+                float fovPx = fov.getValue() * (sw / hf);
+                float cx    = sw * 0.5f;
+                float cy    = sh * 0.5f;
+                int boneMode     = targetBone.getValue();
+                boolean chkEnemy = enemyOnly.getValue();
+                boolean chkVis   = useVisCheck.getValue();
+                boolean chkSpot  = spottedFallback.getValue();
+
+                Vector3 foot = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+                Vector3 cam  = (foot != null)
+                        ? new Vector3(foot.x, foot.y, foot.z + 64.0f) : null;
+
+                PlayerSnapshot bestTarget = null;
+                float bestDist = Float.MAX_VALUE;
+
+                for (PlayerSnapshot p : players) {
+                    if (p.isLocal || !p.onScreen) continue;
+                    if (chkEnemy && p.team == ESPModule.localTeam) continue;
+                    if (p.health <= 0) continue;
+                    float[] bx = p.boneX; float[] by = p.boneY; boolean[] bv = p.boneVisible;
+                    if (bx == null || by == null || bv == null) continue;
+                    int bone = resolveBone(boneMode, p);
+                    if (bone < 0 || bone >= bx.length || bone >= by.length
+                            || bone >= bv.length || !bv[bone]) continue;
+                    if (chkVis && !isBoneVisible(p, bone, cam, chkSpot)) continue;
+                    float sdx  = bx[bone] - cx;
+                    float sdy  = by[bone] - cy;
+                    float dist = (float) Math.sqrt(sdx * sdx + sdy * sdy);
+                    if (dist >= fovPx) continue;
+                    if (dist < bestDist) { bestDist = dist; bestTarget = p; }
+                }
+
+                if (bestTarget != null) {
+                    int boneIdx = resolveBone(boneMode, bestTarget);
+                    float[] py = computeAngles(localPawn, bestTarget, boneIdx);
+                    if (py != null) {
+                        cachedPitch = py[0];
+                        cachedYaw   = py[1];
+                        hasTarget   = true;
                     }
-                    if (OverlayWindow.isMenuOpen()) {
-                        hasTarget = false;
-                        lastLmbDown = false;
-                        Thread.sleep(50);
-                        continue;
-                    }
-
-                    long clientBase = CS2Memory.getClientBase();
-                    if (clientBase == 0) { Thread.yield(); continue; }
-
-                    long localPawn = PlayerCache.localPlayerPawnAddress;
-
-                    // ── 2. Flashbang check ────────────────────────────────
-                    boolean flashed = false;
-                    if (flashCheck.getValue() && localPawn != 0) {
-                        float fDur   = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashDuration);
-                        float fAlpha = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashMaxAlpha);
-                        flashed = fDur > 0.1f && fAlpha > 50.0f;
-                    }
-
-                    // ── 3. PRE-COMPUTE angles every frame ─────────────────
-                    // All heavy work (target search, origin RPM, atan2) happens
-                    // here, decoupled from the LMB press. When the click arrives,
-                    // cachedPitch/cachedYaw are already ready for instant write.
-                    hasTarget = false;
-                    if (!flashed && localPawn != 0) {
-                        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                        if (!players.isEmpty()) {
-                            int sw = Math.max(PlayerCache.screenWidth, 1280);
-                            int sh = Math.max(PlayerCache.screenHeight, 720);
-                            float ar   = (float) sw / (float) sh;
-                            float vh   = (float) Math.atan(Math.tan(Math.toRadians(45.0)) * 0.75);
-                            float hf   = 2.0f * (float) Math.toDegrees(Math.atan(Math.tan(vh) * ar));
-                            float fovPx = fov.getValue() * (sw / hf);
-                            float cx    = sw * 0.5f;
-                            float cy    = sh * 0.5f;
-                            int boneMode     = targetBone.getValue();
-                            boolean chkEnemy = enemyOnly.getValue();
-                            boolean chkVis   = useVisCheck.getValue();
-                            boolean chkSpot  = spottedFallback.getValue();
-
-                            Vector3 foot = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-                            Vector3 cam  = (foot != null)
-                                    ? new Vector3(foot.x, foot.y, foot.z + 64.0f) : null;
-
-                            PlayerSnapshot bestTarget = null;
-                            float bestDist = Float.MAX_VALUE;
-
-                            for (PlayerSnapshot p : players) {
-                                if (p.isLocal || !p.onScreen) continue;
-                                if (chkEnemy && p.team == ESPModule.localTeam) continue;
-                                if (p.health <= 0) continue;
-                                float[] bx = p.boneX; float[] by = p.boneY; boolean[] bv = p.boneVisible;
-                                if (bx == null || by == null || bv == null) continue;
-                                int bone = resolveBone(boneMode, p);
-                                if (bone < 0 || bone >= bx.length || bone >= by.length
-                                        || bone >= bv.length || !bv[bone]) continue;
-                                if (chkVis && !isBoneVisible(p, bone, cam, chkSpot)) continue;
-                                float sdx  = bx[bone] - cx;
-                                float sdy  = by[bone] - cy;
-                                float dist = (float) Math.sqrt(sdx * sdx + sdy * sdy);
-                                if (dist >= fovPx) continue;
-                                if (dist < bestDist) { bestDist = dist; bestTarget = p; }
-                            }
-
-                            if (bestTarget != null) {
-                                int boneIdx = resolveBone(boneMode, bestTarget);
-                                float[] py = computeAngles(localPawn, bestTarget, boneIdx);
-                                if (py != null) {
-                                    cachedPitch = py[0];
-                                    cachedYaw   = py[1];
-                                    hasTarget   = true;
-                                }
-                            }
-                        }
-                    }
-
-                    // ── 4. Key state ──────────────────────────────────────
-                    boolean holdOk = isHoldKeyHeld();
-                    boolean lmbNow = holdOk && isLmbDown();
-                    boolean risingEdge = lmbNow && !lastLmbDown;
-
-                    // ── 5. FIRST SHOT ONLY: write on rising edge ──────────
-                    // We do NOT keep writing while LMB is held. That would look
-                    // like aimlock on auto-fire. Only the initial press redirects.
-                    if (risingEdge && hasTarget && !anglesPatched) {
-                        long viewAddr = clientBase + CS2Offsets.dwViewAngles;
-                        savedPitch    = CS2Memory.readFloat(viewAddr);
-                        savedYaw      = CS2Memory.readFloat(viewAddr + 4);
-                        // Single WPM -- all computation was done above, this is instant
-                        CS2Memory.writeAngles(viewAddr, cachedPitch, cachedYaw);
-                        anglesPatched = true;
-                    }
-
-                    // ── 6. Restore when LMB is released ──────────────────
-                    if (anglesPatched && !lmbNow) {
-                        CS2Memory.writeAngles(clientBase + CS2Offsets.dwViewAngles,
-                                savedPitch, savedYaw);
-                        anglesPatched = false;
-                    }
-
-                    lastLmbDown = lmbNow;
-                    Thread.yield();
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    System.err.println("[SilentAim] Error: " + e.getMessage());
                 }
             }
+        }
 
-            // Safety cleanup
-            try {
-                long cb = CS2Memory.getClientBase();
-                if (anglesPatched && cb != 0)
-                    CS2Memory.writeAngles(cb + CS2Offsets.dwViewAngles, savedPitch, savedYaw);
-            } catch (Exception ignored) {}
+        // ── 4. Key state ──────────────────────────────────────
+        boolean holdOk = isHoldKeyHeld();
+        boolean lmbNow = holdOk && isLmbDown();
+        boolean risingEdge = lmbNow && !lastLmbDown;
 
-            threadRunning = false;
-            System.out.println("[SilentAim] Thread stopped.");
-        }, "Athenis-SilentAim");
+        // ── 5. FIRST SHOT ONLY: write on rising edge ──────────
+        // We do NOT keep writing while LMB is held. That would look
+        // like aimlock on auto-fire. Only the initial press redirects.
+        if (risingEdge && hasTarget && !anglesPatched) {
+            long viewAddr = clientBase + CS2Offsets.dwViewAngles;
+            savedPitch    = CS2Memory.readFloat(viewAddr);
+            savedYaw      = CS2Memory.readFloat(viewAddr + 4);
+            // Single WPM -- all computation was done above, this is instant
+            CS2Memory.writeAngles(viewAddr, cachedPitch, cachedYaw);
+            anglesPatched = true;
+        }
 
-        workerThread.setDaemon(true);
-        workerThread.setPriority(Thread.MAX_PRIORITY);
-        workerThread.start();
+        // ── 6. Restore when LMB is released ──────────────────
+        if (anglesPatched && !lmbNow) {
+            CS2Memory.writeAngles(clientBase + CS2Offsets.dwViewAngles,
+                    savedPitch, savedYaw);
+            anglesPatched = false;
+        }
+
+        lastLmbDown = lmbNow;
+        Thread.yield();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

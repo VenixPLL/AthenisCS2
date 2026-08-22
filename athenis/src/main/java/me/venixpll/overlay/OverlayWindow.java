@@ -54,6 +54,15 @@ public class OverlayWindow extends Application {
     private boolean cachedGameFound = false;
 
     /**
+     * Cached Win32 handle of the CS2 window. Reused between geometry checks and
+     * re-validated with {@code IsWindow} — {@code FindWindow} is only invoked
+     * again when the cached handle becomes invalid (game closed/restarted) or
+     * was never resolved. This avoids a full window-enumeration every 250 ms
+     * and is resilient to Valve changing the window title.
+     */
+    private HWND cachedGameHwnd = null;
+
+    /**
      * Configurable Java keycode to toggle the menu, default is KeyEvent.VK_INSERT
      * (155)
      */
@@ -488,17 +497,23 @@ public class OverlayWindow extends Application {
         lastInsertDown = insertDown;
 
         // ── Throttled CS2 window geometry query (every 250 ms) ────────────────
-        // FindWindow + GetWindowRect involve Win32 kernel calls; running them at
-        // full render rate (60-165+ fps) wastes CPU for data that changes far less
-        // frequently. Cached geometry is used between checks.
+        // GetWindowRect involves a Win32 kernel call; running it at full render
+        // rate (60-165+ fps) wastes CPU for data that changes far less often.
+        // Cached geometry is used between checks. The window handle itself is
+        // cached across checks and re-validated with IsWindow(), so the more
+        // expensive FindWindow enumeration only runs when the handle is lost.
         long now = System.currentTimeMillis();
         if (now - lastWindowCheckMs >= WINDOW_CHECK_INTERVAL_MS) {
             lastWindowCheckMs = now;
 
-            HWND gameHwnd = User32.INSTANCE.FindWindow("SDL_app", "Counter-Strike 2");
-            if (gameHwnd != null) {
+            // Re-use the cached handle when still valid; re-resolve otherwise.
+            if (cachedGameHwnd == null || !User32.INSTANCE.IsWindow(cachedGameHwnd)) {
+                cachedGameHwnd = User32.INSTANCE.FindWindow("SDL_app", "Counter-Strike 2");
+            }
+
+            if (cachedGameHwnd != null) {
                 RECT rect = new RECT();
-                User32.INSTANCE.GetWindowRect(gameHwnd, rect);
+                User32.INSTANCE.GetWindowRect(cachedGameHwnd, rect);
                 cachedGameX = rect.left;
                 cachedGameY = rect.top;
                 cachedGameW = rect.right - rect.left;

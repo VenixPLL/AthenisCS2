@@ -5,7 +5,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
-import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ManagedThreadModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -40,7 +40,7 @@ import java.util.List;
  * target (tracked by player index). This prevents burst-fire on a single
  * target when the crosshair stays on them after the shot.
  */
-public class TriggerBotModule extends CheatModule {
+public class TriggerBotModule extends ManagedThreadModule {
 
     // ── Bone index constants (must match ESPModule / PositionReader) ───────────
     private static final int BONE_HEAD = 7;
@@ -128,8 +128,6 @@ public class TriggerBotModule extends CheatModule {
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
-    private volatile boolean triggerThreadRunning = false;
-    private Thread triggerThread;
     private Robot robot;
 
     /**
@@ -140,7 +138,7 @@ public class TriggerBotModule extends CheatModule {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public TriggerBotModule() {
-        super("TriggerBot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
+        super("TriggerBot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-TriggerBot");
         addSetting(targetMode);
         addSetting(oneShotMode);
         addSetting(reactionDelay);
@@ -154,183 +152,154 @@ public class TriggerBotModule extends CheatModule {
         addSetting(maxMoveSpeed);
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ── Worker startup ────────────────────────────────────────────────────────
 
+    /** Initializes the AWT Robot used for simulated clicks; aborts on failure. */
     @Override
-    public void onTick() {
-        if (isEnabled() && !triggerThreadRunning) {
-            startTriggerThread();
-        } else if (!isEnabled() && triggerThreadRunning) {
-            triggerThreadRunning = false;
+    protected boolean onWorkerStarting() {
+        if (robot != null)
+            return true;
+        try {
+            robot = new Robot();
+            return true;
+        } catch (Exception e) {
+            System.err.println("[TriggerBot] Robot init failed: " + e.getMessage());
+            return false;
         }
     }
 
-    // ── Thread ────────────────────────────────────────────────────────────────
+    // ── Trigger loop ──────────────────────────────────────────────────────────
 
-    private void startTriggerThread() {
-        if (triggerThread != null && triggerThread.isAlive())
+    @Override
+    protected void runLoop() throws Exception {
+        if (!PlayerCache.tracking) {
+            Thread.sleep(100);
             return;
+        }
 
-        if (robot == null) {
-            try {
-                robot = new Robot();
-            } catch (Exception e) {
-                System.err.println("[TriggerBot] Robot init failed: " + e.getMessage());
+        // Pause while overlay menu is open
+        if (OverlayWindow.isMenuOpen()) {
+            Thread.sleep(50);
+            return;
+        }
+
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        if (players.isEmpty()) {
+            Thread.yield();
+            return;
+        }
+
+        float cx = PlayerCache.screenWidth * 0.5f;
+        float cy = PlayerCache.screenHeight * 0.5f;
+
+        // ── Flashbang check: skip if local player is blinded ───────────
+        if (flashCheck.getValue()) {
+            boolean isFlashed = false;
+            long localPawn = PlayerCache.localPlayerPawnAddress;
+            if (localPawn != 0) {
+                float fDur = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashDuration);
+                float fAlpha = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashMaxAlpha);
+                if (fDur > 0.1f && fAlpha > 50.0f) {
+                    isFlashed = true;
+                }
+            }
+            if (isFlashed) {
+                Thread.yield();
                 return;
             }
         }
 
-        triggerThreadRunning = true;
-        triggerThread = new Thread(() -> {
-            System.out.println("[TriggerBot] Thread started.");
+        // ── Velocity check: skip if local player is moving too fast ────
+        if (stopWhenMoving.getValue()) {
+            float threshold = maxMoveSpeed.getValue();
+            float localSpeed = 0f;
+            long localPawn = PlayerCache.localPlayerPawnAddress;
+            if (localPawn != 0) {
+                Vector3 vel = CS2Memory.readVector(localPawn + CS2Offsets.m_vecVelocity);
+                if (vel != null && Float.isFinite(vel.x) && Float.isFinite(vel.y)) {
+                    localSpeed = (float) Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+                }
+            }
+            if (localSpeed > threshold) {
+                Thread.yield();
+                return;
+            }
+        }
 
-            while (triggerThreadRunning && isEnabled()) {
-                try {
-                    if (!PlayerCache.tracking) {
-                        Thread.sleep(100);
+        // Build VisCheck camera once per iteration
+        Vector3 localCamera = buildLocalCamera();
+
+        // Snapshot current settings (avoid re-reading volatile fields in loop)
+        int modeIdx = targetMode.getValue();
+        int[] bones = MODE_BONES[modeIdx];
+        float radFrac = boneRadiusFrac.getValue();
+        boolean oneShot = oneShotMode.getValue();
+
+        int hitPlayerIndex = -1;
+
+        for (PlayerSnapshot p : players) {
+            if (p.isLocal || !p.onScreen)
+                continue;
+            if (enemyOnly.getValue() && p.team == ESPModule.localTeam)
+                continue;
+
+            // One-shot: skip the last-shot player until crosshair leaves
+            if (oneShot && p.index == lastShotIndex)
+                continue;
+
+            // Check each bone for this targeting mode
+            int aimedBone = getAimedBone(p, cx, cy, bones, radFrac);
+            if (aimedBone != -1) {
+                // VisCheck ONLY the specific bone aimed at
+                if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone, localCamera))
+                    continue;
+
+                hitPlayerIndex = p.index;
+                break;
+            }
+        }
+
+        // One-shot: clear lastShotIndex when crosshair leaves all targets
+        if (oneShot && hitPlayerIndex == -1) {
+            lastShotIndex = -1;
+        }
+
+        if (hitPlayerIndex != -1) {
+            // Reaction delay
+            int delay = reactionDelay.getValue().intValue();
+            if (delay > 0)
+                Thread.sleep(delay);
+
+            // Re-verify after delay
+            int modeIdx2 = targetMode.getValue();
+            int[] bones2 = MODE_BONES[modeIdx2];
+            float radFrac2 = boneRadiusFrac.getValue();
+            boolean stillOn = false;
+            for (PlayerSnapshot p : PlayerCache.renderPlayers) {
+                if (p.index != hitPlayerIndex || p.isLocal || !p.onScreen)
+                    continue;
+                int aimedBone2 = getAimedBone(p, cx, cy, bones2, radFrac2);
+                if (aimedBone2 != -1) {
+                    if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone2, buildLocalCamera()))
                         continue;
-                    }
-
-                    // Pause while overlay menu is open
-                    if (OverlayWindow.isMenuOpen()) {
-                        Thread.sleep(50);
-                        continue;
-                    }
-
-                    List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                    if (players.isEmpty()) {
-                        Thread.yield();
-                        continue;
-                    }
-
-                    float cx = PlayerCache.screenWidth * 0.5f;
-                    float cy = PlayerCache.screenHeight * 0.5f;
-
-                    // ── Flashbang check: skip if local player is blinded ───────────
-                    if (flashCheck.getValue()) {
-                        boolean isFlashed = false;
-                        long localPawn = PlayerCache.localPlayerPawnAddress;
-                        if (localPawn != 0) {
-                            float fDur = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashDuration);
-                            float fAlpha = CS2Memory.readFloat(localPawn + CS2Offsets.m_flFlashMaxAlpha);
-                            if (fDur > 0.1f && fAlpha > 50.0f) {
-                                isFlashed = true;
-                            }
-                        }
-                        if (isFlashed) {
-                            Thread.yield();
-                            continue;
-                        }
-                    }
-
-                    // ── Velocity check: skip if local player is moving too fast ────
-                    if (stopWhenMoving.getValue()) {
-                        float threshold = maxMoveSpeed.getValue();
-                        float localSpeed = 0f;
-                        long localPawn = PlayerCache.localPlayerPawnAddress;
-                        if (localPawn != 0) {
-                            Vector3 vel = CS2Memory.readVector(localPawn + CS2Offsets.m_vecVelocity);
-                            if (vel != null && Float.isFinite(vel.x) && Float.isFinite(vel.y)) {
-                                localSpeed = (float) Math.sqrt(vel.x * vel.x + vel.y * vel.y);
-                            }
-                        }
-                        if (localSpeed > threshold) {
-                            Thread.yield();
-                            continue;
-                        }
-                    }
-
-                    // Build VisCheck camera once per iteration
-                    Vector3 localCamera = buildLocalCamera();
-
-                    // Snapshot current settings (avoid re-reading volatile fields in loop)
-                    int modeIdx = targetMode.getValue();
-                    int[] bones = MODE_BONES[modeIdx];
-                    float radFrac = boneRadiusFrac.getValue();
-                    boolean oneShot = oneShotMode.getValue();
-
-                    int hitPlayerIndex = -1;
-
-                    for (PlayerSnapshot p : players) {
-                        if (p.isLocal || !p.onScreen)
-                            continue;
-                        if (enemyOnly.getValue() && p.team == ESPModule.localTeam)
-                            continue;
-
-                        // One-shot: skip the last-shot player until crosshair leaves
-                        if (oneShot && p.index == lastShotIndex)
-                            continue;
-
-                        // Check each bone for this targeting mode
-                        int aimedBone = getAimedBone(p, cx, cy, bones, radFrac);
-                        if (aimedBone != -1) {
-                            // VisCheck ONLY the specific bone aimed at
-                            if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone, localCamera))
-                                continue;
-
-                            hitPlayerIndex = p.index;
-                            break;
-                        }
-                    }
-
-                    // One-shot: clear lastShotIndex when crosshair leaves all targets
-                    if (oneShot && hitPlayerIndex == -1) {
-                        lastShotIndex = -1;
-                    }
-
-                    if (hitPlayerIndex != -1) {
-                        // Reaction delay
-                        int delay = reactionDelay.getValue().intValue();
-                        if (delay > 0)
-                            Thread.sleep(delay);
-
-                        // Re-verify after delay
-                        int modeIdx2 = targetMode.getValue();
-                        int[] bones2 = MODE_BONES[modeIdx2];
-                        float radFrac2 = boneRadiusFrac.getValue();
-                        boolean stillOn = false;
-                        for (PlayerSnapshot p : PlayerCache.renderPlayers) {
-                            if (p.index != hitPlayerIndex || p.isLocal || !p.onScreen)
-                                continue;
-                            int aimedBone2 = getAimedBone(p, cx, cy, bones2, radFrac2);
-                            if (aimedBone2 != -1) {
-                                if (useVisCheck.getValue() && !isBoneVisible(p, aimedBone2, buildLocalCamera()))
-                                    continue;
-                                stillOn = true;
-                                break;
-                            }
-                        }
-
-                        if (stillOn) {
-                            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                            Thread.sleep((long) clickDuration.getValue().floatValue());
-                            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-
-                            if (oneShot)
-                                lastShotIndex = hitPlayerIndex;
-
-                            Thread.sleep((long) cooldown.getValue().floatValue());
-                        }
-                    }
-
-                    Thread.yield();
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    stillOn = true;
                     break;
-                } catch (Exception e) {
-                    System.err.println("[TriggerBot] Error: " + e.getMessage()); 
-                    e.printStackTrace();
                 }
             }
 
-            triggerThreadRunning = false;
-            System.out.println("[TriggerBot] Thread stopped.");
-        }, "Athenis-TriggerBot");
+            if (stillOn) {
+                robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+                Thread.sleep((long) clickDuration.getValue().floatValue());
+                robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-        triggerThread.setDaemon(true);
-        triggerThread.setPriority(Thread.MAX_PRIORITY);
-        triggerThread.start();
+                if (oneShot)
+                    lastShotIndex = hitPlayerIndex;
+
+                Thread.sleep((long) cooldown.getValue().floatValue());
+            }
+        }
+
+        Thread.yield();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

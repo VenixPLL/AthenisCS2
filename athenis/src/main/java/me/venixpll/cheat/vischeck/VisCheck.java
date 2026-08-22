@@ -44,6 +44,14 @@ public class VisCheck {
     }
 
     private static final int LEAF_THRESHOLD = 4;
+
+    /** Number of bins used for Surface Area Heuristic (SAH) split evaluation. */
+    private static final int SAH_BINS = 12;
+    /** Relative cost of traversing one BVH node (tunable). */
+    private static final float SAH_TRAVERSAL_COST = 1.0f;
+    /** Relative cost of one triangle intersection test (tunable). */
+    private static final float SAH_INTERSECT_COST = 2.0f;
+
     private final OptimizedGeometry geometry = new OptimizedGeometry();
     private final List<BVHNode> bvhNodes = new ArrayList<>();
 
@@ -393,7 +401,7 @@ public class VisCheck {
 
         boolean blocked = false;
 
-        for (int meshIdx = 0; meshIdx < bvhNodes.size(); meshIdx++) {
+        for (int meshIdx = 0; meshIdx < bvhNodes.size() && !blocked; meshIdx++) {
             BVHNode bvhRoot = bvhNodes.get(meshIdx);
 
             // Debug-aware traversal
@@ -408,11 +416,9 @@ public class VisCheck {
                     hitMeshIndex[0] = meshIdx;
                 }
             } else {
-                if (intersectBVH(bvhRoot, point1, normRayDir, distance, hitDistance, meshIdx)) {
-                    if (hitDistance[0] < distance) {
-                        blocked = true;
-                    }
-                }
+                // Fast path: boolean "any-hit" traversal with early exit —
+                // stops at the first occluder closer than the target.
+                blocked = intersectBVHAny(bvhRoot, point1, normRayDir, distance, meshIdx);
             }
         }
 
@@ -546,84 +552,291 @@ public class VisCheck {
 
     // ── BVH builder ───────────────────────────────────────────────────────────
 
+    /**
+     * Builds a BVH over the given mesh.
+     *
+     * <p>Every triangle's AABB is computed exactly once up-front (the previous
+     * implementation re-computed two AABBs per sort comparison, allocating
+     * millions of short-lived objects during build). Splitting uses binned
+     * Surface Area Heuristic (SAH) evaluation across all three axes, which
+     * produces substantially tighter trees than a plain median split on
+     * skewed map-geometry distributions.</p>
+     */
     private BVHNode buildBVH(List<TriangleCombined> tris) {
-        BVHNode node = new BVHNode();
-        if (tris.isEmpty())
-            return node;
-
-        AABB bounds = tris.get(0).computeAABB();
-        AABB nodeBounds = new AABB(
-                new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-                new Vector3(bounds.max.x, bounds.max.y, bounds.max.z));
-
-        for (int i = 1; i < tris.size(); ++i) {
-            AABB triAABB = tris.get(i).computeAABB();
-            nodeBounds.min.x = Math.min(nodeBounds.min.x, triAABB.min.x);
-            nodeBounds.min.y = Math.min(nodeBounds.min.y, triAABB.min.y);
-            nodeBounds.min.z = Math.min(nodeBounds.min.z, triAABB.min.z);
-            nodeBounds.max.x = Math.max(nodeBounds.max.x, triAABB.max.x);
-            nodeBounds.max.y = Math.max(nodeBounds.max.y, triAABB.max.y);
-            nodeBounds.max.z = Math.max(nodeBounds.max.z, triAABB.max.z);
-        }
-        node.bounds = nodeBounds;
-
-        if (tris.size() <= LEAF_THRESHOLD) {
-            node.triangles = tris;
-            return node;
+        BVHNode root = new BVHNode();
+        int n = tris.size();
+        if (n == 0) {
+            // Empty mesh (e.g. every triangle filtered as displacement terrain).
+            // A bare node would have null bounds and NPE on the first ray, but
+            // the root must still exist because mesh indices are baked into
+            // deleted-triangle keys and must stay aligned with geometry.meshes.
+            // A degenerate zero-area box can never be hit by a ray, so
+            // traversal safely reports no-hit for this mesh.
+            root.bounds = new AABB(new Vector3(), new Vector3());
+            return root;
         }
 
-        Vector3 diff = nodeBounds.max.subtract(nodeBounds.min);
-        int axis = (diff.x > diff.y && diff.x > diff.z) ? 0 : ((diff.y > diff.z) ? 1 : 2);
+        // Precompute all triangle AABBs once.
+        TriangleCombined[] trisArr = tris.toArray(new TriangleCombined[0]);
+        AABB[] boxes = new AABB[n];
+        for (int i = 0; i < n; i++) {
+            boxes[i] = trisArr[i].computeAABB();
+        }
 
-        List<TriangleCombined> sortedTris = new ArrayList<>(tris);
-        sortedTris.sort((a, b) -> {
-            AABB aabbA = a.computeAABB();
-            AABB aabbB = b.computeAABB();
-            float centerA, centerB;
-            if (axis == 0) {
-                centerA = (aabbA.min.x + aabbA.max.x) / 2.0f;
-                centerB = (aabbB.min.x + aabbB.max.x) / 2.0f;
-            } else if (axis == 1) {
-                centerA = (aabbA.min.y + aabbA.max.y) / 2.0f;
-                centerB = (aabbB.min.y + aabbB.max.y) / 2.0f;
-            } else {
-                centerA = (aabbA.min.z + aabbA.max.z) / 2.0f;
-                centerB = (aabbB.min.z + aabbB.max.z) / 2.0f;
+        // Index order array that gets partitioned in place during recursion.
+        int[] order = new int[n];
+        for (int i = 0; i < n; i++) order[i] = i;
+
+        buildNode(root, trisArr, boxes, order, 0, n);
+        return root;
+    }
+
+    /**
+     * Recursively builds one BVH node covering {@code order[from, to)}.
+     *
+     * @param node  Node to fill in.
+     * @param boxes Precomputed per-triangle AABBs (indexed like trisArr).
+     * @param order Triangle indices in current partition order.
+     * @param from  Inclusive start of this node's range in {@code order}.
+     * @param to    Exclusive end of this node's range in {@code order}.
+     */
+    private void buildNode(BVHNode node, TriangleCombined[] tris, AABB[] boxes, int[] order, int from, int to) {
+        // 1. Compute node bounds from children ranges.
+        AABB first = boxes[order[from]];
+        Vector3 bmin = new Vector3(first.min.x, first.min.y, first.min.z);
+        Vector3 bmax = new Vector3(first.max.x, first.max.y, first.max.z);
+        for (int i = from + 1; i < to; i++) {
+            AABB b = boxes[order[i]];
+            bmin.x = Math.min(bmin.x, b.min.x);
+            bmin.y = Math.min(bmin.y, b.min.y);
+            bmin.z = Math.min(bmin.z, b.min.z);
+            bmax.x = Math.max(bmax.x, b.max.x);
+            bmax.y = Math.max(bmax.y, b.max.y);
+            bmax.z = Math.max(bmax.z, b.max.z);
+        }
+        node.bounds = new AABB(bmin, bmax);
+
+        int count = to - from;
+        if (count <= LEAF_THRESHOLD) {
+            List<TriangleCombined> leafTris = new ArrayList<>(count);
+            for (int i = from; i < to; i++) {
+                leafTris.add(tris[order[i]]);
             }
-            return Float.compare(centerA, centerB);
-        });
+            node.triangles = leafTris;
+            return;
+        }
 
-        int mid = sortedTris.size() / 2;
-        node.left = buildBVH(new ArrayList<>(sortedTris.subList(0, mid)));
-        node.right = buildBVH(new ArrayList<>(sortedTris.subList(mid, sortedTris.size())));
-        return node;
+        // 2. Find the best split plane via binned SAH over all three axes.
+        int bestAxis = -1;
+        float bestPlane = 0f;
+        float bestCost = Float.MAX_VALUE;
+
+        for (int axis = 0; axis < 3; axis++) {
+            float amin = axisCoord(bmin, axis);
+            float amax = axisCoord(bmax, axis);
+            float extent = amax - amin;
+            if (extent < 1e-6f)
+                continue; // degenerate on this axis
+
+            // Bin all triangles by centroid along this axis.
+            int[] binCount = new int[SAH_BINS];
+            AABB[] binBounds = new AABB[SAH_BINS];
+            float scale = SAH_BINS / extent;
+            for (int i = from; i < to; i++) {
+                AABB b = boxes[order[i]];
+                float c = axisCoord(b.min, axis) + axisCoord(b.max, axis);
+                int bin = (int) ((c * 0.5f - amin) * scale);
+                if (bin < 0) bin = 0;
+                if (bin >= SAH_BINS) bin = SAH_BINS - 1;
+                binCount[bin]++;
+                if (binBounds[bin] == null) {
+                    binBounds[bin] = new AABB(
+                            new Vector3(b.min.x, b.min.y, b.min.z),
+                            new Vector3(b.max.x, b.max.y, b.max.z));
+                } else {
+                    AABB bb = binBounds[bin];
+                    bb.min.x = Math.min(bb.min.x, b.min.x);
+                    bb.min.y = Math.min(bb.min.y, b.min.y);
+                    bb.min.z = Math.min(bb.min.z, b.min.z);
+                    bb.max.x = Math.max(bb.max.x, b.max.x);
+                    bb.max.y = Math.max(bb.max.y, b.max.y);
+                    bb.max.z = Math.max(bb.max.z, b.max.z);
+                }
+            }
+
+            // Sweep left→right accumulating left-side areas/counts...
+            float[] leftArea = new float[SAH_BINS - 1];
+            int[] leftCount = new int[SAH_BINS - 1];
+            AABB accLeft = null;
+            int cntLeft = 0;
+            for (int s = 0; s < SAH_BINS - 1; s++) {
+                if (binCount[s] > 0) {
+                    accLeft = mergeInto(accLeft, binBounds[s]);
+                    cntLeft += binCount[s];
+                }
+                leftArea[s] = cntLeft == 0 ? 0f : surfaceArea(accLeft);
+                leftCount[s] = cntLeft;
+            }
+
+            // ...and right→left accumulating right-side areas/counts.
+            float[] rightArea = new float[SAH_BINS - 1];
+            int[] rightCount = new int[SAH_BINS - 1];
+            AABB accRight = null;
+            int cntRight = 0;
+            for (int s = SAH_BINS - 1; s > 0; s--) {
+                if (binCount[s] > 0) {
+                    accRight = mergeInto(accRight, binBounds[s]);
+                    cntRight += binCount[s];
+                }
+                rightArea[s - 1] = cntRight == 0 ? 0f : surfaceArea(accRight);
+                rightCount[s - 1] = cntRight;
+            }
+
+            // Evaluate cost of every candidate split.
+            float invParentArea = 1.0f / Math.max(surfaceArea(node.bounds), 1e-9f);
+            for (int s = 0; s < SAH_BINS - 1; s++) {
+                if (leftCount[s] == 0 || rightCount[s] == 0)
+                    continue;
+                float cost = SAH_TRAVERSAL_COST
+                        + SAH_INTERSECT_COST * invParentArea
+                        * (leftCount[s] * leftArea[s] + rightCount[s] * rightArea[s]);
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    bestAxis = axis;
+                    bestPlane = amin + (s + 1) / (float) SAH_BINS * extent;
+                }
+            }
+        }
+
+        // 3. Partition the index range around the chosen plane.
+        int mid;
+        if (bestAxis == -1) {
+            // Fully degenerate bounds (all centroids identical): fall back to
+            // an arbitrary half split so recursion still terminates.
+            mid = from + count / 2;
+        } else {
+            mid = partition(order, boxes, from, to, bestAxis, bestPlane);
+            if (mid <= from || mid >= to) {
+                // Numerical edge case: everything landed on one side.
+                // Fall back to centroid-sorted median split on that axis.
+                mid = medianSplit(order, boxes, from, to, bestAxis);
+            }
+        }
+
+        node.left = new BVHNode();
+        node.right = new BVHNode();
+        buildNode(node.left, tris, boxes, order, from, mid);
+        buildNode(node.right, tris, boxes, order, mid, to);
+    }
+
+    // ── BVH builder helpers ───────────────────────────────────────────────────
+
+    /** Returns the given coordinate component of a vector (0=x, 1=y, 2=z). */
+    private static float axisCoord(Vector3 v, int axis) {
+        switch (axis) {
+            case 0:  return v.x;
+            case 1:  return v.y;
+            default: return v.z;
+        }
+    }
+
+    /** Returns {@code acc} merged with {@code b} (allocating on first call). */
+    private static AABB mergeInto(AABB acc, AABB b) {
+        if (acc == null) {
+            return new AABB(
+                    new Vector3(b.min.x, b.min.y, b.min.z),
+                    new Vector3(b.max.x, b.max.y, b.max.z));
+        }
+        acc.min.x = Math.min(acc.min.x, b.min.x);
+        acc.min.y = Math.min(acc.min.y, b.min.y);
+        acc.min.z = Math.min(acc.min.z, b.min.z);
+        acc.max.x = Math.max(acc.max.x, b.max.x);
+        acc.max.y = Math.max(acc.max.y, b.max.y);
+        acc.max.z = Math.max(acc.max.z, b.max.z);
+        return acc;
+    }
+
+    /** Surface area of an axis-aligned box (half-area would suffice for SAH). */
+    private static float surfaceArea(AABB box) {
+        float dx = box.max.x - box.min.x;
+        float dy = box.max.y - box.min.y;
+        float dz = box.max.z - box.min.z;
+        return 2.0f * (dx * dy + dy * dz + dz * dx);
+    }
+
+    /**
+     * Partitions {@code order[from, to)} in place so that triangles whose
+     * centroid is left of {@code plane} come first. Returns the split index.
+     */
+    private static int partition(int[] order, AABB[] boxes,
+            int from, int to, int axis, float plane) {
+        int lo = from, hi = to - 1;
+        while (lo <= hi) {
+            AABB b = boxes[order[lo]];
+            float c = (axisCoord(b.min, axis) + axisCoord(b.max, axis)) * 0.5f;
+            if (c < plane) {
+                lo++;
+            } else {
+                int tmp = order[lo];
+                order[lo] = order[hi];
+                order[hi] = tmp;
+                hi--;
+            }
+        }
+        return lo;
+    }
+
+    /**
+     * Fallback split: sorts {@code order[from, to)} by centroid along
+     * {@code axis} and returns the median index. Used when the SAH partition
+     * degenerates (all centroids on one side of the plane).
+     */
+    private static int medianSplit(int[] order, AABB[] boxes,
+            int from, int to, int axis) {
+        // Simple insertion sort — only used on rare degenerate subranges.
+        for (int i = from + 1; i < to; i++) {
+            int cur = order[i];
+            float cc = centroid(boxes[cur], axis);
+            int j = i - 1;
+            while (j >= from && centroid(boxes[order[j]], axis) > cc) {
+                order[j + 1] = order[j];
+                j--;
+            }
+            order[j + 1] = cur;
+        }
+        return from + (to - from) / 2;
+    }
+
+    private static float centroid(AABB b, int axis) {
+        return (axisCoord(b.min, axis) + axisCoord(b.max, axis)) * 0.5f;
     }
 
     // ── BVH traversal (production — no tracking overhead) ────────────────────
 
-    private boolean intersectBVH(BVHNode node, Vector3 rayOrigin, Vector3 rayDir,
-            float maxDistance, float[] hitDistance, int meshIdx) {
+    /**
+     * Boolean "any-hit" traversal with early exit: returns {@code true} as
+     * soon as any non-deleted triangle is intersected closer than
+     * {@code maxDistance}. Used by {@link #isPointVisible} where only the
+     * occluded/not-occluded answer matters — no closest-hit bookkeeping.
+     */
+    private boolean intersectBVHAny(BVHNode node, Vector3 rayOrigin, Vector3 rayDir,
+            float maxDistance, int meshIdx) {
         if (!node.bounds.rayIntersects(rayOrigin, rayDir))
             return false;
 
-        boolean hit = false;
         if (node.isLeaf()) {
             for (TriangleCombined tri : node.triangles) {
-                // Skip deleted triangles in production mode
                 if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
                 float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
-                if (t > 0.0f && t < maxDistance && t < hitDistance[0]) {
-                    hitDistance[0] = t;
-                    hit = true;
-                }
+                if (t > 0.0f && t < maxDistance)
+                    return true; // early exit — first occluder wins
             }
-        } else {
-            if (node.left != null)
-                hit |= intersectBVH(node.left, rayOrigin, rayDir, maxDistance, hitDistance, meshIdx);
-            if (node.right != null)
-                hit |= intersectBVH(node.right, rayOrigin, rayDir, maxDistance, hitDistance, meshIdx);
+            return false;
         }
-        return hit;
+
+        if (node.left != null && intersectBVHAny(node.left, rayOrigin, rayDir, maxDistance, meshIdx))
+            return true;
+        return node.right != null && intersectBVHAny(node.right, rayOrigin, rayDir, maxDistance, meshIdx);
     }
 
     // ── BVH traversal (debug — tracks nodes visited, tris tested, closest tri) ─

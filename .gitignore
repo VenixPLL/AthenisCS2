@@ -1,2 +1,29 @@
+# Build outputs
 /s2v
-/athenis/target
+target/
+athenis/target/
+dependency-reduced-pom.xml
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+*.launch
+.settings/
+.classpath
+.project
+
+# Compiled artifacts
+*.class
+*.jar
+!athenis/src/main/resources/**/*.jar
+*.exe
+
+# Logs & temp files
+*.log
+hs_err_pid*
+replay_pid*
+
+# OS files
+Thumbs.db
+.DS_Store

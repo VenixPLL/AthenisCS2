@@ -9,7 +9,7 @@ import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
 import me.venixpll.cheat.Vector3;
-import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ManagedThreadModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.impl.aimbot.AimMode;
@@ -38,7 +38,7 @@ import java.util.List;
  * <p>Rate-limit : 500 Hz nanosecond gate (same principle as DragonBurn AimDelay).
  * Sub-pixel  : fractional-px accumulator prevents stalling at zero.
  */
-public class AimbotModule extends CheatModule {
+public class AimbotModule extends ManagedThreadModule {
 
     // ── Win32 relative mouse injection ────────────────────────────────────────
     private interface Win32Mouse extends Library {
@@ -109,15 +109,12 @@ public class AimbotModule extends CheatModule {
     public final FloatSetting pidSensitivity = pidSpringMode.pidSensitivity;
 
     // ── Internal state ────────────────────────────────────────────────────────
-    private volatile boolean aimThreadRunning = false;
-    private Thread aimThread;
-
     private long lastAimNs = 0L;
     private static final long AIM_INTERVAL_NS = 2_000_000L; // 2 ms = 500 Hz cap
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public AimbotModule() {
-        super("Aimbot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
+        super("Aimbot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-Aimbot");
 
         // Register default aim modes
         registerAimModeInternal(classicMode);
@@ -198,16 +195,15 @@ public class AimbotModule extends CheatModule {
 
     // ── Module lifecycle ──────────────────────────────────────────────────────
     @Override
-    public void onTick() {
+    protected void onUpdate() {
         // Keep visibility in sync with current mode selection
         applyModeVisibility();
+    }
 
-        if (isEnabled() && !aimThreadRunning)
-            startAimThread();
-        else if (!isEnabled() && aimThreadRunning) {
-            aimThreadRunning = false;
-            resetState();
-        }
+    /** Resets all aim-mode state when the worker stops (module disabled). */
+    @Override
+    protected void onWorkerStopping() {
+        resetState();
     }
 
     // ── FOV circle overlay ────────────────────────────────────────────────────
@@ -264,188 +260,163 @@ public class AimbotModule extends CheatModule {
         }
     }
 
-    // ── Aim thread ────────────────────────────────────────────────────────────
-    private void startAimThread() {
-        if (aimThread != null && aimThread.isAlive())
+    // ── Aim loop ──────────────────────────────────────────────────────────────
+    @Override
+    protected void runLoop() throws Exception {
+        // 1. Wait for CS2 attachment
+        if (!PlayerCache.tracking) {
+            Thread.sleep(100);
             return;
-        aimThreadRunning = true;
+        }
 
-        aimThread = new Thread(() -> {
-            System.out.println("[Aimbot] Thread started.");
+        // 1a. Pause while overlay menu is open
+        if (OverlayWindow.isMenuOpen()) {
+            resetState();
+            Thread.sleep(50);
+            return;
+        }
 
-            while (aimThreadRunning && isEnabled()) {
-                try {
-                    // 1. Wait for CS2 attachment
-                    if (!PlayerCache.tracking) {
-                        Thread.sleep(100);
-                        continue;
-                    }
+        // 2. Hold-key guard
+        if (activationMode.getValue() == 0 && !isAimKeyHeld()) {
+            resetState();
+            Thread.yield();
+            return;
+        }
 
-                    // 1a. Pause while overlay menu is open
-                    if (OverlayWindow.isMenuOpen()) {
-                        resetState();
-                        Thread.sleep(50);
-                        continue;
-                    }
+        // 2b. Cancel on Shoot check
+        if (cancelOnShoot.getValue() && isLeftMouseHeld()) {
+            resetState();
+            Thread.yield();
+            return;
+        }
 
-                    // 2. Hold-key guard
-                    if (activationMode.getValue() == 0 && !isAimKeyHeld()) {
-                        resetState();
-                        Thread.yield();
-                        continue;
-                    }
-
-                    // 2b. Cancel on Shoot check
-                    if (cancelOnShoot.getValue() && isLeftMouseHeld()) {
-                        resetState();
-                        Thread.yield();
-                        continue;
-                    }
-
-                    // 2c. Flashbang Check: pause aimbot while local player is blinded
-                    if (flashCheck.getValue()) {
-                        boolean isFlashed = false;
-                        long lpAddr = PlayerCache.localPlayerPawnAddress;
-                        if (lpAddr != 0) {
-                            float fDur = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashDuration);
-                            float fAlpha = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashMaxAlpha);
-                            if (fDur > 0.1f && fAlpha > 50.0f) {
-                                isFlashed = true;
-                            }
-                        }
-                        if (isFlashed) {
-                            resetState();
-                            Thread.yield();
-                            continue;
-                        }
-                    }
-
-                    // 3. Local pawn
-                    long localPawn = PlayerCache.localPlayerPawnAddress;
-                    if (localPawn == 0) {
-                        Thread.yield();
-                        continue;
-                    }
-
-                    // 4. VisCheck camera (foot origin + eye height)
-                    Vector3 foot = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-                    Vector3 localCamera = (foot != null)
-                            ? new Vector3(foot.x, foot.y, foot.z + 64.0f)
-                            : null;
-
-                    // 5. Player list snapshot
-                    List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                    if (players.isEmpty()) {
-                        Thread.yield();
-                        continue;
-                    }
-
-                    int boneMode    = targetBone.getValue();
-                    float fovDeg    = fov.getValue();
-                    float fovMinDeg = fovMin.getValue();
-                    boolean chkEnemy = enemyOnly.getValue();
-                    boolean chkVis   = useVisCheck.getValue();
-                    boolean chkSpot  = spottedFallback.getValue();
-
-                    // 6. Derive horizontal FOV from screen aspect ratio.
-                    int sw = Math.max(PlayerCache.screenWidth, 1280);
-                    int sh = Math.max(PlayerCache.screenHeight, 720);
-                    float ar = (float) sw / (float) sh;
-                    float vh = (float) Math.atan(Math.tan(Math.toRadians(45.0)) * 0.75);
-                    float hf = 2.0f * (float) Math.toDegrees(Math.atan(Math.tan(vh) * ar));
-
-                    float cx = sw * 0.5f;
-                    float cy = sh * 0.5f;
-                    float ppd = sw / hf;      // screen pixels per degree
-                    float fovPx    = fovDeg    * ppd;
-                    float fovMinPx = fovMinDeg * ppd;
-
-                    // 7. Screen-space target selection
-                    float bestDist = Float.MAX_VALUE;
-                    float bestDX   = 0f;
-                    float bestDY   = 0f;
-
-                    for (PlayerSnapshot p : players) {
-                        if (p.isLocal || !p.onScreen)
-                            continue;
-                        if (chkEnemy && p.team == ESPModule.localTeam)
-                            continue;
-                        if (p.health <= 0)
-                            continue;
-
-                        float[] bx = p.boneX;
-                        float[] by = p.boneY;
-                        boolean[] bv = p.boneVisible;
-                        if (bx == null || by == null || bv == null)
-                            continue;
-
-                        int bone = resolveBone(boneMode, p);
-                        if (bone < 0 || bone >= bx.length || bone >= by.length || bone >= bv.length || !bv[bone])
-                            continue;
-
-                        if (chkVis && !isBoneVisible(p, bone, localCamera, localPawn, chkSpot))
-                            continue;
-
-                        float sdx = bx[bone] - cx;
-                        float sdy = by[bone] - cy;
-                        float dist = (float) Math.sqrt(sdx * sdx + sdy * sdy);
-                        if (dist >= fovPx)
-                            continue;
-
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            bestDX = sdx;
-                            bestDY = sdy;
-                        }
-                    }
-
-                    // 8. FOV gate
-                    if (bestDist == Float.MAX_VALUE || bestDist <= fovMinPx) {
-                        resetState();
-                        Thread.yield();
-                        continue;
-                    }
-
-                    // 9. Rate limit — 500 Hz cap
-                    long nowNs = System.nanoTime();
-                    long dtNs  = nowNs - lastAimNs;
-                    if (dtNs < AIM_INTERVAL_NS) {
-                        Thread.yield();
-                        continue;
-                    }
-                    lastAimNs = nowNs;
-                    float dt = dtNs * 1e-9f; // seconds
-
-                    // 10. Dispatch to active AimMode
-                    AimMode activeMode = getActiveAimMode();
-                    if (activeMode != null) {
-                        int[] move = activeMode.tick(bestDX, bestDY, bestDist, fovPx, hf, sw, dt);
-                        int mx = move[0];
-                        int my = move[1];
-
-                        // 11. Inject relative mouse movement (raw-input compatible)
-                        if (mx != 0 || my != 0)
-                            Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
-                    }
-
-                    Thread.yield();
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    System.err.println("[Aimbot] Error: " + e.getMessage());
-                    e.printStackTrace();
+        // 2c. Flashbang Check: pause aimbot while local player is blinded
+        if (flashCheck.getValue()) {
+            boolean isFlashed = false;
+            long lpAddr = PlayerCache.localPlayerPawnAddress;
+            if (lpAddr != 0) {
+                float fDur = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashDuration);
+                float fAlpha = CS2Memory.readFloat(lpAddr + CS2Offsets.m_flFlashMaxAlpha);
+                if (fDur > 0.1f && fAlpha > 50.0f) {
+                    isFlashed = true;
                 }
             }
+            if (isFlashed) {
+                resetState();
+                Thread.yield();
+                return;
+            }
+        }
 
-            aimThreadRunning = false;
-            System.out.println("[Aimbot] Thread stopped.");
-        }, "Athenis-Aimbot");
+        // 3. Local pawn
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (localPawn == 0) {
+            Thread.yield();
+            return;
+        }
 
-        aimThread.setDaemon(true);
-        aimThread.setPriority(Thread.MAX_PRIORITY);
-        aimThread.start();
+        // 4. VisCheck camera (foot origin + eye height)
+        Vector3 foot = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+        Vector3 localCamera = (foot != null)
+                ? new Vector3(foot.x, foot.y, foot.z + 64.0f)
+                : null;
+
+        // 5. Player list snapshot
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        if (players.isEmpty()) {
+            Thread.yield();
+            return;
+        }
+
+        int boneMode    = targetBone.getValue();
+        float fovDeg    = fov.getValue();
+        float fovMinDeg = fovMin.getValue();
+        boolean chkEnemy = enemyOnly.getValue();
+        boolean chkVis   = useVisCheck.getValue();
+        boolean chkSpot  = spottedFallback.getValue();
+
+        // 6. Derive horizontal FOV from screen aspect ratio.
+        int sw = Math.max(PlayerCache.screenWidth, 1280);
+        int sh = Math.max(PlayerCache.screenHeight, 720);
+        float ar = (float) sw / (float) sh;
+        float vh = (float) Math.atan(Math.tan(Math.toRadians(45.0)) * 0.75);
+        float hf = 2.0f * (float) Math.toDegrees(Math.atan(Math.tan(vh) * ar));
+
+        float cx = sw * 0.5f;
+        float cy = sh * 0.5f;
+        float ppd = sw / hf;      // screen pixels per degree
+        float fovPx    = fovDeg    * ppd;
+        float fovMinPx = fovMinDeg * ppd;
+
+        // 7. Screen-space target selection
+        float bestDist = Float.MAX_VALUE;
+        float bestDX   = 0f;
+        float bestDY   = 0f;
+
+        for (PlayerSnapshot p : players) {
+            if (p.isLocal || !p.onScreen)
+                continue;
+            if (chkEnemy && p.team == ESPModule.localTeam)
+                continue;
+            if (p.health <= 0)
+                continue;
+
+            float[] bx = p.boneX;
+            float[] by = p.boneY;
+            boolean[] bv = p.boneVisible;
+            if (bx == null || by == null || bv == null)
+                continue;
+
+            int bone = resolveBone(boneMode, p);
+            if (bone < 0 || bone >= bx.length || bone >= by.length || bone >= bv.length || !bv[bone])
+                continue;
+
+            if (chkVis && !isBoneVisible(p, bone, localCamera, localPawn, chkSpot))
+                continue;
+
+            float sdx = bx[bone] - cx;
+            float sdy = by[bone] - cy;
+            float dist = (float) Math.sqrt(sdx * sdx + sdy * sdy);
+            if (dist >= fovPx)
+                continue;
+
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestDX = sdx;
+                bestDY = sdy;
+            }
+        }
+
+        // 8. FOV gate
+        if (bestDist == Float.MAX_VALUE || bestDist <= fovMinPx) {
+            resetState();
+            Thread.yield();
+            return;
+        }
+
+        // 9. Rate limit — 500 Hz cap
+        long nowNs = System.nanoTime();
+        long dtNs  = nowNs - lastAimNs;
+        if (dtNs < AIM_INTERVAL_NS) {
+            Thread.yield();
+            return;
+        }
+        lastAimNs = nowNs;
+        float dt = dtNs * 1e-9f; // seconds
+
+        // 10. Dispatch to active AimMode
+        AimMode activeMode = getActiveAimMode();
+        if (activeMode != null) {
+            int[] move = activeMode.tick(bestDX, bestDY, bestDist, fovPx, hf, sw, dt);
+            int mx = move[0];
+            int my = move[1];
+
+            // 11. Inject relative mouse movement (raw-input compatible)
+            if (mx != 0 || my != 0)
+                Win32Mouse.INSTANCE.mouse_event(MOUSEEVENTF_MOVE, mx, my, 0, 0);
+        }
+
+        Thread.yield();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

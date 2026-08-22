@@ -178,6 +178,17 @@ public class ESPModule extends CheatModule {
         HE, FLASH, SMOKE, MOLOTOV, DECOY, UNKNOWN
     }
 
+    /**
+     * Active grenade projectiles discovered by the slow-tick scan, keyed by
+     * entity address. Refreshed at ~10 Hz by {@link #tickGrenadeScan()} so the
+     * render thread never has to walk the full 2000-slot entity list or
+     * allocate a designer-name String per entity per frame — it only reads
+     * detonation time / position for the handful of cached grenades.
+     * <p>Written by the slow data thread, read by the render thread → concurrent map.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, GrenadeType> grenadeCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     // ── Damage ESP Configuration/State ────────────────────────────────────────
     private static final long ACCUMULATE_WINDOW_MS     = 2_000L;
     private static final long FADE_MS                  = 700L;
@@ -289,6 +300,11 @@ public class ESPModule extends CheatModule {
         if (!isEnabled()) return;
         if (damageEsp.getValue()) {
             tickDamageESP();
+        }
+        if (grenadeEsp.getValue()) {
+            tickGrenadeScan();
+        } else if (!grenadeCache.isEmpty()) {
+            grenadeCache.clear();
         }
     }
 
@@ -567,43 +583,20 @@ public class ESPModule extends CheatModule {
 
     // ── Grenade ESP Rendering ─────────────────────────────────────────────────
 
-    private void renderGrenadeESP(ImDrawList drawList) {
+    /**
+     * Slow-tick (~10 Hz) discovery pass over the entity list. Finds active
+     * grenade projectile entities and caches their address + type so the
+     * render thread only touches a handful of memory reads per frame instead
+     * of scanning ~2000 slots with string allocations.
+     */
+    private void tickGrenadeScan() {
+        grenadeCache.clear();
+
         long clientBase = CS2Memory.getClientBase();
         if (clientBase == 0) return;
 
         long entityList = CS2Memory.readLong(clientBase + CS2Offsets.dwEntityList);
         if (entityList == 0) return;
-
-        float serverTime = 0f;
-        long engine2Base = CS2Memory.getEngine2Base();
-        if (engine2Base != 0) {
-            long networkClient = CS2Memory.readLong(engine2Base + CS2Offsets.dwNetworkGameClient);
-            if (isValidPtr(networkClient)) {
-                int serverTick = CS2Memory.readInt(networkClient + CS2Offsets.dwNetworkGameClient_serverTickCount);
-                serverTime = serverTick / TICK_RATE;
-            }
-        }
-
-        float[] matrix    = PlayerCache.viewMatrix;
-        int     sw        = PlayerCache.screenWidth;
-        int     sh        = PlayerCache.screenHeight;
-        float   offX      = espOffsetX;
-        float   offY      = espOffsetY;
-        float   baseRadius    = CIRCLE_RADIUS;
-        float   baseThickness = ARC_THICKNESS;
-        float   maxDist       = maxDistance.getValue();
-        float   minScaleVal   = minScale.getValue();
-
-        float localX = 0f, localY = 0f, localZ = 0f;
-        long localPawn = PlayerCache.localPlayerPawnAddress;
-        if (localPawn != 0) {
-            Vector3 localOrig = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-            if (localOrig != null && Float.isFinite(localOrig.x)) {
-                localX = localOrig.x;
-                localY = localOrig.y;
-                localZ = localOrig.z;
-            }
-        }
 
         for (int i = 64; i < 2048; i++) {
             try {
@@ -635,6 +628,53 @@ public class ESPModule extends CheatModule {
 
                 GrenadeType type = classifyByDesignerName(designerName);
                 if (!isGrenadeEnabled(type)) continue;
+
+                grenadeCache.put(entity, type);
+
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private void renderGrenadeESP(ImDrawList drawList) {
+        float serverTime = 0f;
+        long engine2Base = CS2Memory.getEngine2Base();
+        if (engine2Base != 0) {
+            long networkClient = CS2Memory.readLong(engine2Base + CS2Offsets.dwNetworkGameClient);
+            if (isValidPtr(networkClient)) {
+                int serverTick = CS2Memory.readInt(networkClient + CS2Offsets.dwNetworkGameClient_serverTickCount);
+                serverTime = serverTick / TICK_RATE;
+            }
+        }
+
+        float[] matrix    = PlayerCache.viewMatrix;
+        int     sw        = PlayerCache.screenWidth;
+        int     sh        = PlayerCache.screenHeight;
+        float   offX      = espOffsetX;
+        float   offY      = espOffsetY;
+        float   baseRadius    = CIRCLE_RADIUS;
+        float   baseThickness = ARC_THICKNESS;
+        float   maxDist       = maxDistance.getValue();
+        float   minScaleVal   = minScale.getValue();
+
+        float localX = 0f, localY = 0f, localZ = 0f;
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (localPawn != 0) {
+            Vector3 localOrig = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+            if (localOrig != null && Float.isFinite(localOrig.x)) {
+                localX = localOrig.x;
+                localY = localOrig.y;
+                localZ = localOrig.z;
+            }
+        }
+
+        // Iterate only the cached grenades (typically 0–5 entries) — the heavy
+        // entity-list walk happens once per slow tick in tickGrenadeScan().
+        for (Map.Entry<Long, GrenadeType> entry : grenadeCache.entrySet()) {
+            try {
+                long entity = entry.getKey();
+                GrenadeType type = entry.getValue();
+                if (!isValidPtr(entity)) continue;
 
                 float detonateTime = CS2Memory.readFloat(entity + CS2Offsets.m_flDetonateTime);
                 if (!Float.isFinite(detonateTime) || detonateTime < 0f) continue;

@@ -250,10 +250,15 @@ public class RadarHackModule extends CheatModule {
                         localYaw = CS2Memory.readFloat(clientBase + CS2Offsets.dwViewAngles + 4);
 
                         // One RPM call fetches all three origin floats.
+                        // readVector returns a zero vector on failure, never null,
+                        // but guard defensively so a failed read can't corrupt
+                        // the cached radar position mid-frame.
                         Vector3 origin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
-                        localX = origin.x;
-                        localY = origin.y;
-                        localZ = origin.z;
+                        if (origin != null) {
+                                localX = origin.x;
+                                localY = origin.y;
+                                localZ = origin.z;
+                        }
                 }
         }
 

@@ -4,7 +4,7 @@ import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.PlayerCache.PlayerSnapshot;
-import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ManagedThreadModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -36,7 +36,7 @@ import java.util.List;
  *        + m_AttributeManager + m_Item + m_iItemDefinitionIndex -> short
  * </pre>
  */
-public class AutoWeaponModule extends CheatModule {
+public class AutoWeaponModule extends ManagedThreadModule {
 
     // ---- CS2 item-definition index constants --------------------------------
     /** Zeus x27 taser item definition index. */
@@ -84,14 +84,12 @@ public class AutoWeaponModule extends CheatModule {
             "Post-Fire Cooldown (ms)##autoweapon", 350.0f, 50.0f, 2000.0f);
 
     // ---- Internal state ----------------------------------------------------
-    private volatile boolean fireThreadRunning = false;
-    private Thread fireThread;
     private Robot robot;
 
     // ---- Constructor -------------------------------------------------------
 
     public AutoWeaponModule() {
-        super("Auto Weapon", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false);
+        super("Auto Weapon", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-AutoWeapon");
         addSetting(enemyOnly);
         addSetting(zeusRange);
         addSetting(knifeRange);
@@ -99,127 +97,98 @@ public class AutoWeaponModule extends CheatModule {
         addSetting(cooldown);
     }
 
-    // ---- Lifecycle ---------------------------------------------------------
+    // ---- Worker startup ----------------------------------------------------
 
+    /** Initializes the AWT Robot used for simulated clicks; aborts on failure. */
     @Override
-    public void onTick() {
-        if (isEnabled() && !fireThreadRunning) {
-            startFireThread();
-        } else if (!isEnabled() && fireThreadRunning) {
-            fireThreadRunning = false;
+    protected boolean onWorkerStarting() {
+        if (robot != null)
+            return true;
+        try {
+            robot = new Robot();
+            return true;
+        } catch (Exception e) {
+            System.err.println("[AutoWeapon] Robot init failed: " + e.getMessage());
+            return false;
         }
     }
 
-    // ---- Fire Thread -------------------------------------------------------
+    // ---- Fire loop ---------------------------------------------------------
 
-    private void startFireThread() {
-        if (fireThread != null && fireThread.isAlive())
+    @Override
+    protected void runLoop() throws Exception {
+        // Pause while the overlay menu is open.
+        if (OverlayWindow.isMenuOpen()) {
+            Thread.sleep(50);
             return;
+        }
 
-        if (robot == null) {
-            try {
-                robot = new Robot();
-            } catch (Exception e) {
-                System.err.println("[AutoWeapon] Robot init failed: " + e.getMessage());
-                return;
+        if (!PlayerCache.tracking) {
+            Thread.sleep(100);
+            return;
+        }
+
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (localPawn == 0) {
+            Thread.sleep(50);
+            return;
+        }
+
+        // 1. Identify the weapon currently held.
+        HeldWeapon weapon = resolveHeldWeapon(localPawn);
+        if (weapon == HeldWeapon.NONE) {
+            Thread.sleep(50);
+            return;
+        }
+
+        float maxRange = (weapon == HeldWeapon.ZEUS)
+                ? zeusRange.getValue()
+                : knifeRange.getValue();
+
+        // 2. Read local player world position.
+        float localX = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin);
+        float localY = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin + 4);
+        float localZ = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin + 8);
+
+        // 3. Find nearest eligible target within the effective range.
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        float closestDist = Float.MAX_VALUE;
+        boolean targetFound = false;
+
+        for (PlayerSnapshot p : players) {
+            if (p.isLocal)
+                continue;
+            if (p.health <= 0)
+                continue;
+
+            // Enemy-only filter.
+            if (enemyOnly.getValue() && p.team == ESPModule.localTeam)
+                continue;
+
+            float dx = p.worldX - localX;
+            float dy = p.worldY - localY;
+            float dz = p.worldZ - localZ;
+            float dist3D = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            if (dist3D <= maxRange && dist3D < closestDist) {
+                closestDist = dist3D;
+                targetFound = true;
             }
         }
 
-        fireThreadRunning = true;
-        fireThread = new Thread(() -> {
-            System.out.println("[AutoWeapon] Thread started.");
+        // 4. Auto-fire if a target is within range.
+        if (targetFound) {
+            System.out.printf("[AutoWeapon] Firing %s at %.1f units%n",
+                    weapon.name(), closestDist);
 
-            while (fireThreadRunning && isEnabled()) {
-                try {
-                    // Pause while the overlay menu is open.
-                    if (OverlayWindow.isMenuOpen()) {
-                        Thread.sleep(50);
-                        continue;
-                    }
+            robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+            Thread.sleep((long) clickDuration.getValue().floatValue());
+            robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-                    if (!PlayerCache.tracking) {
-                        Thread.sleep(100);
-                        continue;
-                    }
-
-                    long localPawn = PlayerCache.localPlayerPawnAddress;
-                    if (localPawn == 0) {
-                        Thread.sleep(50);
-                        continue;
-                    }
-
-                    // 1. Identify the weapon currently held.
-                    HeldWeapon weapon = resolveHeldWeapon(localPawn);
-                    if (weapon == HeldWeapon.NONE) {
-                        Thread.sleep(50);
-                        continue;
-                    }
-
-                    float maxRange = (weapon == HeldWeapon.ZEUS)
-                            ? zeusRange.getValue()
-                            : knifeRange.getValue();
-
-                    // 2. Read local player world position.
-                    float localX = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin);
-                    float localY = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin + 4);
-                    float localZ = CS2Memory.readFloat(localPawn + CS2Offsets.m_vOldOrigin + 8);
-
-                    // 3. Find nearest eligible target within the effective range.
-                    List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-                    float closestDist = Float.MAX_VALUE;
-                    boolean targetFound = false;
-
-                    for (PlayerSnapshot p : players) {
-                        if (p.isLocal)
-                            continue;
-                        if (p.health <= 0)
-                            continue;
-
-                        // Enemy-only filter.
-                        if (enemyOnly.getValue() && p.team == ESPModule.localTeam)
-                            continue;
-
-                        float dx = p.worldX - localX;
-                        float dy = p.worldY - localY;
-                        float dz = p.worldZ - localZ;
-                        float dist3D = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-                        if (dist3D <= maxRange && dist3D < closestDist) {
-                            closestDist = dist3D;
-                            targetFound = true;
-                        }
-                    }
-
-                    // 4. Auto-fire if a target is within range.
-                    if (targetFound) {
-                        System.out.printf("[AutoWeapon] Firing %s at %.1f units%n",
-                                weapon.name(), closestDist);
-
-                        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-                        Thread.sleep((long) clickDuration.getValue().floatValue());
-                        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-
-                        Thread.sleep((long) cooldown.getValue().floatValue());
-                    } else {
-                        Thread.yield();
-                    }
-
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    System.err.println("[AutoWeapon] Error: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
-
-            fireThreadRunning = false;
-            System.out.println("[AutoWeapon] Thread stopped.");
-        }, "Athenis-AutoWeapon");
-
-        fireThread.setDaemon(true);
-        fireThread.setPriority(Thread.MAX_PRIORITY);
-        fireThread.start();
+            Thread.sleep((long) cooldown.getValue().floatValue());
+        } else {
+            Thread.yield();
+        }
     }
 
     // ---- Helpers ------------------------------------------------------------

@@ -1,6 +1,7 @@
 package me.venixpll.launcher;
 
 import imgui.app.Application;
+import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.MemoryLoop;
 import me.venixpll.cheat.module.ModuleManager;
@@ -136,6 +137,7 @@ public class LauncherWindow extends JFrame {
         redirectStreams();
         startPulseAnimation();
         setupSystemTray();
+        registerMemoryStatusListener();
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -147,6 +149,33 @@ public class LauncherWindow extends JFrame {
         setVisible(true);
 
         log("INFO", "Athenis launcher ready.  Press START to initialise.");
+    }
+
+    // ── Memory status reporting ───────────────────────────────────────────────
+
+    /**
+     * Subscribes to {@link CS2Memory} status changes so attachment events,
+     * stale-handle read failures, and game exits are surfaced directly in the
+     * launcher status bar and log instead of failing silently.
+     */
+    private void registerMemoryStatusListener() {
+        CS2Memory.addStatusListener((status, detail) -> {
+            switch (status) {
+                case ATTACHED -> {
+                    setStatus("Attached to CS2", C_SUCCESS);
+                    log("INFO", "[CS2Memory] " + (detail.isEmpty() ? "Attached." : detail));
+                }
+                case DETACHED -> setStatus("Detached — waiting for CS2...", C_WARN);
+                case READ_FAILURE -> {
+                    setStatus("Memory read failure — STOP then START to reattach", C_ERROR);
+                    log("ERROR", "[CS2Memory] " + detail);
+                }
+                case PROCESS_EXITED -> {
+                    setStatus("CS2 has exited", C_ERROR);
+                    log("WARN", "[CS2Memory] " + detail);
+                }
+            }
+        });
     }
 
     // ── UI construction ───────────────────────────────────────────────────────

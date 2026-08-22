@@ -22,16 +22,16 @@
 
 Here are the key changes introduced in the latest version:
 
-- **External Skin Changer**: Added a dedicated, tabbed Skin Changer interface to easily assign and apply custom skins to weapons for both Terrorists and Counter-Terrorists.
-- **Dynamic Damage ESP**: Implemented damage text indicators (floating numbers) that dynamically track target player models in screen-space as they float upward, alongside a centered HUD damage card.
+- **Managed module threading**: All worker-thread modules (Aimbot, TriggerBot, BunnyHop, AutoWeapon, SilentAim, NoSpread) now share a single `ManagedThreadModule` base class with proper enable/disable lifecycle hooks and safety cleanup.
+- **BVH engine overhaul**: Triangle AABBs are precomputed once at build time and splits are chosen with binned Surface Area Heuristic (SAH); visibility checks use an early-exit "any-hit" traversal for significantly faster occlusion queries.
+- **Centralized memory status reporting**: `CS2Memory` exposes a status listener (`ATTACHED` / `DETACHED` / `READ_FAILURE` / `PROCESS_EXITED`) surfaced live in the launcher UI instead of failing silently.
 - **VisCheck Map Editor & Debugger**: Built the interactive `VisRay Debug` module to visualize ray-casts, hit coordinates, and intersecting map triangles. Includes the ability to delete/restore triangles in real-time.
 - **Runtime Geometry Patch Merging**: The physics engine now automatically merges "hard" patches (bundled inside the `.jar` resource path under `/physics/patches/` and `/patches/`) with dynamic user-configured local patches (saved in `%APPDATA%\Athenis\patches\`).
 - **New Map Collision Meshes**: Added optimized map geometry `.opt` files for `de_anubis` and `de_vertigo`.
-- **Grenade ESP**: Added scanning for active throwables (HE, Smoke, Flash, Molotov, Decoy) displaying circle timer widgets with colored trajectory-tracking arcs.
 - **Spectator List & Crosshair Modules**: Integrated a real-time spectator tracker panel and a customizable crosshair overlay (modes: Sniper Only or Always).
 - **Refactoring & UI Enhancements**:
   - Organized UI layout by creating a dedicated **Debug** section in the menu.
-  - Removed outdated Silent Aimbot, old debug tools, and FPS counter.
+  - Cached game window handle with `IsWindow()` re-validation instead of re-enumerating windows every frame batch.
   - Cleaned up build configs (removed ProGuard, optimized Maven dependency configuration).
   - Improved visibility-checking algorithm for better accuracy.
   - Fixed radar offset calibrations for `de_cache`.
@@ -44,17 +44,19 @@ Here are the key changes introduced in the latest version:
 | Category | Module | Description |
 |---|---|---|
 | **Visuals** | **ESP Overlay** | 2D bounding boxes with health bars, player names. Features enemy-only filter, configurable colors, and forward position extrapolation to compensate for tick lag. Integrates **VisCheck** to filter visible/hidden targets. |
-| | **Damage ESP** | Displays cumulative damage cards below the crosshair and spawns 3D floating damage numbers that dynamically follow target player models. |
-| | **Grenade ESP** | Scans for active throwables (HE, Smoke, Flash, Molotov, Decoy) and renders circular countdown timers with fading color-shifting progress arcs. |
 | | **Radar Hack** | Minimap overlay radar with per-map automatic alignment offsets, customizable rotation, zoom, and C4 carrier highlighting. |
 | | **Bomb Timer** | Screen overlay timer for planted C4 with a pulsing alert bar and warning banner when off-screen. |
 | | **Crosshair** | Configurable center-screen crosshair overlay supporting multiple styles (Cross, Dot, Circle + Cross, T-Shape) and activation modes (Sniper Only, Always). |
-| **Combat** | **Aimbot** | Screen-space aim assist using bone projections. Includes dynamic FOV, smoothing, custom target bones (Head, Neck, Chest, Stomach, Closest), randomized humanized mouse drift, and VisCheck filtering. |
-| | **TriggerBot** | Automatically fires when the crosshair crosses an enemy hitbox. Features customizable reaction delay, click duration, shot cooldown, and Stop-When-Moving safety check. |
-| **Misc / Utility** | **BunnyHop** | Automated bunnyhop script that sends precise jump signals when Spacebar is held down. |
-| | **Skin Changer** | Built-in external skin changer tool with an interactive tabbed menu to easily select and apply custom finishes to weapons for both CT and T teams. |
+| | **Speedometer** | Movable HUD showing local-player movement speed (u/s) with a real-time 2-second velocity graph and 250 u/s reference line. |
+| **Combat** | **Aimbot** | Screen-space aim assist using bone projections. Includes dynamic FOV, smoothing, pluggable aim modes (Classic, PID Spring, Human), custom target bones (Head, Neck, Chest, Stomach, Closest), flashbang check, and VisCheck filtering. |
+| | **TriggerBot** | Automatically fires when the crosshair crosses an enemy hitbox. Features customizable reaction delay, click duration, shot cooldown, one-shot mode, and Stop-When-Moving safety check. |
+| | **Silent Aim** | External view-angle patch: pre-computes target angles each frame and redirects only the first shot per left-click via a single memory write. ⚠️ VAC-detectable. |
+| | **No Spread (RCS)** | Recoil Control System compensating weapon punch angles in real time via hardware mouse movement, with pitch/yaw scaling and inversion options. |
+| | **Auto Weapon** | Automatically fires Zeus/Knife when the nearest enemy is within the weapon's effective range. |
+| | **BunnyHop** | Automated bunnyhop script that sends precise jump signals when Spacebar is held down. |
 | **Developer / Debug** | **VisCheck Map Physics** | Real-time line-of-sight check engine using custom map geometry `.opt` files compiled from Valve `.vphys` data. Highlights visible enemies in yellow. |
 | | **VisRay Debug** | Visual debugger displaying active raycasts, hit points, and target triangles. Includes a real-time mesh editor to delete/restore geometry triangles on-the-fly and save local/runtime merge patches. |
+| | **Distance Debug** | Perspective-scaled obstacle marker at the crosshair with distance readout (meters/units) and player highlight/distance labels. |
 | | **Spectator List** | A dedicated UI panel tracking and listing players who are currently spectating the local player's point of view. |
 
 ### Architecture Highlights
@@ -130,23 +132,41 @@ All settings are adjusted live in the **in-game menu** (INSERT key) and persiste
 | Enemy Color | Red | RGB color for enemy boxes |
 | Team Color | Blue | RGB color for teammate boxes |
 
-### Damage ESP
+### Silent Aim
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Show Damage Card | Yes | Centered HUD card displaying total damage, remaining HP, and shot count |
-| Show Floating Numbers | Yes | Spawns damage indicators on the target model that float up and fade out |
-| Show Teammates Damage | No | Process and display damage dealt to teammate players |
-| Damage Color | Orange | RGB color of the damage text values |
-| Shots Color | Light Blue | RGB color of the shot counter label |
-| Text Scale | `2.0` | Global size multiplier for overlay text elements |
-| Crosshair Radius px | `300.0` | Search radius around the crosshair to attribute damage to the local player |
+| Target Bone | `Head` | Bone to redirect shots toward (Head, Neck, Chest, Stomach, Closest) |
+| Hold Key | `None (LMB only)` | Optional modifier key required while clicking (Right Mouse, Left Alt, Left Shift, X, Z, Ctrl) |
+| FOV (degrees) | `5.0` | Field-of-view cone used for target selection |
+| Enemy Only | Yes | Filter targeting to opponents only |
+| VisCheck | Yes | Require geometric line-of-sight before selecting a bone |
+| Spotted Fallback | Yes | Fall back to client `m_bSpotted` flag if map geometry is missing |
+| Flashbang Check | Yes | Pause angle patching while blinded by a flashbang |
+| Show FOV Circle | Yes | Draw the FOV circle on the overlay |
 
-### Grenade ESP
+> [!WARNING]
+> This module writes directly to `dwViewAngles` in CS2 memory and is VAC-detectable. Use only on non-VAC servers.
+
+### No Spread (Recoil Control)
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Show HE Grenade / Flashbang / Smoke / Molotov / Decoy | Yes | Enable/disable tracking for specific grenade types |
-| Max Distance (units) | `3000.0` | Maximum tracking distance in world units (1 unit ≈ 1 inch) |
-| Min Scale | `0.25` | Minimum scale factor applied to the widget at max distance to keep it unobtrusive |
+| Recoil Compensation | Yes | Master toggle for RCS mouse compensation |
+| Pitch Scale | `1.0` | Multiplier applied to vertical compensation |
+| Yaw Scale | `1.0` | Multiplier applied to horizontal compensation |
+| In-Game Sensitivity | `2.0` | Game sensitivity used in the compensation math |
+| RCS Strength | `50.0` | Overall strength multiplier |
+| Start Bullet | `0` | Bullet index from which compensation begins |
+| Invert Pitch / Yaw Direction | No | Flip compensation direction per axis |
+| Debug Log to Console | Yes | Print spray state and applied corrections to console |
+
+### Auto Weapon
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enemy Only | Yes | Only auto-fire at opponents |
+| Zeus Range (units) | `155.0` | Effective range for the Zeus taser |
+| Knife Range (units) | `65.0` | Effective range for knife slashes |
+| Click Duration (ms) | `60.0` | Simulated LMB hold duration |
+| Post-Fire Cooldown (ms) | `350.0` | Cooldown between auto-fire events |
 
 ### TriggerBot
 | Setting | Default | Description |
@@ -219,26 +239,20 @@ athenis/
 ├── src/main/java/me/venixpll/
 │   ├── Main.java                        # Entry point
 │   ├── launcher/
-│   │   └── LauncherWindow.java          # Swing launcher GUI
+│   │   └── LauncherWindow.java          # Swing launcher GUI + system tray
 │   ├── overlay/
-│   │   ├── OverlayWindow.java           # GLFW transparent overlay
+│   │   ├── OverlayWindow.java           # GLFW transparent overlay & window sync
 │   │   ├── OverlayMenu.java             # ImGui configuration menu
-│   │   └── NotificationManager.java     # System notification manager
-│   ├── skinchanger/
-│   │   ├── SkinChanger.java             # Direct process memory patch engine
-│   │   ├── SkinChangerWindow.java       # ImGui-based skin changer UI
-│   │   ├── SkinInfo.java                # Skin paintkit and wear metadata container
-│   │   ├── SkinDatabase.java            # Repository of CS2 weapons and skins IDs
-│   │   ├── WeaponsEnum.java             # CS2 weapon definitions enum
-│   │   └── EconItemAttributeManager.java # External memory attribute block allocator
+│   │   ├── NotificationManager.java     # System notification manager
+│   │   └── PerformanceMonitor.java      # FPS / frame-time monitor panel
 │   ├── cheat/
-│   │   ├── CS2Memory.java               # JNA ReadProcessMemory wrapper
+│   │   ├── CS2Memory.java               # JNA ReadProcessMemory wrapper + status events
 │   │   ├── CS2Offsets.java              # Dynamic offset loader (a2x/cs2-dumper)
 │   │   ├── MemoryLoop.java              # Fast + slow background threads
 │   │   ├── PlayerCache.java             # PlayerData / PlayerSnapshot bridge
 │   │   ├── Vector3.java                 # 3D vector math
 │   │   ├── vischeck/
-│   │   │   ├── VisCheck.java            # Visibility check engine
+│   │   │   ├── VisCheck.java            # Visibility check engine (SAH BVH + any-hit rays)
 │   │   │   ├── VisCheckAdapter.java     # JAR resource loader & life cycle manager
 │   │   │   ├── Parser.java              # Mesh geometry loader
 │   │   │   ├── BVHNode.java             # Bounding Volume Hierarchy tree node
@@ -249,19 +263,25 @@ athenis/
 │   │   │   └── VPhysToOptConverter.java # CLI tool to compile Valve .vphys to .opt
 │   │   ├── module/
 │   │   │   ├── CheatModule.java         # Module base class
+│   │   │   ├── ManagedThreadModule.java # Worker-thread lifecycle base class
 │   │   │   ├── ModuleManager.java       # Module registry
+│   │   │   ├── MenuGroup.java           # Sidebar grouping enum
+│   │   │   ├── ModuleCategory.java      # Execution-category enum
 │   │   │   └── impl/
 │   │   │       ├── ESPModule.java       # ESP renderer
-│   │   │       ├── DamageESPModule.java # Combat text & HUD damage indicators
-│   │   │       ├── GrenadeESPModule.java# Throwable timers and tracking
 │   │   │       ├── RadarHackModule.java # Minimap radar
-│   │   │       ├── AimbotModule.java    # Screen-space aimbot
-│   │   │       ├── TriggerBotModule.java# Hitbox-accurate triggerbot
-│   │   │       ├── BunnyHopModule.java  # Auto-jump module
 │   │   │       ├── BombTimerModule.java # Planted C4 timer
 │   │   │       ├── CrosshairOverlayModule.java # Center-screen crosshairs
+│   │   │       ├── SpeedometerModule.java # Velocity HUD with graph
+│   │   │       ├── AimbotModule.java    # Screen-space aimbot (+ aimbot/ mode strategies)
+│   │   │       ├── TriggerBotModule.java# Hitbox-accurate triggerbot
+│   │   │       ├── SilentAimModule.java # External view-angle patch
+│   │   │       ├── NoSpreadModule.java  # Recoil control system
+│   │   │       ├── AutoWeaponModule.java# Zeus/knife auto-fire
+│   │   │       ├── BunnyHopModule.java  # Auto-jump module
+│   │   │       ├── SpectatorListModule.java # Active spectators panel
 │   │   │       ├── VisRayDebugModule.java # Interactive map raycast/mesh patch debugger
-│   │   │       └── SpectatorListModule.java # Active spectators panel
+│   │   │       └── DistanceDebugModule.java # Crosshair distance/perspective debugger
 │   │   ├── reader/
 │   │   │   ├── EntityDataReader.java    # Slow entity list traversal
 │   │   │   ├── PositionReader.java      # Fast origin + velocity reader
@@ -321,4 +341,4 @@ CS2 Process Memory
 
 ## License
 
-This project is released for **educational purposes**. No license is granted for use in online multiplayer matches.
+See [LICENSE](LICENSE) — released strictly for **educational purposes**. No license is granted for use in online multiplayer matches.

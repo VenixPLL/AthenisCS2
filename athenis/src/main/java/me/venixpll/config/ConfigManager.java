@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.setting.BooleanSetting;
+import me.venixpll.cheat.setting.ColorSetting;
 import me.venixpll.cheat.setting.FloatSetting;
 import me.venixpll.cheat.setting.ModeSetting;
 import me.venixpll.cheat.setting.Setting;
@@ -93,6 +94,11 @@ public final class ConfigManager {
                         settingObj.addProperty(setting.getName(), ((BooleanSetting) setting).getValue());
                     } else if (setting instanceof ModeSetting) {
                         settingObj.addProperty(setting.getName(), ((ModeSetting) setting).getValue());
+                    } else if (setting instanceof ColorSetting) {
+                        // Persist RGBA as a JSON array so user color customization
+                        // survives restarts.
+                        settingObj.add(setting.getName(),
+                                GSON.toJsonTree(((ColorSetting) setting).getValue()));
                     }
                 }
 
@@ -102,11 +108,25 @@ public final class ConfigManager {
 
             root.add("modules", modules);
 
-            try (FileWriter writer = new FileWriter(resolveFile())) {
+            // Atomic write: serialize to a temp file first, then move it over the
+            // real settings file. A crash or power loss mid-write can no longer
+            // leave a truncated/corrupt settings.json behind.
+            File target = resolveFile();
+            File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
+            try (FileWriter writer = new FileWriter(tmp)) {
                 GSON.toJson(root, writer);
             }
+            try {
+                java.nio.file.Files.move(tmp.toPath(), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.io.IOException atomicUnsupported) {
+                // Some filesystems reject ATOMIC_MOVE — fall back to a plain replace.
+                java.nio.file.Files.move(tmp.toPath(), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
 
-            System.out.println("[ConfigManager] Settings saved to: " + resolveFile().getAbsolutePath());
+            System.out.println("[ConfigManager] Settings saved to: " + target.getAbsolutePath());
         } catch (Exception e) {
             System.err.println("[ConfigManager] Failed to save settings: " + e.getMessage());
         }
@@ -171,12 +191,22 @@ public final class ConfigManager {
                         JsonElement el = settingObj.get(setting.getName());
                         if (el == null) continue;
 
-                        if (setting instanceof FloatSetting) {
-                            ((FloatSetting) setting).setValue(el.getAsFloat());
-                        } else if (setting instanceof BooleanSetting) {
-                            ((BooleanSetting) setting).setValue(el.getAsBoolean());
-                        } else if (setting instanceof ModeSetting) {
-                            ((ModeSetting) setting).setValue(el.getAsInt());
+                        try {
+                            if (setting instanceof FloatSetting) {
+                                ((FloatSetting) setting).setValue(el.getAsFloat());
+                            } else if (setting instanceof BooleanSetting) {
+                                ((BooleanSetting) setting).setValue(el.getAsBoolean());
+                            } else if (setting instanceof ModeSetting) {
+                                ((ModeSetting) setting).setValue(el.getAsInt());
+                            } else if (setting instanceof ColorSetting) {
+                                float[] rgba = GSON.fromJson(el, float[].class);
+                                ((ColorSetting) setting).setValue(rgba);
+                            }
+                        } catch (Exception typeMismatch) {
+                            // Skip values whose stored type doesn't match the
+                            // current setting kind (e.g. schema drift between versions).
+                            System.err.println("[ConfigManager] Skipping incompatible value for '"
+                                    + setting.getName() + "' in module '" + module.getName() + "'");
                         }
                     }
                 }

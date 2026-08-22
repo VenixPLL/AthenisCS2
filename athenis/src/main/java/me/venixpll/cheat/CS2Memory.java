@@ -11,19 +11,117 @@ import com.sun.jna.platform.win32.WinNT;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.List;
 import com.sun.jna.ptr.IntByReference;
 
 /**
  * CS2Memory handles external interaction with the Counter-Strike 2 process.
  * Provides functions to attach to the game, find client.dll, and read various
  * memory types.
+ *
+ * <p>Additionally exposes a centralized {@link MemoryStatus} reporting channel:
+ * UI components (launcher, overlay) can register a {@link StatusListener} to be
+ * notified about attachment changes and read failures instead of each layer
+ * having to guess from silent {@code 0} return values.</p>
  */
 public class CS2Memory {
+
+    /** High-level health of the CS2 process connection. */
+    public enum MemoryStatus {
+        /** Not attached to any process. */
+        DETACHED,
+        /** Attached and reading normally. */
+        ATTACHED,
+        /** Attached, but kernel reads are failing (stale handle / permissions). */
+        READ_FAILURE,
+        /** The CS2 process has exited. */
+        PROCESS_EXITED
+    }
+
+    /** Callback invoked when the memory connection status changes. */
+    public interface StatusListener {
+        /**
+         * @param status New status.
+         * @param detail Human-readable detail message (may be empty).
+         */
+        void onStatusChanged(MemoryStatus status, String detail);
+    }
+
     private static HANDLE processHandle = null;
     private static long clientBase = 0;
     private static long engine2Base = 0;
     private static int processId = 0;
     private static boolean loggedError = false;
+
+    private static final List<StatusListener> statusListeners = new CopyOnWriteArrayList<>();
+    private static volatile MemoryStatus currentStatus = MemoryStatus.DETACHED;
+
+    /** Throttle for read-failure notifications (one report per window). */
+    private static final AtomicLong lastReadFailureReportMs = new AtomicLong(0L);
+    private static final long READ_FAILURE_REPORT_INTERVAL_MS = 5_000L;
+
+    /**
+     * Registers a listener that will be invoked on the calling thread of
+     * whatever operation changes the status (never on a UI thread — callers
+     * must marshal to their own thread if needed).
+     *
+     * @param listener Listener to register (no-op if null).
+     */
+    public static void addStatusListener(StatusListener listener) {
+        if (listener != null) {
+            statusListeners.add(listener);
+            // Immediately inform the new listener of the current state.
+            listener.onStatusChanged(currentStatus, "");
+        }
+    }
+
+    /** Removes a previously registered status listener. */
+    public static void removeStatusListener(StatusListener listener) {
+        statusListeners.remove(listener);
+    }
+
+    /** @return The current connection status. */
+    public static MemoryStatus getStatus() {
+        return currentStatus;
+    }
+
+    /** Fires the status-change event to all listeners if the status changed. */
+    private static void setStatus(MemoryStatus status, String detail) {
+        MemoryStatus old = currentStatus;
+        currentStatus = status;
+        if (old != status) {
+            for (StatusListener l : statusListeners) {
+                try {
+                    l.onStatusChanged(status, detail);
+                } catch (Exception e) {
+                    System.err.println("[CS2Memory] Status listener error: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Reports a failed kernel read, throttled to one notification per
+     * {@link #READ_FAILURE_REPORT_INTERVAL_MS} to avoid log/event spam when
+     * thousands of reads fail per second (e.g. after the game restarted and
+     * the handle went stale).
+     *
+     * @param address Address that failed to read.
+     */
+    private static void reportReadFailure(long address) {
+        long now = System.currentTimeMillis();
+        long last = lastReadFailureReportMs.get();
+        if (now - last < READ_FAILURE_REPORT_INTERVAL_MS)
+            return;
+        if (!lastReadFailureReportMs.compareAndSet(last, now))
+            return;
+        int err = Kernel32.INSTANCE.GetLastError();
+        setStatus(MemoryStatus.READ_FAILURE,
+                "ReadProcessMemory failed at 0x" + Long.toHexString(address)
+                        + " (Win32 error " + err + "). If CS2 was restarted, click STOP then START to reattach.");
+    }
 
     // ThreadLocal reused JNA Memory buffers to prevent garbage collection heap/native churn
     private static final ThreadLocal<Memory> MEM_1 = ThreadLocal.withInitial(() -> new Memory(1));
@@ -90,6 +188,7 @@ public class CS2Memory {
         }
 
         System.out.println(String.format("[CS2Memory] Found client.dll base address: 0x%X", clientBase));
+        setStatus(MemoryStatus.ATTACHED, "Attached to cs2.exe (PID " + processId + ")");
         return true;
     }
 
@@ -104,6 +203,7 @@ public class CS2Memory {
         clientBase = 0;
         engine2Base = 0;
         processId = 0;
+        setStatus(MemoryStatus.DETACHED, "Handle closed");
     }
 
     /**
@@ -147,7 +247,11 @@ public class CS2Memory {
         }
         IntByReference exitCode = EXIT_CODE_BUF.get();
         if (Kernel32.INSTANCE.GetExitCodeProcess(processHandle, exitCode)) {
-            return exitCode.getValue() == WinBase.STILL_ACTIVE;
+            boolean running = exitCode.getValue() == WinBase.STILL_ACTIVE;
+            if (!running) {
+                setStatus(MemoryStatus.PROCESS_EXITED, "cs2.exe has exited");
+            }
+            return running;
         }
         return false;
     }
@@ -165,6 +269,7 @@ public class CS2Memory {
         if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 4, null)) {
             return mem.getInt(0);
         }
+        reportReadFailure(address);
         return 0;
     }
 
@@ -181,6 +286,7 @@ public class CS2Memory {
         if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 8, null)) {
             return mem.getLong(0);
         }
+        reportReadFailure(address);
         return 0;
     }
 
@@ -213,6 +319,7 @@ public class CS2Memory {
         if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 4, null)) {
             return mem.getFloat(0);
         }
+        reportReadFailure(address);
         return 0f;
     }
 
@@ -229,6 +336,7 @@ public class CS2Memory {
         if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, 12, null)) {
             return new Vector3(mem.getFloat(0), mem.getFloat(4), mem.getFloat(8));
         }
+        reportReadFailure(address);
         return new Vector3(0, 0, 0);
     }
 
@@ -337,7 +445,11 @@ public class CS2Memory {
     public static boolean readInto(long address, Memory buffer, int size) {
         if (processHandle == null || address == 0)
             return false;
-        return Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), buffer, size, null);
+        boolean ok = Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), buffer, size, null);
+        if (!ok) {
+            reportReadFailure(address);
+        }
+        return ok;
     }
 
     /**

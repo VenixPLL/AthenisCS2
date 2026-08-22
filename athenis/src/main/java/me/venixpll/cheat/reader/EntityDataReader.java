@@ -67,11 +67,25 @@ public final class EntityDataReader {
     // is never invalidated by the slow loop clearing a shared list.
 
     private static final int MAX_POOL = 64;
-    private static final PlayerCache.PlayerData[] DATA_POOL = new PlayerCache.PlayerData[MAX_POOL];
+
+    /**
+     * Double-buffered slot pools. The slow thread recycles slot objects in
+     * place each tick, but the previously published list is still referenced
+     * by the fast thread (and legacy modules) at that moment. Alternating
+     * between two pools guarantees that the list published on tick N is never
+     * mutated while building tick N+1's list — eliminating torn reads of
+     * pawnAddress / name / health.
+     * <p>Only ever touched from the dedicated slow-data thread, so no
+     * synchronization is required for {@link #activePool}.
+     */
+    private static final PlayerCache.PlayerData[][] DATA_POOLS = new PlayerCache.PlayerData[2][MAX_POOL];
+    private static int activePool = 0;
 
     static {
-        for (int i = 0; i < MAX_POOL; i++) {
-            DATA_POOL[i] = new PlayerCache.PlayerData(0, 0, 0, "", null, false, 0L);
+        for (int p = 0; p < DATA_POOLS.length; p++) {
+            for (int i = 0; i < MAX_POOL; i++) {
+                DATA_POOLS[p][i] = new PlayerCache.PlayerData(0, 0, 0, "", null, false, 0L);
+            }
         }
     }
 
@@ -109,6 +123,12 @@ public final class EntityDataReader {
         // so the next slow-loop tick can safely create a new list without invalidating
         // any iterator the fast loop may be holding.
         List<PlayerCache.PlayerData> result = new ArrayList<>(16);
+
+        // Swap to the inactive pool: whatever list was published last tick
+        // keeps referencing the OTHER pool's objects, which we won't touch.
+        int poolIdx = activePool ^ 1;
+        activePool = poolIdx;
+        PlayerCache.PlayerData[] pool = DATA_POOLS[poolIdx];
         int poolSlot = 0;
 
         for (int i = 1; i <= 64; i++) {
@@ -216,7 +236,7 @@ public final class EntityDataReader {
             // This avoids `new PlayerData(...)` and the `new Vector3()` inside it.
             PlayerCache.PlayerData player;
             if (poolSlot < MAX_POOL) {
-                player = DATA_POOL[poolSlot++];
+                player = pool[poolSlot++];
                 // Reset all fields in-place — position Vector3 objects are reused.
                 player.index    = i;
                 player.health   = health;
