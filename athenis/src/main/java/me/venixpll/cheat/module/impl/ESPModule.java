@@ -21,6 +21,7 @@ import me.venixpll.cheat.setting.FloatSetting;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -103,6 +104,26 @@ public class ESPModule extends CheatModule {
 
     public final FloatSetting crosshairRadius = new FloatSetting(
             "Crosshair Radius px##dmgesp", 300f, 50f, 800f);
+
+    // ── Hit Marker Settings ───────────────────────────────────────────────────
+    /** Master toggle for the animated hit-marker X at screen center. */
+    public final BooleanSetting showHitmarker = new BooleanSetting("Show Hit Marker", true);
+    /** Color of the hit marker on regular (non-lethal) hits. */
+    public final ColorSetting hitmarkerColor = new ColorSetting(
+            "Hit Marker Color##dmgesp", 1.0f, 1.0f, 1.0f, 1.0f);
+    /** Color of the hit marker when the hit was a killing blow. */
+    public final ColorSetting killMarkerColor = new ColorSetting(
+            "Kill Marker Color##dmgesp", 1.0f, 0.15f, 0.15f, 1.0f);
+    /** Base radius of the hit marker strokes in pixels. */
+    public final FloatSetting hitmarkerSize = new FloatSetting(
+            "Hit Marker Size##dmgesp", 18f, 8f, 40f);
+
+    // ── Kill Feed Settings ────────────────────────────────────────────────────
+    /** Master toggle for the custom kill feed panel (top-right). */
+    public final BooleanSetting showKillfeed = new BooleanSetting("Show Kill Feed", true);
+    /** How long a kill feed row stays visible, in seconds. */
+    public final FloatSetting killfeedDuration = new FloatSetting(
+            "Kill Feed Duration##dmgesp", 6f, 3f, 12f);
 
     // ── Player ESP Configuration/State ────────────────────────────────────────
     /** Bone connections for drawing the skeleton */
@@ -190,9 +211,29 @@ public class ESPModule extends CheatModule {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     // ── Damage ESP Configuration/State ────────────────────────────────────────
-    private static final long ACCUMULATE_WINDOW_MS     = 2_000L;
-    private static final long FADE_MS                  = 700L;
-    private static final long CROSSHAIR_ATTR_WINDOW_MS = 1_000L;
+    private static final long ACCUMULATE_WINDOW_MS = 2_000L;
+    private static final long FADE_MS              = 700L;
+
+    /**
+     * Max age of a detected local shot that may still explain an observed HP
+     * drop. Covers network replication delay (~1-2 server ticks) plus the
+     * slow-loop sampling jitter (~100 ms).
+     */
+    private static final long SHOT_ATTRIBUTION_WINDOW_MS = 400L;
+    /** How far a crosshair-proximity sample may predate the shot and still count. */
+    private static final long PROXIMITY_GRACE_MS         = 200L;
+    /**
+     * A vanished enemy must stay absent for this long before its disappearance
+     * is resolved. Absorbs single-tick entity-traversal glitches so transient
+     * read failures never fabricate kills.
+     */
+    private static final long VANISH_CONFIRM_MS          = 100L;
+
+    private static final long HITMARKER_LIFE_MS  = 450L;
+    private static final long KILLMARKER_LIFE_MS = 700L;
+
+    private static final int  KILLFEED_MAX_ENTRIES = 5;
+    private static final long KILLFEED_FADE_MS     = 800L;
 
     private static final float CARD_W     = 230f;
     private static final float CARD_R     = 10f;
@@ -210,13 +251,54 @@ public class ESPModule extends CheatModule {
     private static final int   MAX_FLOATERS    = 25;
     private static final float FLOAT_FONT_SCALE = 1.35f;
 
-    private final Map<Integer, Integer> lastHealth      = new HashMap<>();
-    private final Map<Integer, Long>    lastCrosshairMs = new HashMap<>();
+    /**
+     * Per-enemy tracking state for the damage pipeline, keyed by entity index.
+     * Owned exclusively by the slow data thread inside {@link #tickDamageESP()}.
+     */
+    private static final class TrackedEnemy {
+        int    lastHealth;
+        long   pawnAddress;
+        String lastName       = "";
+        long   lastSeenMs;
+        long   lastCrosshairMs = -1L;
+        long   absentSinceMs   = -1L;
+    }
+
+    private final HashMap<Integer, TrackedEnemy> tracked = new HashMap<>();
 
     private volatile int  accumulatedDamage = 0;
     private volatile int  shotCount         = 0;
     private volatile int  enemyHealthLeft   = 0;
     private volatile long lastHitMs         = -1L;
+
+    // ── Shot detection / hit marker / kill feed state ─────────────────────────
+    /** Last sampled {@code m_iShotsFired} value on the local pawn (-1 = unsampled). */
+    private int prevShotsFired = -1;
+    /** Timestamp of the most recent detected local shot (-1 = none). */
+    private volatile long lastShotMs = -1L;
+    /** Hit-marker trigger timestamp (-1 = none). Slow thread writes, render reads. */
+    private volatile long hitMarkerMs = -1L;
+    /** Whether the current hit marker represents a killing blow. */
+    private volatile boolean hitMarkerKill = false;
+
+    /** One custom kill feed row. */
+    private static final class KillEntry {
+        final String weapon;
+        final String victim;
+        final long   birthMs;
+
+        KillEntry(String weapon, String victim, long birthMs) {
+            this.weapon  = weapon;
+            this.victim  = victim;
+            this.birthMs = birthMs;
+        }
+    }
+
+    /** Kill events produced by the slow tick, drained by the render thread. */
+    private final ConcurrentLinkedQueue<KillEntry> pendingKills =
+            new ConcurrentLinkedQueue<>();
+    /** Render-thread-owned display list of active feed rows. */
+    private final ArrayList<KillEntry> activeKills = new ArrayList<>();
 
     private static final class FloatingNumber {
         final int   playerIndex;
@@ -289,6 +371,16 @@ public class ESPModule extends CheatModule {
         addSetting(shotsColor);
         addSetting(textScale);
         addSetting(crosshairRadius);
+
+        // ── Hit Marker Settings ─────────────────────────────────────────────
+        addSetting(showHitmarker);
+        addSetting(hitmarkerColor);
+        addSetting(killMarkerColor);
+        addSetting(hitmarkerSize);
+
+        // ── Kill Feed Settings ──────────────────────────────────────────────
+        addSetting(showKillfeed);
+        addSetting(killfeedDuration);
     }
 
     private static boolean isValidPtr(long p) {
@@ -855,98 +947,278 @@ public class ESPModule extends CheatModule {
 
     // ── Damage ESP Rendering and Ticking ──────────────────────────────────────
 
+    /**
+     * Slow-tick (~10 Hz) damage pipeline:
+     * <ol>
+     * <li>Detect local weapon fire via {@code m_iShotsFired} transitions.</li>
+     * <li>Track crosshair proximity and health deltas per enemy; attribute a
+     * delta to the local player only when both the shot gate and the proximity
+     * condition hold (see {@link HitAttribution}).</li>
+     * <li>Resolve vanished enemies — {@code EntityDataReader} filters dead
+     * players out of the snapshot list, so killing blows surface as
+     * disappearances rather than HP→0 transitions.</li>
+     * </ol>
+     */
     private void tickDamageESP() {
-        boolean wantCard    = showDamage.getValue();
-        boolean wantFloat   = showFloating.getValue();
-        if (!wantCard && !wantFloat) return;
-
-        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
-        if (players == null || players.isEmpty()) {
-            lastHealth.clear();
-            lastCrosshairMs.clear();
+        boolean wantCard   = showDamage.getValue();
+        boolean wantFloat  = showFloating.getValue();
+        boolean wantMarker = showHitmarker.getValue();
+        boolean wantFeed   = showKillfeed.getValue();
+        if (!wantCard && !wantFloat && !wantMarker && !wantFeed) {
+            tracked.clear();
             return;
         }
 
-        long  now       = System.currentTimeMillis();
-        int   localTeamVal = localTeam;
-        float radius    = crosshairRadius.getValue();
-        float radSq     = radius * radius;
-        float cx        = PlayerCache.screenWidth  / 2.0f + espOffsetX;
-        float cy        = PlayerCache.screenHeight / 2.0f + espOffsetY;
-        boolean trackTeammates = showTeammates.getValue();
-
-        for (PlayerSnapshot p : players) {
-            if (p.isLocal || (!trackTeammates && p.team == localTeamVal) || !p.onScreen) continue;
-            float dx = p.feetX - cx;
-            float dy = (p.feetY + p.headY) * 0.5f - cy;
-            if (dx * dx + dy * dy <= radSq) lastCrosshairMs.put(p.index, now);
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        if (players == null || players.isEmpty()) {
+            tracked.clear();
+            return;
         }
 
+        long now = System.currentTimeMillis();
+        int localTeamVal = localTeam;
+        float radius = crosshairRadius.getValue();
+        float cx = PlayerCache.screenWidth / 2.0f + espOffsetX;
+        float cy = PlayerCache.screenHeight / 2.0f + espOffsetY;
+        boolean trackTeammates = showTeammates.getValue();
+
+        // ── 1. Local shot detection ──────────────────────────────────────────
+        updateShotTimestamp(now);
+
+        // ── 2. Proximity tracking + health-delta attribution ─────────────────
         for (PlayerSnapshot p : players) {
             if (p.isLocal || (!trackTeammates && p.team == localTeamVal)) continue;
 
-            int key   = p.index;
+            TrackedEnemy t = tracked.get(p.index);
+            if (t == null) {
+                // First sighting — establish baseline only, never attribute on it.
+                t = new TrackedEnemy();
+                t.lastHealth   = p.health;
+                t.pawnAddress  = p.pawnAddress;
+                t.lastName     = p.name != null ? p.name : "";
+                t.lastSeenMs   = now;
+                tracked.put(p.index, t);
+                continue;
+            }
+
+            // Expanded-bounding-box test — stays correct when a close-range
+            // model extends far past the screen center (the old midpoint-
+            // distance check silently discarded those hits).
+            if (p.onScreen && isUnderCrosshair(p, cx, cy, radius)) {
+                t.lastCrosshairMs = now;
+            }
+
             int curHp = p.health;
+            int delta = t.lastHealth - curHp;
+            if (HitAttribution.isValidDelta(delta)
+                    && HitAttribution.isMine(now, lastShotMs,
+                         SHOT_ATTRIBUTION_WINDOW_MS, t.lastCrosshairMs, PROXIMITY_GRACE_MS)) {
 
-            if (lastHealth.containsKey(key)) {
-                int delta = lastHealth.get(key) - curHp;
-                if (delta > 0 && delta < 100) {
-                    Long ts    = lastCrosshairMs.get(key);
-                    boolean aimed = ts != null && (now - ts) <= CROSSHAIR_ATTR_WINDOW_MS;
+                applyAttributedDamage(delta, curHp, now);
 
-                    if (aimed) {
-                        if (wantCard) {
-                            if (lastHitMs >= 0
-                                    && (now - lastHitMs) > (ACCUMULATE_WINDOW_MS + FADE_MS)) {
-                                accumulatedDamage = 0;
-                                shotCount         = 0;
-                            }
-                            accumulatedDamage += delta;
-                            shotCount++;
-                            enemyHealthLeft = Math.max(0, curHp);
-                            lastHitMs       = now;
-                        }
-
-                        if (wantFloat && p.onScreen
-                                && activeFloaters.size() + pendingFloaters.size() < MAX_FLOATERS) {
-
-                            float modelH  = p.feetY - p.headY;
-                            if (modelH <= 0f) modelH = 1f;
-                            float modelHW = Math.max(modelH * 0.18f, 8f);
-
-                            float spawnX = p.feetX
-                                    + (rand.nextFloat() * 2f - 1f) * modelHW;
-                            float spawnY = p.headY
-                                    + modelH * 0.15f
-                                    + rand.nextFloat() * modelH * 0.55f;
-
-                            float drift = (rand.nextFloat() * 2f - 1f) * 28f;
-
-                            float relX = (spawnX - p.feetX) / modelH;
-                            float relY = (spawnY - p.feetY) / modelH;
-                            float relDriftX = drift / modelH;
-
-                            pendingFloaters.add(
-                                    new FloatingNumber(p.index, relX, relY, relDriftX, delta, now));
-                        }
-                    }
+                if (wantFloat && p.onScreen
+                        && activeFloaters.size() + pendingFloaters.size() < MAX_FLOATERS) {
+                    spawnFloater(p, delta, now);
                 }
             }
-            lastHealth.put(key, curHp);
+
+            t.lastHealth = curHp;
+            if (p.pawnAddress != 0) t.pawnAddress = p.pawnAddress;
+            if (p.name != null && !p.name.isEmpty()) t.lastName = p.name;
+            t.lastSeenMs     = now;
+            t.absentSinceMs  = -1L;
         }
 
-        lastHealth.entrySet().removeIf(e -> {
-            for (PlayerSnapshot p : players) if (p.index == e.getKey()) return false;
-            return true;
-        });
-        lastCrosshairMs.entrySet().removeIf(e -> {
-            for (PlayerSnapshot p : players) if (p.index == e.getKey()) return false;
-            return true;
-        });
+        // ── 3. Vanish handling — kills are invisible to the snapshot list ────
+        // A killing blow makes EntityDataReader drop the victim entirely, so
+        // the HP→0 transition is never observed here. Resolve vanished enemies:
+        // confirm death via one direct pawn read, or synthesize the kill from
+        // the shot gate. Multiple simultaneous vanishers indicate a round
+        // restart / mass event rather than a duel — only hard-confirmed deaths
+        // count there, preventing round-end phantom kills.
+        int vanishers = 0;
+        for (Map.Entry<Integer, TrackedEnemy> e : tracked.entrySet()) {
+            if (!isPresent(players, e.getKey())) vanishers++;
+        }
+
+        Iterator<Map.Entry<Integer, TrackedEnemy>> it = tracked.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, TrackedEnemy> e = it.next();
+            TrackedEnemy t = e.getValue();
+            if (isPresent(players, e.getKey())) continue;
+
+            if (t.absentSinceMs < 0L) {
+                t.absentSinceMs = now;               // arm confirmation window
+                continue;
+            }
+            if (now - t.absentSinceMs < VANISH_CONFIRM_MS) continue;
+
+            boolean hardConfirmed = false;
+            if (t.lastHealth > 0) {
+                // Dead pawns usually persist briefly with m_iHealth == 0.
+                // readInt returns 0 on failure too — treated as death as well,
+                // but then only via the single-vanisher synthesis path below.
+                int hp = CS2Memory.readInt(t.pawnAddress + CS2Offsets.m_iHealth);
+                hardConfirmed = (hp == 0);
+            }
+            boolean mine = HitAttribution.isMine(now, lastShotMs,
+                    SHOT_ATTRIBUTION_WINDOW_MS, t.lastCrosshairMs, PROXIMITY_GRACE_MS);
+
+            if (mine && t.lastHealth > 0 && (hardConfirmed || vanishers == 1)) {
+                applyAttributedDamage(t.lastHealth, 0, now);
+                registerKill(t.lastName, now);
+            }
+            it.remove();
+        }
+    }
+
+    /**
+     * Samples {@code m_iShotsFired} on the local pawn and stamps
+     * {@link #lastShotMs} on any increase. Sampling at ~10 Hz is sufficient:
+     * the counter stays elevated for the recoil-recovery duration (hundreds of
+     * ms) after firing, far longer than one sampling interval.
+     */
+    private void updateShotTimestamp(long now) {
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (!isValidPtr(localPawn)) {
+            prevShotsFired = -1;
+            return;
+        }
+        int shots = CS2Memory.readInt(localPawn + CS2Offsets.m_iShotsFired);
+        if (prevShotsFired >= 0 && shots > prevShotsFired) {
+            lastShotMs = now;
+        }
+        prevShotsFired = shots;
+    }
+
+    /**
+     * Expanded-bounding-box crosshair test: true when the screen center lies
+     * within the player's screen-space bounding box inflated by {@code radius}.
+     * Unlike a midpoint-distance test this remains correct for large
+     * close-range models whose box center sits far off the aim point.
+     */
+    private static boolean isUnderCrosshair(PlayerSnapshot p, float cx, float cy, float radius) {
+        float top    = Math.min(p.headY, p.feetY);
+        float bottom = Math.max(p.headY, p.feetY);
+        float height = bottom - top;
+        if (height <= 0f) height = 1f;
+        float halfW = Math.max(height * 0.25f, 4f); // matches renderer: width/2 = height/4
+
+        return cx >= p.feetX - halfW - radius
+            && cx <= p.feetX + halfW + radius
+            && cy >= top - radius
+            && cy <= bottom + radius;
+    }
+
+    private static boolean isPresent(List<PlayerSnapshot> players, int index) {
+        for (PlayerSnapshot p : players) {
+            if (p.index == index) return true;
+        }
+        return false;
+    }
+
+    /** Records an attributed hit: damage-card accumulation + hit-marker trigger. */
+    private void applyAttributedDamage(int delta, int hpLeft, long now) {
+        if (showDamage.getValue()) {
+            if (lastHitMs >= 0 && (now - lastHitMs) > (ACCUMULATE_WINDOW_MS + FADE_MS)) {
+                accumulatedDamage = 0;
+                shotCount         = 0;
+            }
+            accumulatedDamage += delta;
+            shotCount++;
+            enemyHealthLeft = Math.max(0, hpLeft);
+            lastHitMs       = now;
+        }
+        if (showHitmarker.getValue()) {
+            hitMarkerMs   = now;
+            hitMarkerKill = hpLeft <= 0;
+        }
+    }
+
+    private void spawnFloater(PlayerSnapshot p, int delta, long now) {
+        float modelH = p.feetY - p.headY;
+        if (modelH <= 0f) modelH = 1f;
+        float modelHW = Math.max(modelH * 0.18f, 8f);
+
+        float spawnX = p.feetX + (rand.nextFloat() * 2f - 1f) * modelHW;
+        float spawnY = p.headY + modelH * 0.15f + rand.nextFloat() * modelH * 0.55f;
+        float drift  = (rand.nextFloat() * 2f - 1f) * 28f;
+
+        float relX      = (spawnX - p.feetX) / modelH;
+        float relY      = (spawnY - p.feetY) / modelH;
+        float relDriftX = drift / modelH;
+
+        pendingFloaters.add(new FloatingNumber(p.index, relX, relY, relDriftX, delta, now));
+    }
+
+    /** Enqueues a custom kill feed row with the currently held weapon's name. */
+    private void registerKill(String victimName, long now) {
+        if (!showKillfeed.getValue()) return;
+        String weapon = resolveActiveWeaponName();
+        while (pendingKills.size() >= KILLFEED_MAX_ENTRIES) pendingKills.poll();
+        pendingKills.add(new KillEntry(weapon, victimName != null && !victimName.isEmpty()
+                ? victimName : "?", now));
+    }
+
+    /**
+     * Resolves the display name of the locally held weapon at kill time:
+     * pawn → WeaponServices → ActiveWeapon handle → entity → designer name.
+     * Uses the same identity/name-pointer pattern as the grenade scan.
+     */
+    private String resolveActiveWeaponName() {
+        try {
+            long localPawn = PlayerCache.localPlayerPawnAddress;
+            if (!isValidPtr(localPawn)) return null;
+
+            long weaponServices = CS2Memory.readLong(localPawn + CS2Offsets.m_pWeaponServices);
+            if (!isValidPtr(weaponServices)) return null;
+
+            int handle = CS2Memory.readInt(weaponServices + CS2Offsets.m_hActiveWeapon);
+            if (handle == 0 || handle == -1) return null;
+
+            long clientBase = CS2Memory.getClientBase();
+            if (clientBase == 0) return null;
+            long entityList = CS2Memory.readLong(clientBase + CS2Offsets.dwEntityList);
+            if (entityList == 0) return null;
+
+            long listEntry = CS2Memory.readLong(entityList + 8L * ((handle & 0x7FFF) >> 9) + 16);
+            if (listEntry == 0) return null;
+
+            long weaponEntity = CS2Memory.readLong(listEntry + 112L * (handle & 0x1FF));
+            if (!isValidPtr(weaponEntity)) return null;
+
+            long identity = CS2Memory.readLong(weaponEntity + 0x10);
+            if (!isValidPtr(identity)) return null;
+
+            long namePtr = CS2Memory.readLong(identity + 0x20);
+            if (!isValidPtr(namePtr)) return null;
+
+            String designerName = CS2Memory.readString(namePtr, 64);
+            if (designerName == null || designerName.isEmpty()) return null;
+            return prettifyWeaponName(designerName);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** "weapon_ak47" → "AK47", "m4a1_silencer" → "M4A1 SILENCER". */
+    private static String prettifyWeaponName(String designerName) {
+        String n = designerName;
+        if (n.startsWith("weapon_")) n = n.substring(7);
+        n = n.replace('_', ' ').trim();
+        return n.toUpperCase();
     }
 
     private void renderDamageESP(ImDrawList dl) {
         long now = System.currentTimeMillis();
+
+        if (showHitmarker.getValue()) {
+            renderHitMarker(dl, now);
+        }
+
+        if (showKillfeed.getValue()) {
+            renderKillFeed(dl, now);
+        }
 
         if (showFloating.getValue()) {
             FloatingNumber fn;
@@ -1117,5 +1389,130 @@ public class ESPModule extends CheatModule {
         float subY = barY + BAR_H + ROW_GAP;
         dl.addText(subX + 1, subY + 1, ImColor.rgba(0f, 0f, 0f, 0.65f * alpha), subText);
         dl.addText(subX, subY, colShots, subText);
+    }
+
+    // ── Hit Marker Rendering ──────────────────────────────────────────────────
+
+    /**
+     * Draws the animated hit-marker X at screen center. State arrives from the
+     * slow tick thread via volatiles; all drawing happens on the render thread.
+     */
+    private void renderHitMarker(ImDrawList dl, long now) {
+        long hm = hitMarkerMs;
+        if (hm < 0) return;
+
+        boolean kill = hitMarkerKill;
+        long life    = kill ? KILLMARKER_LIFE_MS : HITMARKER_LIFE_MS;
+        long elapsed = now - hm;
+        if (elapsed < 0 || elapsed >= life) return;
+
+        float t     = elapsed / (float) life;
+        float alpha = 1.0f - t * t * (3f - 2f * t); // smoothstep fade-out
+        if (alpha <= 0.02f) return;
+
+        float baseSize  = hitmarkerSize.getValue();
+        float inner     = baseSize * (0.45f + 0.35f * t);          // center gap grows slightly
+        float outer     = baseSize * (1.00f + 0.45f * t) + (kill ? 10f : 0f);
+        float thickness = kill ? 3.0f : 2.2f;
+
+        float[] hc  = kill ? killMarkerColor.getValue() : hitmarkerColor.getValue();
+        int   col   = ImColor.rgba(hc[0], hc[1], hc[2], hc[3] * alpha);
+        int   colBg = ImColor.rgba(0f, 0f, 0f, 0.70f * alpha);
+
+        float cx = PlayerCache.screenWidth / 2.0f + espOffsetX;
+        float cy = PlayerCache.screenHeight / 2.0f + espOffsetY;
+        float invSqrt2 = 0.70710678f;
+
+        for (int i = 0; i < 4; i++) {
+            float dx = (i == 0 || i == 3) ? -1f : 1f;
+            float dy = (i < 2)            ? -1f : 1f;
+
+            float sx = cx + dx * inner * invSqrt2;
+            float sy = cy + dy * inner * invSqrt2;
+            float ex = cx + dx * outer * invSqrt2;
+            float ey = cy + dy * outer * invSqrt2;
+
+            dl.addLine(sx - 1f, sy + 1f, ex - 1f, ey + 1f, colBg, thickness);
+            dl.addLine(sx + 1f, sy - 1f, ex + 1f, ey - 1f, colBg, thickness);
+            dl.addLine(sx, sy, ex, ey, col, thickness);
+        }
+    }
+
+    // ── Kill Feed Rendering ───────────────────────────────────────────────────
+
+    /**
+     * Renders the custom kill feed panel in the top-right corner. Rows are
+     * produced by the slow tick into {@link #pendingKills} and drained here on
+     * the render thread — same producer/consumer pattern as floating numbers.
+     */
+    private void renderKillFeed(ImDrawList dl, long now) {
+        KillEntry k;
+        while ((k = pendingKills.poll()) != null) activeKills.add(k);
+
+        float durationMs = killfeedDuration.getValue() * 1000f;
+
+        activeKills.removeIf(e -> now - e.birthMs >= durationMs);
+        while (activeKills.size() > KILLFEED_MAX_ENTRIES) activeKills.remove(0);
+        if (activeKills.isEmpty()) return;
+
+        float rowH      = ImGui.getFontSize() + 12f;
+        float padX      = 10f;
+        float rightEdge = PlayerCache.screenWidth + espOffsetX - 24f;
+        float y         = 20f + espOffsetY;
+
+        // Newest entry on top → iterate backwards.
+        for (int i = activeKills.size() - 1; i >= 0; i--) {
+            KillEntry e = activeKills.get(i);
+            float remain = durationMs - (now - e.birthMs);
+            float alpha  = remain < KILLFEED_FADE_MS
+                    ? Math.max(0f, remain / KILLFEED_FADE_MS)
+                    : 1.0f;
+            if (alpha <= 0.02f) continue;
+
+            String killerText = "You";
+            String weaponText = e.weapon != null ? "[" + e.weapon + "]" : "";
+            String victimText = e.victim;
+
+            ImGui.calcTextSize(sz, killerText);
+            float killerW = sz.x;
+            ImGui.calcTextSize(sz, weaponText);
+            float weaponW = weaponText.isEmpty() ? 0f : sz.x;
+            ImGui.calcTextSize(sz, victimText);
+            float victimW = sz.x;
+
+            float textW = killerW + (weaponW > 0f ? weaponW + 16f : 8f) + victimW;
+            float rowW  = textW + padX * 2f;
+            float rowX  = rightEdge - rowW;
+
+            dl.addRectFilled(rowX, y, rowX + rowW, y + rowH,
+                    ImColor.rgba(0.03f, 0.05f, 0.08f, 0.80f * alpha), 4f);
+            dl.addRect(rowX, y, rowX + rowW, y + rowH,
+                    ImColor.rgba(0.20f, 0.22f, 0.28f, 0.75f * alpha), 4f, 0, 1f);
+
+            float tx = rowX + padX;
+            float ty = y + (rowH - ImGui.getFontSize()) * 0.5f;
+
+            int   shadow = ImColor.rgba(0f, 0f, 0f, 0.85f * alpha);
+            float[] dc   = damageColor.getValue();
+            float[] sc   = shotsColor.getValue();
+
+            // Killer
+            dl.addText(tx + 1, ty + 1, shadow, killerText);
+            dl.addText(tx, ty, ImColor.rgba(dc[0], dc[1], dc[2], dc[3] * alpha), killerText);
+            tx += killerW + 8f;
+
+            // Weapon
+            if (weaponW > 0f) {
+                dl.addText(tx + 1, ty + 1, shadow, weaponText);
+                dl.addText(tx, ty, ImColor.rgba(sc[0], sc[1], sc[2], sc[3] * 0.9f * alpha), weaponText);
+                tx += weaponW + 8f;
+            }
+
+            // Victim
+            dl.addText(tx + 1, ty + 1, shadow, victimText);
+            dl.addText(tx, ty, ImColor.rgba(0.92f, 0.94f, 0.97f, 0.95f * alpha), victimText);
+
+            y += rowH + 6f;
+        }
     }
 }

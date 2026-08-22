@@ -113,8 +113,12 @@ A full re-audit after the first implementation round found 7 additional bugs
    natural fit with the existing projection pipeline.
 2. **Bomb carrier ESP + defuse kit indicator** — C4 timer already exists; extend
    carrier highlighting from radar-only to world ESP.
-3. **Hit marker & custom kill feed overlay** — extend the damage-tracking approach
-   with hit confirmation markers and a killfeed panel.
+3. ~~**Hit marker & custom kill feed overlay**~~ — ✅ **Implemented.** Extends the
+   damage-tracking approach with hit confirmation markers and a killfeed panel.
+   As part of this, damage attribution was rewritten to be shot-gated
+   (`m_iShotsFired` transitions + expanded-bounding-box crosshair test +
+   vanish-based kill synthesis), fixing missed hits, missing kills, and false
+   credits of other players' damage.
 4. **Watermark/session HUD** — configurable panel showing FPS, ping, round time, money.
 5. **Config profiles** — multiple named configs (per weapon/map) with hotkey switching,
    built on top of the existing `ConfigManager`.

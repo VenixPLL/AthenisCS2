@@ -736,6 +736,14 @@ public class OverlayMenu {
                 renderSingleSetting(esp, esp.textScale, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.crosshairRadius, settingX, settingW, isDebug);
                 ImGui.spacing();
+                renderSingleSetting(esp, esp.showHitmarker, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.hitmarkerColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.killMarkerColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.hitmarkerSize, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.showKillfeed, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.killfeedDuration, settingX, settingW, isDebug);
+                ImGui.spacing();
                 ImGui.endTabItem();
             }
             ImGui.endTabBar();
@@ -868,7 +876,10 @@ public class OverlayMenu {
             if (name.equals("Show Damage Card") || name.equals("Show Floating Numbers")
                     || name.equals("Show Teammates Damage") || name.startsWith("Damage Color")
                     || name.startsWith("Shots Color") || name.startsWith("Text Scale")
-                    || name.startsWith("Crosshair Radius"))
+                    || name.startsWith("Crosshair Radius")
+                    || name.equals("Show Hit Marker") || name.startsWith("Hit Marker Color")
+                    || name.startsWith("Kill Marker Color") || name.startsWith("Hit Marker Size")
+                    || name.equals("Show Kill Feed") || name.startsWith("Kill Feed Duration"))
                 return !esp.damageEsp.getValue();
         }
 
