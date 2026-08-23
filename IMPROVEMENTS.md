@@ -109,8 +109,15 @@ A full re-audit after the first implementation round found 7 additional bugs
 
 ## ➕ Feature Ideas
 
-1. **Sound ESP** — read sound events and render directional indicators for footsteps;
-   natural fit with the existing projection pipeline.
+1. ~~**Sound ESP** — read sound events and render directional indicators for footsteps~~ —
+   ✅ **Implemented** as an ESPModule submodule (like Grenade/Damage ESP).
+   External overlays cannot tap CS2's audio mixer, so footsteps are synthesized
+   from the high-frequency position/velocity pipeline: the slow tick accumulates
+   per-enemy horizontal stride distance (audible only when groundborne and faster
+   than walk speed) and emits pings that render as directional,
+   proximity-weighted wedges on a ring around the crosshair (enemy-only filter,
+   meters distance labels, configurable radius/duration/color). Pure math lives
+   in `module/impl/helpers/SoundIndicatorMath`, covered by `SoundIndicatorMathTest`.
 2. **Bomb carrier ESP + defuse kit indicator** — C4 timer already exists; extend
    carrier highlighting from radar-only to world ESP.
 3. ~~**Hit marker & custom kill feed overlay**~~ — ✅ **Implemented.** Extends the

@@ -746,6 +746,20 @@ public class OverlayMenu {
                 ImGui.spacing();
                 ImGui.endTabItem();
             }
+            if (ImGui.beginTabItem("Sound ESP")) {
+                ImGui.spacing();
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.soundEsp, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.soundEnemyOnly, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.soundColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.soundRingRadius, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.soundDuration, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.soundMaxDistance, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.soundShowDistance, settingX, settingW, isDebug);
+                ImGui.spacing();
+                ImGui.endTabItem();
+            }
             ImGui.endTabBar();
         }
     }
@@ -881,6 +895,14 @@ public class OverlayMenu {
                     || name.startsWith("Kill Marker Color") || name.startsWith("Hit Marker Size")
                     || name.equals("Show Kill Feed") || name.startsWith("Kill Feed Duration"))
                 return !esp.damageEsp.getValue();
+
+            if (name.equals("Show Sound ESP"))
+                return false;
+
+            if (name.equals("Enemy Only##soundesp") || name.startsWith("Sound Color")
+                    || name.startsWith("Indicator Radius") || name.startsWith("Indicator Duration")
+                    || name.startsWith("Max Hearing Distance") || name.startsWith("Show Distance Label"))
+                return !esp.soundEsp.getValue();
         }
 
         if (!(module instanceof me.venixpll.cheat.module.impl.RadarHackModule))

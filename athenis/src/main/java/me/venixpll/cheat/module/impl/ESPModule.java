@@ -13,6 +13,8 @@ import me.venixpll.cheat.vischeck.VisCheckAdapter;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
+import me.venixpll.cheat.module.impl.helpers.HitAttribution;
+import me.venixpll.cheat.module.impl.helpers.SoundIndicatorMath;
 import me.venixpll.cheat.projection.ScreenProjector;
 import me.venixpll.cheat.reader.PositionReader;
 import me.venixpll.cheat.setting.BooleanSetting;
@@ -124,6 +126,22 @@ public class ESPModule extends CheatModule {
     /** How long a kill feed row stays visible, in seconds. */
     public final FloatSetting killfeedDuration = new FloatSetting(
             "Kill Feed Duration##dmgesp", 6f, 3f, 12f);
+
+    // ── Sound ESP Settings ────────────────────────────────────────────────────
+    /** Master toggle: directional footstep indicators around the crosshair. */
+    public final BooleanSetting soundEsp = new BooleanSetting("Show Sound ESP", true);
+    /** When on, only enemies produce indicators — teammates stay silent. */
+    public final BooleanSetting soundEnemyOnly = new BooleanSetting("Enemy Only##soundesp", true);
+    /** Color of the directional wedges. */
+    public final ColorSetting soundColor = new ColorSetting("Sound Color##soundesp", 1.0f, 0.30f, 0.25f, 1.0f);
+    /** Radius of the indicator ring around the crosshair, in pixels. */
+    public final FloatSetting soundRingRadius = new FloatSetting("Indicator Radius##soundesp", 120f, 50f, 320f);
+    /** How long a footstep indicator stays visible, in seconds. */
+    public final FloatSetting soundDuration = new FloatSetting("Indicator Duration##soundesp", 1.6f, 0.5f, 4.0f);
+    /** Footsteps farther away than this many world units are not indicated. */
+    public final FloatSetting soundMaxDistance = new FloatSetting("Max Hearing Distance##soundesp", 1600f, 300f, 5000f);
+    /** Print the distance in meters next to each wedge. */
+    public final BooleanSetting soundShowDistance = new BooleanSetting("Show Distance Label##soundesp", true);
 
     // ── Player ESP Configuration/State ────────────────────────────────────────
     /** Bone connections for drawing the skeleton */
@@ -324,6 +342,79 @@ public class ESPModule extends CheatModule {
     private final Random rand = new Random();
     private final imgui.ImVec2 sz = new imgui.ImVec2();
 
+    // ── Sound ESP Configuration/State ─────────────────────────────────────────
+    /**
+     * Footstep indicators are synthesized from the high-frequency position/
+     * velocity pipeline instead of CS2's audio mixer (not exposed through
+     * dumper offsets): the game plays footsteps whenever a player moves on the
+     * ground faster than walking speed, so an enemy above
+     * {@link #FOOTSTEP_MIN_SPEED} is audible and every
+     * {@link #FOOTSTEP_STRIDE_UNITS} units of horizontal travel ≈ one step
+     * (250 u/s run → ~0.36 s cadence, matching the real animation cycle).
+     */
+    /** Horizontal speed above which CS2 plays audible footsteps (max walk ≈ 130 u/s). */
+    private static final float FOOTSTEP_MIN_SPEED    = 140f;
+    /** Horizontal units of travel that make up one audible footstep. */
+    private static final float FOOTSTEP_STRIDE_UNITS = 90f;
+    /** |velZ| above this counts as airborne — no ground footsteps while jumping/falling. */
+    private static final float AIRBORNE_Z_SPEED      = 100f;
+    /** Position jumps larger than this between ticks are teleports, not strides. */
+    private static final float STRIDE_TELEPORT_UNITS = 256f;
+    /** Slow-tick trackers idle longer than this are pruned (left/died/round end). */
+    private static final long  STRIDE_TTL_MS         = 1_500L;
+    /** Hard cap on simultaneously rendered indicators (oldest dropped first). */
+    private static final int   MAX_ACTIVE_SOUNDS     = 24;
+    /** Triangles per wedge arc (angular resolution). */
+    private static final int   WEDGE_SEGMENTS        = 12;
+    /** Fade-in window for a freshly emitted ping, in ms. */
+    private static final long  PING_FADE_IN_MS       = 80L;
+    /** Lifetime fraction after which a ping starts fading out. */
+    private static final float PING_FADE_START       = 0.45f;
+    /** The indicator ring drifts outward by up to this factor over a ping's life. */
+    private static final float PING_DRIFT_FACTOR     = 0.10f;
+    /** World units → meters (1 unit = 1 inch). */
+    private static final float UNITS_TO_METERS       = 0.0254f;
+
+    /** Per-enemy footstep stride accumulation. Owned by the slow data thread. */
+    private static final class StrideTracker {
+        float   lastX;
+        float   lastY;
+        float   accumUnits;
+        long    lastSeenMs;
+    }
+
+    /**
+     * One synthesized footstep event. Produced by the slow tick thread and
+     * drained by the render thread — same handoff pattern as
+     * {@link #pendingFloaters} and {@link #pendingKills}.
+     */
+    static final class SoundPing {
+        final float worldX;
+        final float worldY;
+        final long  birthMs;
+
+        SoundPing(float worldX, float worldY, long birthMs) {
+            this.worldX = worldX;
+            this.worldY = worldY;
+            this.birthMs = birthMs;
+        }
+    }
+
+    private final HashMap<Integer, StrideTracker> strideTrackers = new HashMap<>();
+    private final ConcurrentLinkedQueue<SoundPing> pendingPings =
+            new ConcurrentLinkedQueue<>();
+    /** Render-thread-owned display list of active footstep indicators. */
+    private final ArrayList<SoundPing> activePings = new ArrayList<>();
+
+    /** Reusable wedge vertex buffers (render thread only). */
+    private final float[] wedgeInX  = new float[WEDGE_SEGMENTS + 1];
+    private final float[] wedgeInY  = new float[WEDGE_SEGMENTS + 1];
+    private final float[] wedgeOutX = new float[WEDGE_SEGMENTS + 1];
+    private final float[] wedgeOutY = new float[WEDGE_SEGMENTS + 1];
+    /** Scratch for local origin/yaw resolution ({@link #resolveLocalView}). */
+    private final float[] localViewOut = new float[3];
+    private final imgui.ImVec2 sndTextSizeBuf = new imgui.ImVec2();
+
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
@@ -381,6 +472,15 @@ public class ESPModule extends CheatModule {
         // ── Kill Feed Settings ──────────────────────────────────────────────
         addSetting(showKillfeed);
         addSetting(killfeedDuration);
+
+        // ── Sound ESP Settings ──────────────────────────────────────────────
+        addSetting(soundEsp);
+        addSetting(soundEnemyOnly);
+        addSetting(soundColor);
+        addSetting(soundRingRadius);
+        addSetting(soundDuration);
+        addSetting(soundMaxDistance);
+        addSetting(soundShowDistance);
     }
 
     private static boolean isValidPtr(long p) {
@@ -390,6 +490,12 @@ public class ESPModule extends CheatModule {
     @Override
     public void onTick() {
         if (!isEnabled()) return;
+        if (soundEsp.getValue()) {
+            tickSoundESP();
+        } else if (!strideTrackers.isEmpty() || !pendingPings.isEmpty()) {
+            strideTrackers.clear();
+            pendingPings.clear();
+        }
         if (damageEsp.getValue()) {
             tickDamageESP();
         }
@@ -414,6 +520,10 @@ public class ESPModule extends CheatModule {
 
         if (damageEsp.getValue()) {
             renderDamageESP(drawList);
+        }
+
+        if (soundEsp.getValue()) {
+            renderSoundESP(drawList);
         }
     }
 
@@ -1513,6 +1623,248 @@ public class ESPModule extends CheatModule {
             dl.addText(tx, ty, ImColor.rgba(0.92f, 0.94f, 0.97f, 0.95f * alpha), victimText);
 
             y += rowH + 6f;
+        }
+    }
+
+    // ── Sound ESP: footstep synthesis + directional rendering ────────────────
+
+    /**
+     * Slow-tick (~10 Hz) footstep synthesis. Reads only the fast loop's
+     * published snapshots — never touches RPM directly. An enemy is audible
+     * while groundborne ({@code |velZ|} small) and moving faster than walking
+     * speed; every {@link #FOOTSTEP_STRIDE_UNITS} units of accumulated
+     * horizontal travel emits one {@link SoundPing} at their world position.
+     * The tracker map is owned exclusively by the slow data thread.
+     */
+    private void tickSoundESP() {
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        if (players == null || players.isEmpty()) {
+            strideTrackers.clear();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        float maxDist   = soundMaxDistance.getValue();
+        float maxDistSq = maxDist * maxDist;
+        boolean enemyOnly = soundEnemyOnly.getValue();
+        int myTeam = localTeam;
+
+        // Local origin for distance gating — already present in the snapshot list.
+        float lx = 0f, ly = 0f;
+        boolean haveLocal = false;
+        for (PlayerSnapshot p : players) {
+            if (p.isLocal) {
+                lx = p.worldX;
+                ly = p.worldY;
+                haveLocal = Float.isFinite(lx) && Float.isFinite(ly);
+                break;
+            }
+        }
+        if (!haveLocal) return;
+
+        for (PlayerSnapshot p : players) {
+            if (p.isLocal || p.health <= 0) continue;
+            if (enemyOnly && p.team == myTeam) continue;
+
+            // Airborne (jump apex / falling / ladder pop) — no ground footsteps.
+            if (Math.abs(p.velZ) > AIRBORNE_Z_SPEED) continue;
+
+            float speedSq = p.velX * p.velX + p.velY * p.velY;
+            StrideTracker st = strideTrackers.get(p.index);
+
+            if (speedSq < FOOTSTEP_MIN_SPEED * FOOTSTEP_MIN_SPEED) {
+                // Silent movement (standing / walking / crouch-walking) — drop
+                // any accumulated stride so resuming cannot emit stale steps.
+                if (st != null) st.accumUnits = 0f;
+                continue;
+            }
+
+            if (st == null) {
+                st = new StrideTracker();
+                st.lastX = p.worldX;
+                st.lastY = p.worldY;
+                st.lastSeenMs = now;
+                strideTrackers.put(p.index, st);
+                continue; // first sighting only establishes the baseline
+            }
+            st.lastSeenMs = now;
+
+            float dx = p.worldX - st.lastX;
+            float dy = p.worldY - st.lastY;
+            st.lastX = p.worldX;
+            st.lastY = p.worldY;
+
+            float moved = (float) Math.sqrt(dx * dx + dy * dy);
+            if (moved > STRIDE_TELEPORT_UNITS) {
+                st.accumUnits = 0f; // teleport / respawn — not a footstep
+                continue;
+            }
+            st.accumUnits += moved;
+
+            if (st.accumUnits >= FOOTSTEP_STRIDE_UNITS) {
+                st.accumUnits -= FOOTSTEP_STRIDE_UNITS;
+                float sdx = p.worldX - lx;
+                float sdy = p.worldY - ly;
+                if (sdx * sdx + sdy * sdy <= maxDistSq) {
+                    pendingPings.add(new SoundPing(p.worldX, p.worldY, now));
+                }
+            }
+        }
+
+        strideTrackers.values().removeIf(t -> now - t.lastSeenMs > STRIDE_TTL_MS);
+    }
+
+    /**
+     * Resolves the local player's world origin and view yaw into
+     * {@code out = {x, y, yawDeg}}. Prefers the fast loop's local snapshot and
+     * falls back to the same RPM reads the radar uses. Render-thread helper.
+     */
+    private boolean resolveLocalView(float[] out) {
+        for (PlayerSnapshot p : PlayerCache.renderPlayers) {
+            if (p == null || !p.isLocal) continue;
+            if (Float.isFinite(p.yaw) && Float.isFinite(p.worldX) && Float.isFinite(p.worldY)) {
+                out[0] = p.worldX;
+                out[1] = p.worldY;
+                out[2] = p.yaw;
+                return true;
+            }
+            break;
+        }
+        long localPawn = PlayerCache.localPlayerPawnAddress;
+        if (!isValidPtr(localPawn)) return false;
+        Vector3 origin = CS2Memory.readVector(localPawn + CS2Offsets.m_vOldOrigin);
+        if (origin == null) return false;
+        long clientBase = CS2Memory.getClientBase();
+        if (clientBase == 0) return false;
+        float yaw = CS2Memory.readFloat(clientBase + CS2Offsets.dwViewAngles + 4);
+        if (!Float.isFinite(yaw)) return false;
+        out[0] = origin.x;
+        out[1] = origin.y;
+        out[2] = yaw;
+        return true;
+    }
+
+    /**
+     * Renders directional footstep indicators on a ring around the crosshair.
+     * Bearings are recomputed every frame against the CURRENT local origin/yaw,
+     * so wedges stay glued to the sound's world direction while the view turns.
+     */
+    private void renderSoundESP(ImDrawList dl) {
+        long now = System.currentTimeMillis();
+        long durMs = (long) (soundDuration.getValue() * 1000f);
+        if (durMs <= 0L) return;
+
+        SoundPing ping;
+        while ((ping = pendingPings.poll()) != null) {
+            activePings.add(ping);
+        }
+        activePings.removeIf(p -> now - p.birthMs >= durMs);
+        while (activePings.size() > MAX_ACTIVE_SOUNDS) activePings.remove(0);
+        if (activePings.isEmpty()) return;
+
+        if (!resolveLocalView(localViewOut)) return;
+        float lx  = localViewOut[0];
+        float ly  = localViewOut[1];
+        float yaw = localViewOut[2];
+
+        float cx      = PlayerCache.screenWidth / 2.0f + espOffsetX;
+        float cy      = PlayerCache.screenHeight / 2.0f + espOffsetY;
+        float baseR   = soundRingRadius.getValue();
+        float maxDist = Math.max(1f, soundMaxDistance.getValue());
+        float[] col   = soundColor.getValue();
+        boolean showDist = soundShowDistance.getValue();
+
+        for (int i = 0; i < activePings.size(); i++) {
+            SoundPing p = activePings.get(i);
+            long age = now - p.birthMs;
+            float alpha = SoundIndicatorMath.envelope(age, durMs, PING_FADE_IN_MS, PING_FADE_START);
+            if (alpha <= 0.02f) continue;
+
+            float dx   = p.worldX - lx;
+            float dy   = p.worldY - ly;
+            float dist = SoundIndicatorMath.distanceUnits(dx, dy);
+            float bearing = SoundIndicatorMath.bearingRadians(dx, dy, yaw);
+            float prox = 1f - SoundIndicatorMath.clamp01(dist / maxDist);
+            float t    = SoundIndicatorMath.clamp01(age / (float) durMs);
+
+            drawSoundWedge(dl, cx, cy, baseR, bearing, t, alpha, prox, dist, col, showDist);
+        }
+    }
+
+    /**
+     * One footstep indicator: filled translucent pie wedge + triple-layer arc
+     * (glow / body / bright core) + leading dot + optional distance label.
+     * Closer sources render wider, thicker and brighter. Vertex buffers are
+     * pre-allocated; screen mapping matches the radar (bearing 0 = up/ahead).
+     */
+    private void drawSoundWedge(ImDrawList dl, float cx, float cy, float baseR,
+                                float bearing, float t, float alpha, float prox,
+                                float dist, float[] col, boolean showDist) {
+        // Ripple: ring drifts slightly outward as the ping ages.
+        float r = baseR * (1f + PING_DRIFT_FACTOR * SoundIndicatorMath.easeOutCubic(t));
+
+        // Proximity emphasis: closer → wider span, thicker stroke, whiter core.
+        float spanRad   = (float) Math.toRadians(16f + 14f * prox);
+        float thickness = 3.0f + 2.5f * prox;
+        float lift      = 0.30f + 0.25f * prox;
+        float cr = Math.min(1f, col[0] + (1f - col[0]) * lift);
+        float cg = Math.min(1f, col[1] + (1f - col[1]) * lift);
+        float cb = Math.min(1f, col[2] + (1f - col[2]) * lift);
+
+        int colFill = ImColor.rgba(col[0], col[1], col[2], 0.20f * alpha);
+        int colGlow = ImColor.rgba(col[0], col[1], col[2], 0.16f * alpha);
+        int colBody = ImColor.rgba(cr, cg, cb, 0.85f * alpha);
+        int colCore = ImColor.rgba(1f, 1f, 1f, (0.35f + 0.45f * prox) * alpha);
+
+        float rIn = r * 0.55f;
+        int n = WEDGE_SEGMENTS;
+        for (int s = 0; s <= n; s++) {
+            float ang = bearing - spanRad * 0.5f + spanRad * (s / (float) n);
+            float sn  = (float) Math.sin(ang);
+            float cs  = (float) Math.cos(ang);
+            wedgeInX[s]  = cx + sn * rIn;
+            wedgeInY[s]  = cy - cs * rIn;
+            wedgeOutX[s] = cx + sn * r;
+            wedgeOutY[s] = cy - cs * r;
+        }
+
+        for (int s = 0; s < n; s++) {
+            dl.addTriangleFilled(wedgeInX[s], wedgeInY[s],
+                                 wedgeOutX[s], wedgeOutY[s],
+                                 wedgeOutX[s + 1], wedgeOutY[s + 1], colFill);
+            dl.addTriangleFilled(wedgeInX[s], wedgeInY[s],
+                                 wedgeOutX[s + 1], wedgeOutY[s + 1],
+                                 wedgeInX[s + 1], wedgeInY[s + 1], colFill);
+        }
+
+        for (int s = 0; s < n; s++) {
+            dl.addLine(wedgeOutX[s], wedgeOutY[s], wedgeOutX[s + 1], wedgeOutY[s + 1], colGlow, thickness * 3.2f);
+        }
+        for (int s = 0; s < n; s++) {
+            dl.addLine(wedgeOutX[s], wedgeOutY[s], wedgeOutX[s + 1], wedgeOutY[s + 1], colBody, thickness);
+        }
+        for (int s = 0; s < n; s++) {
+            dl.addLine(wedgeOutX[s], wedgeOutY[s], wedgeOutX[s + 1], wedgeOutY[s + 1], colCore, 1.6f);
+        }
+
+        // Leading dot at the wedge center.
+        float midSin = (float) Math.sin(bearing);
+        float midCos = (float) Math.cos(bearing);
+        dl.addCircleFilled(cx + midSin * r, cy - midCos * r, 3.2f + 1.8f * prox, colBody, 12);
+
+        // Optional distance label just outside the ring along the bearing.
+        if (showDist) {
+            String txt = String.format("%.0fm", dist * UNITS_TO_METERS);
+            ImGui.calcTextSize(sndTextSizeBuf, txt);
+            float lr = r + 14f;
+            float tx = cx + midSin * lr - sndTextSizeBuf.x * 0.5f;
+            float ty = cy - midCos * lr - sndTextSizeBuf.y * 0.5f;
+            int shadow = ImColor.rgba(0f, 0f, 0f, 0.85f * alpha);
+            dl.addText(tx - 1, ty + 1, shadow, txt);
+            dl.addText(tx + 1, ty + 1, shadow, txt);
+            dl.addText(tx - 1, ty - 1, shadow, txt);
+            dl.addText(tx + 1, ty - 1, shadow, txt);
+            dl.addText(tx, ty, colBody, txt);
         }
     }
 }

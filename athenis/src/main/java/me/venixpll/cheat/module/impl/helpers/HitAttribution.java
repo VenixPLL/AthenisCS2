@@ -1,4 +1,4 @@
-package me.venixpll.cheat.module.impl;
+package me.venixpll.cheat.module.impl.helpers;
 
 /**
  * Pure decision logic for the Damage ESP hit-attribution pipeline.

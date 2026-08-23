@@ -1,4 +1,4 @@
-package me.venixpll.cheat.module.impl;
+package me.venixpll.cheat.module.impl.helpers;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
