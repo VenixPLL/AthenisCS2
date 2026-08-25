@@ -43,7 +43,7 @@ Here are the key changes introduced in the latest version:
 
 | Category | Module | Description |
 |---|---|---|
-| **Visuals** | **ESP Overlay** | 2D bounding boxes with health bars, player names. Features enemy-only filter, configurable colors, and forward position extrapolation to compensate for tick lag. Integrates **VisCheck** to filter visible/hidden targets. |
+| **Visuals** | **ESP Overlay** | 2D bounding boxes with health bars, player names. Features enemy-only filter, configurable colors, and forward position extrapolation to compensate for tick lag. Integrates **VisCheck** to filter visible/hidden targets. Highlights the **C4 carrier** with a pulsing world-ESP outline + BOMB flag and shows a **defuse-kit indicator** on the Defusing flag. |
 | | **Radar Hack** | Minimap overlay radar with per-map automatic alignment offsets, customizable rotation, zoom, and C4 carrier highlighting. |
 | | **Bomb Timer** | Screen overlay timer for planted C4 with a pulsing alert bar and warning banner when off-screen. |
 | | **Crosshair** | Configurable center-screen crosshair overlay supporting multiple styles (Cross, Dot, Circle + Cross, T-Shape) and activation modes (Sniper Only, Always). |

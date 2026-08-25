@@ -274,7 +274,7 @@ athenis/src/main/java/me/venixpll/
 
 ## 12. Backlog
 
-Unimplemented feature ideas live in `IMPROVEMENTS.md` § Feature Ideas: Sound ESP,
-bomb-carrier world ESP, hit markers/killfeed, watermark HUD, config profiles,
+Unimplemented feature ideas live in `IMPROVEMENTS.md` § Feature Ideas: hit
+markers/killfeed, watermark HUD, config profiles,
 stream-proof mode (`WDA_EXCLUDEFROMCAPTURE`), map auto-updater, CI pipeline,
 panic key, magic-number extraction. Pick from there before inventing new scope.

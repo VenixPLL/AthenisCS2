@@ -118,8 +118,14 @@ A full re-audit after the first implementation round found 7 additional bugs
    proximity-weighted wedges on a ring around the crosshair (enemy-only filter,
    meters distance labels, configurable radius/duration/color). Pure math lives
    in `module/impl/helpers/SoundIndicatorMath`, covered by `SoundIndicatorMathTest`.
-2. **Bomb carrier ESP + defuse kit indicator** — C4 timer already exists; extend
-   carrier highlighting from radar-only to world ESP.
+2. ~~**Bomb carrier ESP + defuse kit indicator** — C4 timer already exists; extend
+   carrier highlighting from radar-only to world ESP~~ — ✅ **Implemented** as an
+   ESPModule Player-ESP sub-feature: every living C4 carrier gets a pulsing
+   world-space outline (`Highlight Bomb Carrier`, configurable color) drawn from
+   cached snapshots with zero per-frame memory reads, plus a topmost `BOMB` flag
+   pill (`Flag: Bomb`). Like the radar, the carrier glow deliberately ignores the
+   enemy-only team filter — locating the C4 matters on both teams. The Defusing
+   flag doubles as the defuse-kit indicator: `DEFUSING+KIT` vs `DEFUSING`.
 3. ~~**Hit marker & custom kill feed overlay**~~ — ✅ **Implemented.** Extends the
    damage-tracking approach with hit confirmation markers and a killfeed panel.
    As part of this, damage attribution was rewritten to be shot-gated

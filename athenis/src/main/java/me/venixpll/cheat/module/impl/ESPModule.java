@@ -66,8 +66,19 @@ public class ESPModule extends CheatModule {
     public final BooleanSetting flagDefusing   = new BooleanSetting("Flag: Defusing",       true);
     /** Show a “Kit” badge when the target is carrying a defuse kit. */
     public final BooleanSetting flagKit        = new BooleanSetting("Flag: Kit",             true);
+    /** Show a "BOMB" pill above whoever currently carries the C4 (topmost flag). */
+    public final BooleanSetting flagBomb       = new BooleanSetting("Flag: Bomb",            true);
     /** Show the target’s current in-game money balance. */
     public final BooleanSetting flagMoney      = new BooleanSetting("Flag: Money",           true);
+
+    // ── Bomb Carrier World ESP Settings ─────────────────────────────────────
+    /**
+     * Master toggle: pulsing outline around every living player currently
+     * carrying the C4 — the world-ESP counterpart of the radar highlighting.
+     */
+    public final BooleanSetting carrierHighlight = new BooleanSetting("Highlight Bomb Carrier", true);
+    /** Color of the carrier outline; also used for the BOMB flag pill. */
+    public final ColorSetting carrierColor = new ColorSetting("Carrier Color##carrier", 1.0f, 0.45f, 0.0f, 1.0f);
 
     // ── Grenade ESP Settings ──────────────────────────────────────────────────
     /** Show HE grenades */
@@ -438,11 +449,14 @@ public class ESPModule extends CheatModule {
         addSetting(extrapolationBias);
         addSetting(enemyColor);
         addSetting(teamColor);
+        addSetting(carrierHighlight);
+        addSetting(carrierColor);
         addSetting(flagsEsp);
         addSetting(flagBlind);
         addSetting(flagScoped);
         addSetting(flagDefusing);
         addSetting(flagKit);
+        addSetting(flagBomb);
         addSetting(flagMoney);
 
         // ── Grenade ESP Settings ────────────────────────────────────────────
@@ -512,6 +526,9 @@ public class ESPModule extends CheatModule {
 
         if (playerEsp.getValue()) {
             renderPlayerESP(drawList);
+            if (carrierHighlight.getValue()) {
+                renderCarrierESP(drawList);
+            }
         }
 
         if (grenadeEsp.getValue()) {
@@ -716,6 +733,11 @@ public class ESPModule extends CheatModule {
 
         List<FlagEntry> badges = new ArrayList<>(5);
 
+        // BOMB pill is added first so it renders topmost above the other badges.
+        if (flagBomb.getValue() && player.hasBomb) {
+            float[] ccv = carrierColor.getValue();
+            badges.add(new FlagEntry("BOMB", ImColor.rgba(ccv[0], ccv[1], ccv[2], 0.95f)));
+        }
         if (flagBlind.getValue() && player.flashDuration > 0.1f && player.flashMaxAlpha > 10.0f) {
             String label = player.flashDuration > 2.0f ? "BLIND!" : "BLIND";
             badges.add(new FlagEntry(label, ImColor.rgba(0.0f, 0.95f, 1.0f, 0.88f)));
@@ -725,7 +747,9 @@ public class ESPModule extends CheatModule {
         }
         if (flagDefusing.getValue() && player.isDefusingOrPlanting) {
             if (player.team == 3) {
-                badges.add(new FlagEntry("DEFUSING", ImColor.rgba(1.0f, 0.45f, 0.0f, 0.92f)));
+                // Defuse-kit indicator: with a kit the defuse takes half the time.
+                badges.add(new FlagEntry(player.hasKit ? "DEFUSING+KIT" : "DEFUSING",
+                        ImColor.rgba(1.0f, 0.45f, 0.0f, 0.92f)));
             } else if (player.team == 2) {
                 badges.add(new FlagEntry("PLANTING", ImColor.rgba(1.0f, 0.30f, 0.10f, 0.92f)));
             }
@@ -745,35 +769,85 @@ public class ESPModule extends CheatModule {
         for (int bi = badges.size() - 1; bi >= 0; bi--) {
             FlagEntry badge = badges.get(bi);
 
-            ImGui.calcTextSize(flagSizeBuf, badge.label);
-            float tw = flagSizeBuf.x;
-            float pillW = tw + FLAG_PAD * 2.0f;
+            cursor = drawFlagPill(drawList, badge.label, badge.color, centerX, cursor)
+                     - FLAG_GAP;
+        }
+    }
 
-            float pillX = centerX + espOffsetX - pillW / 2.0f;
-            float pillY = cursor - FLAG_H;
+    /**
+     * Draws one flag-style pill centered horizontally on {@code centerX} whose
+     * bottom edge sits at {@code bottomY}. Shared by {@link #renderFlags} and
+     * {@link #renderCarrierESP} so every badge looks identical.
+     *
+     * @return the Y coordinate of the pill's top edge.
+     */
+    private float drawFlagPill(ImDrawList drawList, String label, int color,
+                               float centerX, float bottomY) {
+        ImGui.calcTextSize(flagSizeBuf, label);
+        float pillW = flagSizeBuf.x + FLAG_PAD * 2.0f;
+        float pillX = centerX + espOffsetX - pillW / 2.0f;
+        float pillY = bottomY - FLAG_H;
 
-            drawList.addRectFilled(
-                    pillX, pillY,
-                    pillX + pillW, cursor,
-                    ImColor.rgba(0.0f, 0.0f, 0.0f, 0.60f),
-                    FLAG_ROUNDING);
+        drawList.addRectFilled(pillX, pillY, pillX + pillW, bottomY,
+                ImColor.rgba(0.0f, 0.0f, 0.0f, 0.60f), FLAG_ROUNDING);
+        drawList.addRect(pillX, pillY, pillX + pillW, bottomY, color,
+                FLAG_ROUNDING, 0, 1.0f);
 
-            drawList.addRect(
-                    pillX, pillY,
-                    pillX + pillW, cursor,
-                    badge.color,
-                    FLAG_ROUNDING, 0, 1.0f);
+        float tx = pillX + FLAG_PAD;
+        float ty = pillY + (FLAG_H - flagSizeBuf.y) / 2.0f;
+        int shadow = ImColor.rgba(0, 0, 0, 200);
+        drawList.addText(tx - 1, ty,     shadow, label);
+        drawList.addText(tx + 1, ty,     shadow, label);
+        drawList.addText(tx,     ty - 1, shadow, label);
+        drawList.addText(tx,     ty + 1, shadow, label);
+        drawList.addText(tx,     ty,     color,  label);
+        return pillY;
+    }
 
-            float tx = pillX + FLAG_PAD;
-            float ty = pillY + (FLAG_H - flagSizeBuf.y) / 2.0f;
-            int shadow = ImColor.rgba(0, 0, 0, 200);
-            drawList.addText(tx - 1, ty,     shadow,      badge.label);
-            drawList.addText(tx + 1, ty,     shadow,      badge.label);
-            drawList.addText(tx,     ty - 1, shadow,      badge.label);
-            drawList.addText(tx,     ty + 1, shadow,      badge.label);
-            drawList.addText(tx,     ty,     badge.color, badge.label);
+    // ── Bomb Carrier World ESP ──────────────────────────────────────────────
 
-            cursor = pillY - FLAG_GAP;
+    /**
+     * World-ESP counterpart of RadarHackModule's carrier ring: draws a pulsing
+     * outline around every living player currently carrying the C4.
+     *
+     * <p>Deliberately ignores the enemy-only team filter — locating the C4 is
+     * equally valuable on both teams, mirroring the radar behaviour. Runs
+     * purely on cached {@link PlayerSnapshot} data published by the fast
+     * position thread; performs zero memory reads (render-thread rule).</p>
+     */
+    private void renderCarrierESP(ImDrawList drawList) {
+        List<PlayerSnapshot> currentPlayers = PlayerCache.renderPlayers;
+        if (currentPlayers.isEmpty()) return;
+
+        float[] cc = carrierColor.getValue();
+        long nowMs = System.currentTimeMillis();
+
+        for (PlayerSnapshot player : currentPlayers) {
+            if (player.isLocal || !player.onScreen || !player.hasBomb) continue;
+
+            float feetX = player.feetX;
+            float feetY = player.feetY;
+            float headY = player.headY;
+            if (!Float.isFinite(feetX) || !Float.isFinite(feetY) || !Float.isFinite(headY)) continue;
+
+            float height = feetY - headY;
+            float width  = height / 2.0f;
+            float minX   = feetX - width / 2.0f + espOffsetX;
+            float minY   = headY + espOffsetY;
+            float maxX   = minX + width;
+            float maxY   = feetY + espOffsetY;
+
+            // Same heartbeat cadence as the radar module's carrier ring.
+            float pulse  = (float) (Math.sin(nowMs * 0.006) * 0.5 + 0.5);
+            float expand = 3.0f + pulse * 3.0f;
+            int glowCol  = ImColor.rgba(cc[0], cc[1], cc[2], 0.20f + pulse * 0.60f);
+
+            drawList.addRect(minX - expand - 1, minY - expand - 1,
+                             maxX + expand + 1, maxY + expand + 1,
+                             ImColor.rgba(0, 0, 0, 150), 0.0f, 0, 2.0f);
+            drawList.addRect(minX - expand, minY - expand,
+                             maxX + expand, maxY + expand,
+                             glowCol, 0.0f, 0, 2.0f);
         }
     }
 

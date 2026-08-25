@@ -694,6 +694,8 @@ public class OverlayMenu {
                 renderSingleSetting(esp, esp.extrapolationBias, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.enemyColor, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.teamColor, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.carrierHighlight, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.carrierColor, settingX, settingW, isDebug);
                 ImGui.spacing();
                 float[] hAccent = isDebug ? COL_DBG_GREEN : COL_ACCENT;
                 ImGui.setCursorPosX(settingX);
@@ -704,6 +706,7 @@ public class OverlayMenu {
                 renderSingleSetting(esp, esp.flagScoped, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.flagDefusing, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.flagKit, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.flagBomb, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.flagMoney, settingX, settingW, isDebug);
                 ImGui.spacing();
                 ImGui.endTabItem();
