@@ -77,10 +77,15 @@ public class NoSpreadModule extends ManagedThreadModule {
         addSetting(debugLog);
     }
 
-    /** Marks this module as VAC-detected so the overlay shows a red warning. */
+    /**
+     * Marks this module as VAC-detectable: it writes RCS compensation values
+     * into the local player's view angles every shot. Returning true here is
+     * also what makes the module a target of the panic key's
+     * "dangerous modules" scope.
+     */
     @Override
     public boolean isDangerous() {
-        return false;
+        return true;
     }
 
     // ── Worker loop ───────────────────────────────────────────────────────────

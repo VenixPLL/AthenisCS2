@@ -135,14 +135,20 @@ A full re-audit after the first implementation round found 7 additional bugs
 4. **Watermark/session HUD** — configurable panel showing FPS, ping, round time, money.
 5. **Config profiles** — multiple named configs (per weapon/map) with hotkey switching,
    built on top of the existing `ConfigManager`.
-6. **Stream-proof mode** — exclude the overlay from OBS/screen capture via
-   `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` — one Win32 call, high value.
+6. ~~**Stream-proof mode** — exclude the overlay from OBS/screen capture via
+   `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` — one Win32 call, high value~~ —
+   ✅ **Implemented**: toggle in SYSTEM → Settings of the overlay menu, persisted in
+   settings.json and re-applied at startup; gracefully reverts with a notification on
+   Windows builds older than 10 2004.
 7. **Map geometry auto-updater** — wrap the existing `VPhysToOptConverter` CLI in a
    tool that pulls latest `.vphys` data and regenerates `.opt` files automatically.
 8. **CI pipeline** — GitHub Actions workflow running `mvn package` on push, attaching
    the fat JAR/exe as release artifacts.
-9. **Panic key** — single hotkey that instantly disables all dangerous modules and
-   hides the menu (safety UX).
+9. ~~**Panic key** — single hotkey that instantly disables all dangerous modules and
+   hides the menu (safety UX)~~ — ✅ **Implemented**: default DELETE (rebindable in
+   SYSTEM → Settings), configurable scope ("dangerous modules only" vs "all"),
+   closes the menu, restores mouse click-through and shows a toast; polling is
+   suspended while any bind-rebind capture is active so it can never trigger itself.
 
 ---
 

@@ -1,8 +1,11 @@
 package me.venixpll.overlay;
 
+import com.sun.jna.Library;
+import com.sun.jna.Native;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
+import com.sun.jna.win32.W32APIOptions;
 import imgui.ImGui;
 import imgui.ImFontAtlas;
 import imgui.ImFontConfig;
@@ -13,6 +16,7 @@ import java.awt.event.KeyEvent;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.module.CheatModule;
+import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.config.ConfigManager;
@@ -67,6 +71,40 @@ public class OverlayWindow extends Application {
      * (155)
      */
     public static int toggleKeyJava = KeyEvent.VK_INSERT;
+
+    /**
+     * Stream-proof mode: excludes the overlay window from screen capture
+     * (OBS, Discord, screenshots) via SetWindowDisplayAffinity.
+     * Toggled from SYSTEM -> Settings in the overlay menu; persisted in
+     * settings.json and re-applied on startup.
+     */
+    public static volatile boolean streamProof = false;
+
+    /**
+     * Windows Virtual-Key code that fires the panic switch. {@code -1}
+     * disables the panic key entirely. Default: VK_DELETE (0x2E).
+     */
+    public static int panicKeyVK = 0x2E;
+
+    /**
+     * Panic scope selector: {@code true} disables ALL enabled non-debug
+     * modules; {@code false} only modules whose {@code isDangerous()} flag
+     * is set (the default, matching the safety-first intent).
+     */
+    public static boolean panicDisableAllModules = false;
+
+    /** Randomized GLFW window title (set in configure) used to locate our own HWND. */
+    private static String overlayWindowTitle = null;
+
+    /** Cached Win32 handle of the overlay window itself (revalidated with IsWindow). */
+    private static HWND cachedOverlayHwnd = null;
+
+    /** Last observed down-state of the panic key (rising-edge detection). */
+    private boolean lastPanicKeyDown = false;
+
+    /** Stream-proof bookkeeping so the affinity call only fires on state change. */
+    private boolean streamProofAppliedState = false;
+    private boolean streamProofInitDone = false;
 
     /**
      * Maps Java AWT KeyEvent codes to Windows Virtual Key (VK) codes.
@@ -200,6 +238,7 @@ public class OverlayWindow extends Application {
             sb.append(chars.charAt(rnd.nextInt(chars.length())));
         }
         config.setTitle(sb.toString());
+        overlayWindowTitle = sb.toString();
 
         // Native GLFW initialization check
         GLFW.glfwInit();
@@ -376,6 +415,13 @@ public class OverlayWindow extends Application {
             return;
         }
 
+        // ── Stream-proof mode: apply capture exclusion on state change ────────
+        if (!streamProofInitDone || streamProof != streamProofAppliedState) {
+            streamProofInitDone = true;
+            streamProofAppliedState = streamProof;
+            applyStreamProof();
+        }
+
         // Handle alignment adjustments and key inputs
         updateWindowPosition();
 
@@ -433,6 +479,84 @@ public class OverlayWindow extends Application {
 
             lastBindKeyDown.put(module.getName(), down);
         }
+    }
+
+    // ── Stream-proof mode (capture exclusion) ─────────────────────────────────
+
+    /** WDA_NONE — normal display affinity (window is capturable). */
+    private static final int WDA_NONE = 0x00000000;
+    /** WDA_EXCLUDEFROMCAPTURE — window removed from screen capture (Win10 2004+). */
+    private static final int WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+    /** Minimal user32 surface for SetWindowDisplayAffinity (not in JNA's User32). */
+    private interface User32Ex extends com.sun.jna.win32.StdCallLibrary {
+        User32Ex INSTANCE = Native.load("user32", User32Ex.class,
+                W32APIOptions.DEFAULT_OPTIONS);
+
+        boolean SetWindowDisplayAffinity(HWND hWnd, int dwAffinity);
+    }
+
+    /**
+     * Applies or removes capture exclusion on the overlay window according to
+     * {@link #streamProof}. Runs on the render thread only. On systems older
+     * than Windows 10 2004 the call fails and the flag is reverted with a
+     * notification instead of silently doing nothing.
+     */
+    public static void applyStreamProof() {
+        if (cachedOverlayHwnd == null || !User32.INSTANCE.IsWindow(cachedOverlayHwnd)) {
+            cachedOverlayHwnd = (overlayWindowTitle != null)
+                    ? User32.INSTANCE.FindWindow(null, overlayWindowTitle)
+                    : null;
+        }
+        if (cachedOverlayHwnd == null) return;
+
+        boolean want = streamProof;
+        boolean ok = User32Ex.INSTANCE.SetWindowDisplayAffinity(cachedOverlayHwnd,
+                want ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+        if (!ok && want) {
+            streamProof = false;
+            NotificationManager.push("Stream-proof", false, "Unsupported on this Windows version");
+        } else {
+            NotificationManager.push("Stream-proof", want);
+        }
+    }
+
+    // ── Panic key ────────────────────────────────────────────────────────────
+
+    /**
+     * Instantly disables targeted modules, closes the menu and restores
+     * click-through so the overlay becomes fully inert.
+     *
+     * <p>Scope: with {@link #panicDisableAllModules} set, every enabled
+     * non-DEBUG module is switched off; otherwise only modules flagged
+     * dangerous via {@code isDangerous()}.</p>
+     */
+    private void triggerPanic(long windowHandle) {
+        int disabledCount = 0;
+        for (CheatModule module : ModuleManager.getModules()) {
+            if (module.getCategory() == ModuleCategory.DEBUG) continue;
+            if (!module.isEnabled()) continue;
+            if (panicDisableAllModules || module.isDangerous()) {
+                module.setEnabled(false);
+                disabledCount++;
+            }
+        }
+
+        if (menuOpen) {
+            menuOpen = false;
+            GLFW.glfwSetWindowAttrib(windowHandle, GLFW.GLFW_MOUSE_PASSTHROUGH, GLFW.GLFW_TRUE);
+        }
+
+        NotificationManager.push("PANIC", false,
+                disabledCount + " module" + (disabledCount == 1 ? "" : "s") + " disabled");
+    }
+
+    /** @return {@code true} when any registered module is waiting for a key bind. */
+    private static boolean anyModuleBindListening() {
+        for (CheatModule module : ModuleManager.getModules()) {
+            if (module.isListeningForBind()) return true;
+        }
+        return false;
     }
 
     /**
@@ -495,6 +619,19 @@ public class OverlayWindow extends Application {
             }
         }
         lastInsertDown = insertDown;
+
+        // ── Panic key: rising-edge detection, same mechanism as menu toggle ───
+        // Skipped entirely while any bind-capture is listening so rebinding a
+        // key can never fire the panic switch.
+        if (!OverlayMenu.panicKeyListening && !anyModuleBindListening() && panicKeyVK != -1) {
+            boolean panicDown = (User32.INSTANCE.GetAsyncKeyState(panicKeyVK) & 0x8000) != 0;
+            if (panicDown && !lastPanicKeyDown) {
+                triggerPanic(windowHandle);
+            }
+            lastPanicKeyDown = panicDown;
+        } else {
+            lastPanicKeyDown = false;
+        }
 
         // ── Throttled CS2 window geometry query (every 250 ms) ────────────────
         // GetWindowRect involves a Win32 kernel call; running it at full render

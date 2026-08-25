@@ -77,6 +77,9 @@ public final class ConfigManager {
             JsonObject root    = new JsonObject();
             root.addProperty("toggleKeyJava", OverlayWindow.toggleKeyJava);
             root.addProperty("offsetsFolder", offsetsFolder);
+            root.addProperty("streamProof", OverlayWindow.streamProof);
+            root.addProperty("panicKeyVK", OverlayWindow.panicKeyVK);
+            root.addProperty("panicDisableAllModules", OverlayWindow.panicDisableAllModules);
             JsonObject modules = new JsonObject();
 
             for (CheatModule module : ModuleManager.getModules()) {
@@ -159,6 +162,18 @@ public final class ConfigManager {
 
             if (root.has("offsetsFolder")) {
                 offsetsFolder = root.get("offsetsFolder").getAsString();
+            }
+
+            if (root.has("streamProof")) {
+                OverlayWindow.streamProof = root.get("streamProof").getAsBoolean();
+            }
+
+            if (root.has("panicKeyVK")) {
+                OverlayWindow.panicKeyVK = root.get("panicKeyVK").getAsInt();
+            }
+
+            if (root.has("panicDisableAllModules")) {
+                OverlayWindow.panicDisableAllModules = root.get("panicDisableAllModules").getAsBoolean();
             }
 
             if (root.has("modules")) {

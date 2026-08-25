@@ -58,6 +58,8 @@ Here are the key changes introduced in the latest version:
 | | **VisRay Debug** | Visual debugger displaying active raycasts, hit points, and target triangles. Includes a real-time mesh editor to delete/restore geometry triangles on-the-fly and save local/runtime merge patches. |
 | | **Distance Debug** | Perspective-scaled obstacle marker at the crosshair with distance readout (meters/units) and player highlight/distance labels. |
 | | **Spectator List** | A dedicated UI panel tracking and listing players who are currently spectating the local player's point of view. |
+| **System** | **Stream-proof Mode** | Excludes the overlay window from screen capture (OBS, Discord, screenshots) via `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`. Toggle in the in-game Settings page; persisted across restarts. Requires Windows 10 2004+. |
+| | **Panic Key** | Single hotkey (default DELETE) that instantly disables targeted modules, closes the menu and restores click-through. Rebindable, with a "dangerous only" / "all modules" scope switch in the in-game Settings page. |
 
 ### Architecture Highlights
 

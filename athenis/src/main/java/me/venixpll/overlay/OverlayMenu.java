@@ -79,6 +79,9 @@ public class OverlayMenu {
     /** Sentinel value: SYSTEM → Settings page is selected. */
     private static final int SYSTEM_SETTINGS_IDX = -1;
 
+    /** True while the Settings page is waiting for a panic-key press. */
+    static boolean panicKeyListening = false;
+
     // ── Icons ──────────────────────────────────────────────────────────────────
     /** OpenGL texture IDs, keyed by icon filename (e.g. "eye-48.png"). */
     private static final java.util.HashMap<String, Integer> iconCache = new java.util.HashMap<>();
@@ -478,6 +481,27 @@ public class OverlayMenu {
     // SYSTEM SETTINGS PAGE
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Capture loop for the panic-key bind: while listening, polls every
+     * Windows Virtual-Key code (skipping the mouse buttons) each GUI frame
+     * and assigns the first key that reads as pressed. ESC cancels without
+     * changing the bind. Same mechanism as module bind capture.
+     */
+    private static void updatePanicKeyCapture() {
+        if (!panicKeyListening) return;
+        if ((User32.INSTANCE.GetAsyncKeyState(0x1B) & 0x8000) != 0) {
+            panicKeyListening = false;
+            return;
+        }
+        for (int vk = 3; vk <= 254; vk++) {
+            if ((User32.INSTANCE.GetAsyncKeyState(vk) & 0x8000) != 0) {
+                OverlayWindow.panicKeyVK = vk;
+                panicKeyListening = false;
+                break;
+            }
+        }
+    }
+
     /** Built-in Settings page (SYSTEM → Settings). */
     private static void renderSystemSettingsPage() {
         float availW = ImGui.getContentRegionAvailX();
@@ -515,6 +539,76 @@ public class OverlayMenu {
         ImGui.text(vkName(me.venixpll.overlay.OverlayWindow.javaToWindowsKey(
                 me.venixpll.overlay.OverlayWindow.toggleKeyJava)));
         ImGui.popStyleColor();
+        ImGui.spacing();
+
+        // -- Stream-proof Mode row -------------------------------------------
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
+        ImGui.text("Stream-proof Mode");
+        ImGui.popStyleColor();
+        ImGui.setCursorPosX(settingX);
+        boolean sp = OverlayWindow.streamProof;
+        if (ImGui.checkbox("##streamproof", sp)) {
+            // Applied on the next render tick by OverlayWindow.process().
+            OverlayWindow.streamProof = !sp;
+        }
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 0.8f);
+        ImGui.textWrapped("Hides Athenis from screen captures (OBS, Discord, screenshots)."
+                + " Requires Windows 10 2004+.");
+        ImGui.popStyleColor();
+        ImGui.dummy(0f, 10f);
+
+        // -- Panic Key row ----------------------------------------------------
+        updatePanicKeyCapture();
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
+        ImGui.text("Panic Key");
+        ImGui.popStyleColor();
+        ImGui.setCursorPosX(settingX);
+        String pkLabel = panicKeyListening ? "(waiting...)"
+                : (OverlayWindow.panicKeyVK == -1 ? "None" : vkName(OverlayWindow.panicKeyVK));
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.80f, 0.82f, 0.90f, 1f);
+        ImGui.text(pkLabel);
+        ImGui.popStyleColor();
+        ImGui.sameLine(0f, 18f);
+        ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 5f);
+        if (ImGui.button("Rebind##panicrebind")) {
+            panicKeyListening = !panicKeyListening;
+        }
+        ImGui.sameLine(0f, 6f);
+        if (ImGui.button("Clear##panicclear")) {
+            OverlayWindow.panicKeyVK = -1;
+            panicKeyListening = false;
+        }
+        ImGui.popStyleVar();
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 0.8f);
+        ImGui.textWrapped("Instantly disables targeted modules, hides the menu and"
+                + " restores click-through. ESC cancels rebinding.");
+        ImGui.popStyleColor();
+        ImGui.dummy(0f, 10f);
+
+        // -- Panic Scope row --------------------------------------------------
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
+        ImGui.text("Panic Scope");
+        ImGui.popStyleColor();
+        ImGui.setCursorPosX(settingX);
+        if (ImGui.radioButton("Dangerous modules only",
+                !OverlayWindow.panicDisableAllModules)) {
+            OverlayWindow.panicDisableAllModules = false;
+        }
+        ImGui.sameLine(0f, 16f);
+        if (ImGui.radioButton("All modules",
+                OverlayWindow.panicDisableAllModules)) {
+            OverlayWindow.panicDisableAllModules = true;
+        }
         ImGui.spacing();
 
         // ── About row ──────────────────────────────────────────────────────────

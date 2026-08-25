@@ -276,5 +276,5 @@ athenis/src/main/java/me/venixpll/
 
 Unimplemented feature ideas live in `IMPROVEMENTS.md` § Feature Ideas: hit
 markers/killfeed, watermark HUD, config profiles,
-stream-proof mode (`WDA_EXCLUDEFROMCAPTURE`), map auto-updater, CI pipeline,
-panic key, magic-number extraction. Pick from there before inventing new scope.
+map auto-updater, CI pipeline, magic-number extraction. Pick from there before
+inventing new scope.
