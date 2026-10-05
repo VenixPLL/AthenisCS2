@@ -782,6 +782,7 @@ public class OverlayMenu {
                 renderSingleSetting(esp, esp.boxEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.skeletonEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.invisibleBonesOnly, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.healthEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.nameEsp, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.teamCheck, settingX, settingW, isDebug);
@@ -854,6 +855,20 @@ public class OverlayMenu {
                 renderSingleSetting(esp, esp.soundDuration, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.soundMaxDistance, settingX, settingW, isDebug);
                 renderSingleSetting(esp, esp.soundShowDistance, settingX, settingW, isDebug);
+                ImGui.spacing();
+                ImGui.endTabItem();
+            }
+            if (ImGui.beginTabItem("Gaze ESP")) {
+                ImGui.spacing();
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.gazeEsp, settingX, settingW, isDebug);
+                ImGui.spacing();
+                renderSingleSetting(esp, esp.gazeWallCollision, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeShowTip, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeRayLength, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeProximity, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeThickness, settingX, settingW, isDebug);
+                renderSingleSetting(esp, esp.gazeColor, settingX, settingW, isDebug);
                 ImGui.spacing();
                 ImGui.endTabItem();
             }
@@ -1000,6 +1015,14 @@ public class OverlayMenu {
                     || name.startsWith("Indicator Radius") || name.startsWith("Indicator Duration")
                     || name.startsWith("Max Hearing Distance") || name.startsWith("Show Distance Label"))
                 return !esp.soundEsp.getValue();
+
+            if (name.equals("Show Gaze ESP"))
+                return false;
+
+            if (name.startsWith("Gaze Ray Length") || name.startsWith("Gaze Proximity")
+                    || name.startsWith("Gaze Line Thickness") || name.startsWith("Gaze Color")
+                    || name.startsWith("Show Gaze Tip") || name.startsWith("Stop at Walls"))
+                return !esp.gazeEsp.getValue();
         }
 
         if (!(module instanceof me.venixpll.cheat.module.impl.RadarHackModule))

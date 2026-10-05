@@ -40,6 +40,7 @@ public class ESPModule extends CheatModule {
     public final BooleanSetting playerEsp  = new BooleanSetting("Show Player ESP",  true);
     public final BooleanSetting grenadeEsp = new BooleanSetting("Show Grenade ESP", true);
     public final BooleanSetting damageEsp  = new BooleanSetting("Show Damage ESP",  true);
+    public final BooleanSetting gazeEsp    = new BooleanSetting("Show Gaze ESP",    true);
 
     // ── Player ESP Settings ───────────────────────────────────────────────────
     /** Toggle to show/hide player bounding boxes */
@@ -153,6 +154,26 @@ public class ESPModule extends CheatModule {
     public final FloatSetting soundMaxDistance = new FloatSetting("Max Hearing Distance##soundesp", 1600f, 300f, 5000f);
     /** Print the distance in meters next to each wedge. */
     public final BooleanSetting soundShowDistance = new BooleanSetting("Show Distance Label##soundesp", true);
+
+    // ── Gaze Direction ESP Settings ──────────────────────────────────────────
+    /** Gaze ray length in CS2 world units (1 u ≈ 1 inch). */
+    public final FloatSetting gazeRayLength = new FloatSetting(
+            "Gaze Ray Length##gaze", 800f, 100f, 3000f);
+    /** Only render gaze when the ray is within this distance of the local player (culling). */
+    public final FloatSetting gazeProximity = new FloatSetting(
+            "Gaze Proximity (units)##gaze", 1200f, 200f, 5000f);
+    /** Line thickness in pixels. */
+    public final FloatSetting gazeThickness = new FloatSetting(
+            "Gaze Line Thickness##gaze", 1.5f, 0.5f, 5.0f);
+    /** Color of the gaze ray line. */
+    public final ColorSetting gazeColor = new ColorSetting(
+            "Gaze Color##gaze", 1.0f, 0.55f, 0.0f, 0.85f);
+    /** Show a circular dot at the gaze ray tip. */
+    public final BooleanSetting gazeShowTip = new BooleanSetting(
+            "Show Gaze Tip##gaze", true);
+    /** Stop gaze ray on 3D wall collision (BVH geometry). */
+    public final BooleanSetting gazeWallCollision = new BooleanSetting(
+            "Stop at Walls##gaze", true);
 
     // ── Player ESP Configuration/State ────────────────────────────────────────
     /** Bone connections for drawing the skeleton */
@@ -426,6 +447,11 @@ public class ESPModule extends CheatModule {
     private final float[] localViewOut = new float[3];
     private final imgui.ImVec2 sndTextSizeBuf = new imgui.ImVec2();
 
+    // ── Gaze Direction ESP State ──────────────────────────────────────────────
+    /** Pre-allocated screen-space scratch for gaze projection (render thread only). */
+    private final float[] gazeScreenStart = new float[2];
+    private final float[] gazeScreenEnd   = new float[2];
+
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
@@ -495,6 +521,15 @@ public class ESPModule extends CheatModule {
         addSetting(soundDuration);
         addSetting(soundMaxDistance);
         addSetting(soundShowDistance);
+
+        // ── Gaze Direction ESP Settings ──────────────────────────────────────
+        addSetting(gazeEsp);
+        addSetting(gazeRayLength);
+        addSetting(gazeProximity);
+        addSetting(gazeThickness);
+        addSetting(gazeColor);
+        addSetting(gazeShowTip);
+        addSetting(gazeWallCollision);
     }
 
     private static boolean isValidPtr(long p) {
@@ -541,6 +576,10 @@ public class ESPModule extends CheatModule {
 
         if (soundEsp.getValue()) {
             renderSoundESP(drawList);
+        }
+
+        if (gazeEsp.getValue()) {
+            renderGazeESP(drawList);
         }
     }
 
@@ -1939,6 +1978,163 @@ public class ESPModule extends CheatModule {
             dl.addText(tx - 1, ty - 1, shadow, txt);
             dl.addText(tx + 1, ty - 1, shadow, txt);
             dl.addText(tx, ty, colBody, txt);
+        }
+    }
+
+    // ── Gaze Direction ESP Render ─────────────────────────────────────────────
+
+    /**
+     * Renders each visible enemy's gaze direction:
+     * <ul>
+     *   <li><b>Zero latency:</b> Reads pitch and yaw directly from {@code m_angEyeAngles}
+     *       per-frame during render (sub-millisecond latency vs ~100 ms slow-tick).</li>
+     *   <li><b>3D Wall collision:</b> Probes map BVH geometry via {@code VisCheck.castRayFree()}
+     *       so the ray stops cleanly at the first wall it intersects.</li>
+     *   <li><b>Head tracking:</b> Uses bone 7 (head) world position from the skeleton when available,
+     *       accurately following crouching, jumping, and leaning.</li>
+     *   <li><b>Proximity culling:</b> Only draws rays that pass within {@link #gazeProximity}
+     *       units of the local player to eliminate screen clutter.</li>
+     * </ul>
+     */
+    private void renderGazeESP(ImDrawList drawList) {
+        List<PlayerSnapshot> players = PlayerCache.renderPlayers;
+        if (players == null || players.isEmpty()) return;
+
+        float[] matrix    = PlayerCache.viewMatrix;
+        int     sw        = PlayerCache.screenWidth;
+        int     sh        = PlayerCache.screenHeight;
+
+        float   rayLen    = gazeRayLength.getValue();
+        float   proxSq    = gazeProximity.getValue();
+        proxSq *= proxSq; // compare squared distances
+        float   thickness = gazeThickness.getValue();
+        float[] gc        = gazeColor.getValue();
+        int     lineCol   = ImColor.rgba(gc[0], gc[1], gc[2], gc[3]);
+        int     shadowCol = ImColor.rgba(0f, 0f, 0f, gc[3] * 0.55f);
+        boolean showTip   = gazeShowTip.getValue();
+        boolean checkWalls = gazeWallCollision.getValue();
+
+        VisCheck visCheck = checkWalls ? VisCheckAdapter.getVisCheck() : null;
+
+        // Resolve local player's eye position for proximity culling
+        float localEyeX = 0f, localEyeY = 0f, localEyeZ = 0f;
+        for (PlayerSnapshot s : players) {
+            if (s.isLocal) {
+                localEyeX = s.worldX;
+                localEyeY = s.worldY;
+                localEyeZ = s.worldZ + 64.0f;
+                break;
+            }
+        }
+
+        for (PlayerSnapshot player : players) {
+            if (player.isLocal || !player.onScreen || player.pawnAddress == 0) continue;
+
+            boolean isEnemy = (player.team != localTeam);
+            if (teamCheck.getValue() && !isEnemy) continue;
+
+            // ── Read view angles directly per-frame: ZERO latency ─────────────
+            // CS2: m_angEyeAngles = {float pitch, float yaw, float roll}
+            float pitch = CS2Memory.readFloat(player.pawnAddress + CS2Offsets.m_angEyeAngles);
+            float yaw   = CS2Memory.readFloat(player.pawnAddress + CS2Offsets.m_angEyeAngles + 4);
+
+            if (!Float.isFinite(pitch) || !Float.isFinite(yaw)) continue;
+
+            // ── Precise 3D eye position ──────────────────────────────────────
+            // If bone 7 (head) is available, start the ray from the head bone;
+            // otherwise fallback to base origin + 64 units eye height offset.
+            float eyeX, eyeY, eyeZ;
+            if (player.boneWorldX != null && player.boneWorldX.length > 7
+                    && (player.boneWorldX[7] != 0f || player.boneWorldY[7] != 0f || player.boneWorldZ[7] != 0f)) {
+                eyeX = player.boneWorldX[7];
+                eyeY = player.boneWorldY[7];
+                eyeZ = player.boneWorldZ[7];
+            } else {
+                eyeX = player.worldX;
+                eyeY = player.worldY;
+                eyeZ = player.worldZ + 64.0f;
+            }
+
+            if (!Float.isFinite(eyeX) || !Float.isFinite(eyeY) || !Float.isFinite(eyeZ)) continue;
+
+            // ── Convert CS2 eye angles to 3D unit direction vector ────────────
+            // CS2 convention: X=forward, Y=left, Z=up.
+            // Pitch: negative = looking up, positive = looking down.
+            // Yaw: 0 = +X (East), 90 = +Y (North), counter-clockwise.
+            double pitchRad = Math.toRadians(pitch);
+            double yawRad   = Math.toRadians(yaw);
+            double cosPitch = Math.cos(pitchRad);
+            float  dirX     = (float) (cosPitch * Math.cos(yawRad));
+            float  dirY     = (float) (cosPitch * Math.sin(yawRad));
+            float  dirZ     = (float) (-Math.sin(pitchRad));
+
+            // ── 3D Wall collision check ──────────────────────────────────────
+            float actualRayLen = rayLen;
+            boolean hitWall = false;
+            if (visCheck != null) {
+                Vector3 rayOrigin = new Vector3(eyeX, eyeY, eyeZ);
+                Vector3 rayDir    = new Vector3(dirX, dirY, dirZ);
+                VisCheck.RayHitResult hit = visCheck.castRayFree(rayOrigin, rayDir, rayLen);
+                if (hit != null && hit.blocked && hit.hitDistance < rayLen) {
+                    actualRayLen = Math.max(0f, hit.hitDistance);
+                    hitWall = true;
+                }
+            }
+
+            // Ray endpoint (wall impact or max ray distance)
+            float tipX = eyeX + dirX * actualRayLen;
+            float tipY = eyeY + dirY * actualRayLen;
+            float tipZ = eyeZ + dirZ * actualRayLen;
+
+            // ── Proximity culling ────────────────────────────────────────────
+            // Test closest point on ray segment [eye -> tip] to local player eye
+            float rDX = tipX - eyeX;
+            float rDY = tipY - eyeY;
+            float rDZ = tipZ - eyeZ;
+            float lenSqRay = rDX * rDX + rDY * rDY + rDZ * rDZ;
+            float tCull = 0f;
+            if (lenSqRay > 0f) {
+                float lDX = localEyeX - eyeX;
+                float lDY = localEyeY - eyeY;
+                float lDZ = localEyeZ - eyeZ;
+                tCull = (lDX * rDX + lDY * rDY + lDZ * rDZ) / lenSqRay;
+                tCull = Math.max(0f, Math.min(1f, tCull));
+            }
+            float cpX = eyeX + tCull * rDX - localEyeX;
+            float cpY = eyeY + tCull * rDY - localEyeY;
+            float cpZ = eyeZ + tCull * rDZ - localEyeZ;
+            if (cpX * cpX + cpY * cpY + cpZ * cpZ > proxSq) continue;
+
+            // ── Project start (eye) and end (tip) to screen coordinates ──────
+            boolean startOk = ScreenProjector.project(eyeX, eyeY, eyeZ, gazeScreenStart, matrix, sw, sh);
+            boolean endOk   = ScreenProjector.project(tipX, tipY, tipZ, gazeScreenEnd,   matrix, sw, sh);
+            if (!startOk && !endOk) continue;
+
+            float sx1 = startOk ? gazeScreenStart[0] + espOffsetX : gazeScreenEnd[0] + espOffsetX;
+            float sy1 = startOk ? gazeScreenStart[1] + espOffsetY : gazeScreenEnd[1] + espOffsetY;
+            float sx2 = endOk   ? gazeScreenEnd[0]   + espOffsetX : gazeScreenStart[0] + espOffsetX;
+            float sy2 = endOk   ? gazeScreenEnd[1]   + espOffsetY : gazeScreenStart[1] + espOffsetY;
+
+            if (!Float.isFinite(sx1) || !Float.isFinite(sy1) ||
+                !Float.isFinite(sx2) || !Float.isFinite(sy2)) continue;
+
+            // ── Draw ray line ────────────────────────────────────────────────
+            drawList.addLine(sx1 + 1, sy1 + 1, sx2 + 1, sy2 + 1, shadowCol, thickness + 1.0f);
+            drawList.addLine(sx1,     sy1,     sx2,     sy2,     lineCol,   thickness);
+
+            // ── Tip indicator ────────────────────────────────────────────────
+            if (showTip && endOk) {
+                if (hitWall) {
+                    // Wall hit: prominent impact dot with an outer ring
+                    drawList.addCircleFilled(sx2, sy2, thickness + 2.5f, shadowCol);
+                    drawList.addCircleFilled(sx2, sy2, thickness + 1.5f, lineCol);
+                    drawList.addCircle(sx2, sy2, thickness + 3.5f, lineCol, 12, 1.0f);
+                } else {
+                    // Open air tip dot
+                    drawList.addCircleFilled(sx2, sy2, thickness + 2.0f, shadowCol);
+                    drawList.addCircleFilled(sx2, sy2, thickness + 1.0f, lineCol);
+                }
+            }
         }
     }
 }
