@@ -58,6 +58,31 @@ public class CS2Memory {
     private static final List<StatusListener> statusListeners = new CopyOnWriteArrayList<>();
     private static volatile MemoryStatus currentStatus = MemoryStatus.DETACHED;
 
+    // ── Verbose / diagnostic mode ────────────────────────────────────────────
+    /**
+     * When {@code true} every failed {@code ReadProcessMemory} call is printed
+     * immediately (unthrottled) to help diagnose which pointer hop in the entity
+     * pipeline is broken.  Toggle via {@link #setVerboseReadFailures(boolean)}.
+     * <p>Off by default – enable from the launcher debug panel or programmatically.</p>
+     */
+    private static volatile boolean verboseReadFailures = false;
+
+    /**
+     * Enables or disables verbose (unthrottled) read-failure logging.
+     *
+     * @param verbose {@code true} to print every failed RPM address; {@code false}
+     *                to revert to the throttled 5-second window.
+     */
+    public static void setVerboseReadFailures(boolean verbose) {
+        verboseReadFailures = verbose;
+        System.out.println("[CS2Memory] Verbose read-failure logging " + (verbose ? "ENABLED" : "DISABLED"));
+    }
+
+    /** Returns whether verbose read-failure logging is currently active. */
+    public static boolean isVerboseReadFailures() {
+        return verboseReadFailures;
+    }
+
     /** Throttle for read-failure notifications (one report per window). */
     private static final AtomicLong lastReadFailureReportMs = new AtomicLong(0L);
     private static final long READ_FAILURE_REPORT_INTERVAL_MS = 5_000L;
@@ -103,24 +128,39 @@ public class CS2Memory {
     }
 
     /**
-     * Reports a failed kernel read, throttled to one notification per
-     * {@link #READ_FAILURE_REPORT_INTERVAL_MS} to avoid log/event spam when
-     * thousands of reads fail per second (e.g. after the game restarted and
-     * the handle went stale).
+     * Reports a failed kernel read.
+     * <p>
+     * In <em>verbose</em> mode ({@link #verboseReadFailures} == {@code true}) every
+     * failure is printed immediately with caller context so the exact broken pointer
+     * hop can be identified.  In normal mode the notification is throttled to one
+     * report per {@link #READ_FAILURE_REPORT_INTERVAL_MS} to avoid log/event spam.
      *
      * @param address Address that failed to read.
      */
     private static void reportReadFailure(long address) {
-        long now = System.currentTimeMillis();
-        long last = lastReadFailureReportMs.get();
-        if (now - last < READ_FAILURE_REPORT_INTERVAL_MS)
-            return;
-        if (!lastReadFailureReportMs.compareAndSet(last, now))
-            return;
         int err = Kernel32.INSTANCE.GetLastError();
-        setStatus(MemoryStatus.READ_FAILURE,
-                "ReadProcessMemory failed at 0x" + Long.toHexString(address)
-                        + " (Win32 error " + err + "). If CS2 was restarted, click STOP then START to reattach.");
+        String msg = "ReadProcessMemory failed at 0x" + Long.toHexString(address)
+                + " (Win32 error " + err + "). If CS2 was restarted, click STOP then START to reattach.";
+
+        if (verboseReadFailures) {
+            // Unthrottled: log every failure with a stack trace snippet so callers
+            // can see exactly which reader/method triggered the failure.
+            StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+            StringBuilder callers = new StringBuilder();
+            // Skip [0]=getStackTrace, [1]=reportReadFailure, [2]=readXxx
+            for (int i = 2; i < Math.min(stack.length, 7); i++) {
+                callers.append("\n    at ").append(stack[i]);
+            }
+            System.err.println("[CS2Memory] " + msg + callers);
+        } else {
+            long now = System.currentTimeMillis();
+            long last = lastReadFailureReportMs.get();
+            if (now - last < READ_FAILURE_REPORT_INTERVAL_MS)
+                return;
+            if (!lastReadFailureReportMs.compareAndSet(last, now))
+                return;
+            setStatus(MemoryStatus.READ_FAILURE, msg);
+        }
     }
 
     // ThreadLocal reused JNA Memory buffers to prevent garbage collection heap/native churn

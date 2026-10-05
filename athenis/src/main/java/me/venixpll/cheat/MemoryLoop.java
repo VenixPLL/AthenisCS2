@@ -69,6 +69,9 @@ public class MemoryLoop {
      */
     public static void start() {
         running = true; // reset so restart after stop() works correctly
+        // Reset the entity pipeline diagnostic and discovery state so it fires on the new attach.
+        EntityDataReader.resetDiagnosticDump();
+        EntityDataReader.resetDiscoveredOffset();
         startFastPositionThread();
         startSlowDataThread();
     }
@@ -81,7 +84,7 @@ public class MemoryLoop {
         running = false;
     }
 
-    // ── Fast Position Thread ───────────────────────────────────────────────────
+    // ── Fast Position Thread ──────────────────────────────────────────────────────
 
     /**
      * Starts the fast position-sync daemon thread.
@@ -111,11 +114,14 @@ public class MemoryLoop {
 
             while (running) {
                 try {
-                    // ── Attachment guard ──────────────────────────────────────
+                    // ── Attachment guard ────────────────────────────────────────────────
                     if (!CS2Memory.isAttached()) {
                         if (CS2Memory.attach()) {
                             if (statusState != 1) {
                                 System.out.println("[MemoryLoop/Fast] Attached to CS2.");
+                                // Reset entity diagnostic dump and discovery so it runs fresh for this attach.
+                                EntityDataReader.resetDiagnosticDump();
+                                EntityDataReader.resetDiscoveredOffset();
                                 statusState = 1;
                             }
                             PlayerCache.tracking = true;
@@ -139,18 +145,18 @@ public class MemoryLoop {
                         continue;
                     }
 
-                    // ── 1. Read latest view matrix ────────────────────────────
+                    // ── 1. Read latest view matrix ──────────────────────────────────
                     // Writes a freshly-allocated float[16] into PlayerCache.viewMatrix
                     // via a volatile reference swap — renderer never sees a half-written matrix.
                     ViewMatrixReader.read(clientBase);
 
-                    // ── 2. Snapshot the current matrix reference once ──────────
+                    // ── 2. Snapshot the current matrix reference once ───────────────
                     // Take a local reference so we use the exact same matrix for
                     // all projections in this iteration, even if ViewMatrixReader
                     // swaps in a new one mid-loop.
                     float[] matrix = PlayerCache.viewMatrix;
 
-                    // ── 3. Build immutable render snapshots ───────────────────
+                    // ── 3. Build immutable render snapshots ─────────────────────────
                     // rawPlayers is set by the slow loop; we take a snapshot reference
                     // so a slow-loop swap mid-iteration doesn't affect us.
                     List<PlayerCache.PlayerData> raw = PlayerCache.rawPlayers;
@@ -161,7 +167,7 @@ public class MemoryLoop {
                             PlayerCache.screenWidth,
                             PlayerCache.screenHeight);
 
-                    // ── 4. Publish both new and legacy lists atomically ────────
+                    // ── 4. Publish both new and legacy lists atomically ─────────────
                     // volatile writes — render thread and legacy modules see the new
                     // reference on their next read without needing a lock.
                     PlayerCache.renderPlayers = snapshots; // immutable; used by ESPModule
@@ -188,7 +194,7 @@ public class MemoryLoop {
         thread.start();
     }
 
-    // ── Slow Data Thread ───────────────────────────────────────────────────────
+    // ── Slow Data Thread ──────────────────────────────────────────────────────────
 
     /**
      * Starts the slow entity-data daemon thread.
@@ -226,26 +232,42 @@ public class MemoryLoop {
                         continue;
                     }
 
-                    // ── 1. Resolve local player pawn and team ─────────────────
+                    // ── 1. Resolve local player pawn and team ────────────────────────
                     // These rarely change so reading them here at 10 Hz is plenty.
-                    long localPlayerPawn = CS2Memory.readLong(clientBase + CS2Offsets.dwLocalPlayerPawn);
-                    if (localPlayerPawn != 0) {
+                    long localPlayerPawnAddr = clientBase + CS2Offsets.dwLocalPlayerPawn;
+                    long localPlayerPawn = CS2Memory.readLong(localPlayerPawnAddr);
+
+                    if (localPlayerPawn == 0) {
+                        // Only log this at verbose level to avoid spam when in main menu
+                        if (CS2Memory.isVerboseReadFailures()) {
+                            System.err.println("[MemoryLoop/Slow] localPlayerPawn is NULL!"
+                                    + " Read from clientBase(0x" + Long.toHexString(clientBase)
+                                    + ") + dwLocalPlayerPawn(0x" + Long.toHexString(CS2Offsets.dwLocalPlayerPawn)
+                                    + ") = 0x" + Long.toHexString(localPlayerPawnAddr));
+                        }
+                    } else {
                         int localTeam = CS2Memory.readInt(localPlayerPawn + CS2Offsets.m_iTeamNum);
+                        int localHealth = CS2Memory.readInt(localPlayerPawn + CS2Offsets.m_iHealth);
+                        if (CS2Memory.isVerboseReadFailures()) {
+                            System.out.println("[MemoryLoop/Slow] localPlayerPawn=0x"
+                                    + Long.toHexString(localPlayerPawn)
+                                    + " team=" + localTeam + " health=" + localHealth);
+                        }
                         ESPModule.localTeam = localTeam;
                         PlayerCache.localPlayerPawnAddress = localPlayerPawn;
                     }
 
-                    // ── 2. Full entity list traversal ─────────────────────────
+                    // ── 2. Full entity list traversal ────────────────────────────────
                     // Reads health, team, name, and pawn address for each living player.
                     // Screen coordinates are left at zero — PositionReader fills them.
                     List<PlayerCache.PlayerData> freshData = EntityDataReader.readAll(clientBase, localPlayerPawn);
 
-                    // ── 3. Publish raw metadata for the fast loop ─────────────
+                    // ── 3. Publish raw metadata for the fast loop ────────────────────
                     // The fast loop reads rawPlayers to get pawn addresses; the volatile
                     // write makes the new list visible across threads immediately.
                     PlayerCache.rawPlayers = freshData;
 
-                    // ── 4. Tick cheat module logic ────────────────────────────
+                    // ── 4. Tick cheat module logic ───────────────────────────────────
                     // onTick() is for background logic (aim assist, trigger checks etc.),
                     // not for rendering. Running it here at 10 Hz is appropriate.
                     for (CheatModule module : ModuleManager.getModules()) {

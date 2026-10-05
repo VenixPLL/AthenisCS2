@@ -8,76 +8,35 @@ import me.venixpll.cheat.PlayerCache;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Performs the full CS2 entity-list traversal at a reduced frequency (~10 Hz) to
- * refresh per-player metadata: health, team number, display name, and pawn address.
- * <p>
- * <strong>What this reader does NOT do:</strong> read world positions or compute screen
- * projections.  Position data changes every frame and is handled entirely by
- * {@link PositionReader} on the fast loop.  Separating the concerns means the slow
- * traversal (up to 64 entity slots × multiple pointer hops) never blocks fresh
- * position data from reaching the renderer.
- * <p>
- * <h3>Batched RPM strategy</h3>
- * Instead of issuing separate {@code ReadProcessMemory} calls for {@code m_iHealth}
- * and {@code m_iTeamNum}, a single call reads a contiguous block of pawn memory that
- * covers both fields.  Individual values are then extracted with Java buffer reads
- * (no kernel transition).  This reduces RPM calls from ~6 per player to ~4 per player
- * for the slow path.
- * <p>
- * <b>Thread safety:</b> All static buffers are single-owner; this class must only be
- * called from the dedicated slow-data thread.
+ * High-performance reader for CS2 player entities and metadata.
+ * Traverses CGameEntitySystem chunks to discover both controllers and pawns.
  */
 public final class EntityDataReader {
 
-    // ── Pre-allocated native Memory buffers ───────────────────────────────────
-    // Each buffer is sized once at class-load and reused on every slow-loop tick.
-    // This eliminates the constant native heap alloc/free cycle that JNA's
-    // per-call Memory(N) constructor would otherwise cause.
-
-    /**
-     * Buffer for the pawn metadata batch-read that covers both {@code m_iHealth}
-     * and {@code m_iTeamNum} in one RPM call.
-     * <p>
-     * 256 bytes provides a comfortable margin above the typical span of
-     * ~163 bytes (offset 844 → 1007) and absorbs minor CS2 update drift
-     * without requiring a buffer resize.
-     */
+    // ── Pre-allocated native Memory buffers ──────────────────────────────────
     private static final int    PAWN_META_CAP = 256;
     private static final Memory PAWN_META_BUF = new Memory(PAWN_META_CAP);
+    private static final Memory LONG_BUF      = new Memory(8);
+    private static final Memory INT_BUF       = new Memory(4);
+    private static final Memory NAME_BUF      = new Memory(64);
 
-    /** 8-byte buffer for reading 64-bit pointer values (entity list entries, pawn addresses). */
-    private static final Memory LONG_BUF = new Memory(8);
-
-    /** 4-byte buffer for reading the integer pawn handle stored in the player controller. */
-    private static final Memory INT_BUF  = new Memory(4);
-
-    /** 32-byte buffer for reading a null-terminated UTF-8 player name string. */
-    private static final Memory NAME_BUF = new Memory(32);
+    /** Entity-list slot stride in bytes (sizeof CEntityIdentity). Default 120 (0x78). */
+    private static int entityStride = 120;
 
     private EntityDataReader() {}
 
-    // ── Pre-allocated PlayerData pool ───────────────────────────────────────────
-    // The slow data loop runs at ~10 Hz. Each tick previously allocated a new
-    // PlayerData object (and inside it two new Vector3 instances) per player.
-    // We instead maintain a fixed pool of 64 slots whose fields are reset and
-    // reused each tick. The returned ArrayList is a fresh small list (just
-    // object references, ~128 bytes for 16 players) so the fast loop's iterator
-    // is never invalidated by the slow loop clearing a shared list.
+    // ── Diagnostic state ─────────────────────────────────────────────────────
+    private static final AtomicBoolean diagnosticDumpDone = new AtomicBoolean(false);
 
+    public static void resetDiagnosticDump() {
+        diagnosticDumpDone.set(false);
+    }
+
+    // ── Pre-allocated PlayerData pool ────────────────────────────────────────
     private static final int MAX_POOL = 64;
-
-    /**
-     * Double-buffered slot pools. The slow thread recycles slot objects in
-     * place each tick, but the previously published list is still referenced
-     * by the fast thread (and legacy modules) at that moment. Alternating
-     * between two pools guarantees that the list published on tick N is never
-     * mutated while building tick N+1's list — eliminating torn reads of
-     * pawnAddress / name / health.
-     * <p>Only ever touched from the dedicated slow-data thread, so no
-     * synchronization is required for {@link #activePool}.
-     */
     private static final PlayerCache.PlayerData[][] DATA_POOLS = new PlayerCache.PlayerData[2][MAX_POOL];
     private static int activePool = 0;
 
@@ -89,109 +48,113 @@ public final class EntityDataReader {
         }
     }
 
+    // ── Discovered CGameEntitySystem base address ─────────────────────────────
+    private static volatile long discoveredEntitySystem = 0;
+
+    public static void resetDiscoveredOffset() {
+        discoveredEntitySystem = 0;
+    }
+
     /**
-     * Traverses the CS2 entity list (controller slots 1–64) and returns a fresh
-     * {@link PlayerCache.PlayerData} list populated with health, team, name, and pawn
-     * address for every living player that passes basic sanity filters.
-     * <p>
-     * Screen coordinates ({@code feetX / feetY / headX / headY}) are intentionally
-     * left at zero — {@link PositionReader} fills them in on the very next fast-loop
-     * iteration, which runs continuously without sleeping.
-     * <p>
-     * The {@code m_iHealth} + {@code m_iTeamNum} pair is read in a single
-     * {@code ReadProcessMemory} call by computing the contiguous byte range at
-     * runtime so that dynamically-loaded {@link CS2Offsets} values are always respected.
-     *
-     * @param clientBase      Cached base address of {@code client.dll}.
-     * @param localPlayerPawn Pawn address of the local player — used to set the
-     *                        {@code isLocal} flag on the matching entry.
-     * @return Ordered list of all valid, living players found in the entity list;
-     *         empty if the entity list pointer is null or no players qualify.
+     * Traverses the CS2 entity list and populates {@link PlayerCache#rawPlayers}.
      */
     public static List<PlayerCache.PlayerData> readAll(long clientBase, long localPlayerPawn) {
-        long entityList = readLong(clientBase + CS2Offsets.dwEntityList);
-        if (entityList == 0) return new ArrayList<>();
 
-        // Compute the contiguous pawn metadata range at call-time so that any
-        // offset changes applied by CS2Offsets.load() are automatically respected.
-        int batchBaseOffset = CS2Offsets.m_iHealth;
-        int batchSize = Math.min(
-                (CS2Offsets.m_iTeamNum - CS2Offsets.m_iHealth) + 4,
-                PAWN_META_CAP);
+        long entitySystem = resolveEntitySystem(clientBase, localPlayerPawn);
+        if (entitySystem == 0) {
+            return new ArrayList<>();
+        }
 
-        // Fresh list of references each tick — the fast loop holds its own reference
-        // so the next slow-loop tick can safely create a new list without invalidating
-        // any iterator the fast loop may be holding.
+        if (!diagnosticDumpDone.getAndSet(true)) {
+            runDiagnosticDump(clientBase, localPlayerPawn, entitySystem);
+        }
+
         List<PlayerCache.PlayerData> result = new ArrayList<>(16);
 
-        // Swap to the inactive pool: whatever list was published last tick
-        // keeps referencing the OTHER pool's objects, which we won't touch.
         int poolIdx = activePool ^ 1;
         activePool = poolIdx;
         PlayerCache.PlayerData[] pool = DATA_POOLS[poolIdx];
         int poolSlot = 0;
 
+        // Strategy A: Iterate Player Controllers (Slots 1..64)
         for (int i = 1; i <= 64; i++) {
+            long chunkAddr = entitySystem + 0x10 + 8L * ((i & 0x7FFF) >> 9);
+            long listEntry = readLong(chunkAddr);
+            if (listEntry <= 0x10000L || listEntry > 0x7FFFFFFFFFFFL) continue;
 
-            // Step 1 — resolve the entity list chunk entry for this slot index.
-            long listEntry = readLong(entityList + 8L * ((i & 0x7FFF) >> 9) + 16);
-            if (listEntry == 0) continue;
+            long ctrlIdentity = listEntry + (long) entityStride * (i & 0x1FF);
+            long ctrl = readLong(ctrlIdentity);
+            if (ctrl <= 0x10000L || ctrl > 0x7FFFFFFFFFFFL) continue;
 
-            // Step 2 — read the player controller pointer from the chunk.
-            long playerController = readLong(listEntry + 112L * (i & 0x1FF));
-            if (playerController == 0) continue;
+            // Resolve pawn from controller
+            int pawnHandle = readInt(ctrl + CS2Offsets.m_hPlayerPawn);
+            if (pawnHandle == 0 || pawnHandle == -1 || (pawnHandle & 0x7FFF) >= 0x7FFF) {
+                pawnHandle = readInt(ctrl + CS2Offsets.m_hObserverPawn);
+            }
+            if (pawnHandle == 0 || pawnHandle == -1 || (pawnHandle & 0x7FFF) >= 0x7FFF) {
+                pawnHandle = readInt(ctrl + 0x6BC);
+            }
 
-            // Step 3 — resolve pawn address via the handle stored on the controller.
-            int pawnHandle = readInt(playerController + CS2Offsets.m_hPlayerPawn);
-            if (pawnHandle == 0) continue;
+            long pawn = 0;
+            int health = 0;
+            int team = 0;
 
-            long pawnListEntry = readLong(entityList + 8L * ((pawnHandle & 0x7FFF) >> 9) + 16);
-            if (pawnListEntry == 0) continue;
+            if (pawnHandle != 0 && pawnHandle != -1 && (pawnHandle & 0x7FFF) < 0x7FFF) {
+                int pawnIndex = pawnHandle & 0x7FFF;
+                long pChunk = readLong(entitySystem + 0x10 + 8L * (pawnIndex >> 9));
+                if (pChunk > 0x10000L && pChunk < 0x7FFFFFFFFFFFL) {
+                    long pIdentity = pChunk + (long) entityStride * (pawnIndex & 0x1FF);
+                    pawn = readLong(pIdentity);
+                    if (pawn > 0x10000L && pawn < 0x7FFFFFFFFFFFL) {
+                        health = readInt(pawn + CS2Offsets.m_iHealth);
+                        team = readInt(pawn + CS2Offsets.m_iTeamNum);
+                    }
+                }
+            }
 
-            long playerPawn = readLong(pawnListEntry + 112L * (pawnHandle & 0x1FF));
-            if (playerPawn == 0) continue;
+            // Fallbacks from controller metadata
+            if (health <= 0 || health > 100) {
+                health = readInt(ctrl + CS2Offsets.m_iPawnHealth);
+            }
+            if (team != 2 && team != 3) {
+                team = readInt(ctrl + CS2Offsets.m_iTeamNum);
+            }
 
-            // Step 4 — batch-read pawn metadata block (health + team) in ONE RPM call.
-            if (!CS2Memory.readInto(playerPawn + batchBaseOffset, PAWN_META_BUF, batchSize)) continue;
-
-            int health = PAWN_META_BUF.getInt((long) (CS2Offsets.m_iHealth  - batchBaseOffset));
-            int team   = PAWN_META_BUF.getInt((long) (CS2Offsets.m_iTeamNum - batchBaseOffset));
-
-            // Filter out dead players and spectators / bots with invalid team numbers.
             if (health <= 0 || health > 100) continue;
             if (team != 2 && team != 3)       continue;
 
-            // Step 5 — read the player name string from the controller.
-            String name = readName(playerController + CS2Offsets.m_iszPlayerName);
+            String name = readName(ctrl + CS2Offsets.m_iszPlayerName);
+            if (name.isEmpty()) name = readName(ctrl + 0x748);
+            if (name.isEmpty()) name = "Player " + i;
 
-            boolean isLocal = (playerPawn == localPlayerPawn);
+            boolean isLocal = (pawn != 0 && pawn == localPlayerPawn) || (ctrl == readLong(clientBase + CS2Offsets.dwLocalPlayerController));
 
-            // Step 6 — check if player has bomb
+            // Bomb check
             boolean hasBomb = false;
-            long weaponServices = readLong(playerPawn + CS2Offsets.m_pWeaponServices);
-            if (weaponServices != 0) {
-                int myWeaponsSize = readInt(weaponServices + CS2Offsets.m_hMyWeapons);
-                if (myWeaponsSize > 0 && myWeaponsSize < 100) {
-                    long myWeaponsMemory = readLong(weaponServices + CS2Offsets.m_hMyWeapons + 8);
-                    if (myWeaponsMemory != 0) {
-                        for (int w = 0; w < myWeaponsSize; w++) {
-                            int weaponHandle = readInt(myWeaponsMemory + w * 4L);
-                            if (weaponHandle == 0 || weaponHandle == -1) continue;
-
-                            long weaponListEntry = readLong(entityList + 8L * ((weaponHandle & 0x7FFF) >> 9) + 16);
-                            if (weaponListEntry == 0) continue;
-
-                            long weaponEntity = readLong(weaponListEntry + 112L * (weaponHandle & 0x1FF));
-                            if (weaponEntity == 0) continue;
-
-                            long identity = readLong(weaponEntity + 0x10);
-                            if (identity != 0) {
-                                long designerNamePtr = readLong(identity + 0x20);
-                                if (designerNamePtr != 0) {
-                                    String designerName = CS2Memory.readString(designerNamePtr, 32);
-                                    if (designerName != null && designerName.contains("weapon_c4")) {
-                                        hasBomb = true;
-                                        break;
+            if (pawn != 0) {
+                long weaponServices = readLong(pawn + CS2Offsets.m_pWeaponServices);
+                if (weaponServices > 0x10000L && weaponServices < 0x7FFFFFFFFFFFL) {
+                    int myWeaponsSize = readInt(weaponServices + CS2Offsets.m_hMyWeapons);
+                    if (myWeaponsSize > 0 && myWeaponsSize < 64) {
+                        long myWeaponsMemory = readLong(weaponServices + CS2Offsets.m_hMyWeapons + 8);
+                        if (myWeaponsMemory > 0x10000L && myWeaponsMemory < 0x7FFFFFFFFFFFL) {
+                            for (int w = 0; w < myWeaponsSize; w++) {
+                                int weaponHandle = readInt(myWeaponsMemory + w * 4L);
+                                if (weaponHandle == 0 || weaponHandle == -1) continue;
+                                int wIndex = weaponHandle & 0x7FFF;
+                                long wListEntry = readLong(entitySystem + 0x10 + 8L * (wIndex >> 9));
+                                if (wListEntry <= 0x10000L) continue;
+                                long weaponEntity = readLong(wListEntry + (long) entityStride * (wIndex & 0x1FF));
+                                if (weaponEntity <= 0x10000L) continue;
+                                long identity = readLong(weaponEntity + 0x10);
+                                if (identity > 0x10000L) {
+                                    long designerNamePtr = readLong(identity + 0x20);
+                                    if (designerNamePtr > 0x10000L) {
+                                        String designerName = CS2Memory.readString(designerNamePtr, 32);
+                                        if (designerName != null && designerName.contains("weapon_c4")) {
+                                            hasBomb = true;
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -200,120 +163,270 @@ public final class EntityDataReader {
                 }
             }
 
-            // ── Step 7 — Player Flags ─────────────────────────────────────────
-
-            // 7a. Blind
-            float flashMaxAlpha = 0f;
-            float flashDuration = 0f;
-            int flashMaxAlphaRaw = readInt(playerPawn + CS2Offsets.m_flFlashMaxAlpha);
-            int flashDurationRaw = readInt(playerPawn + CS2Offsets.m_flFlashDuration);
-            flashMaxAlpha = Float.intBitsToFloat(flashMaxAlphaRaw);
-            flashDuration = Float.intBitsToFloat(flashDurationRaw);
+            int flashMaxAlphaRaw = pawn != 0 ? readInt(pawn + CS2Offsets.m_flFlashMaxAlpha) : 0;
+            int flashDurationRaw = pawn != 0 ? readInt(pawn + CS2Offsets.m_flFlashDuration) : 0;
+            float flashMaxAlpha = Float.intBitsToFloat(flashMaxAlphaRaw);
+            float flashDuration = Float.intBitsToFloat(flashDurationRaw);
             if (!Float.isFinite(flashMaxAlpha) || flashMaxAlpha < 0f) flashMaxAlpha = 0f;
             if (!Float.isFinite(flashDuration) || flashDuration < 0f) flashDuration = 0f;
 
-            // 7b. Defusing/Planting
-            int progressBarDuration = readInt(playerPawn + CS2Offsets.m_iProgressBarDuration);
+            int progressBarDuration = pawn != 0 ? readInt(pawn + CS2Offsets.m_iProgressBarDuration) : 0;
             boolean isDefusingOrPlanting = progressBarDuration > 0;
 
-            // 7c. Scoped
-            int scopedByte = readInt(playerPawn + CS2Offsets.m_bIsScoped);
+            int scopedByte = pawn != 0 ? readInt(pawn + CS2Offsets.m_bIsScoped) : 0;
             boolean isScoped = (scopedByte & 0xFF) != 0;
 
-            // 7d. Kit
-            int hasDefuserByte = readInt(playerController + CS2Offsets.m_bPawnHasDefuser);
+            int hasDefuserByte = readInt(ctrl + CS2Offsets.m_bPawnHasDefuser);
             boolean hasKit = (hasDefuserByte & 0xFF) != 0;
 
-            // 7e. Money
             int money = 0;
-            long moneyServices = readLong(playerController + CS2Offsets.m_pInGameMoneyServices_ctrl);
-            if (moneyServices != 0) {
+            long moneyServices = readLong(ctrl + CS2Offsets.m_pInGameMoneyServices_ctrl);
+            if (moneyServices > 0x10000L) {
                 money = readInt(moneyServices + CS2Offsets.m_iAccount);
                 if (money < 0 || money > 99999) money = 0;
             }
 
-            // ── Reuse a pre-allocated PlayerData slot from the pool ────────────
-            // This avoids `new PlayerData(...)` and the `new Vector3()` inside it.
-            PlayerCache.PlayerData player;
-            if (poolSlot < MAX_POOL) {
-                player = pool[poolSlot++];
-                // Reset all fields in-place — position Vector3 objects are reused.
-                player.index    = i;
-                player.health   = health;
-                player.team     = team;
-                player.name     = name;
-                player.position.x = 0f;
-                player.position.y = 0f;
-                player.position.z = 0f;
-                player.isLocal  = isLocal;
-                player.onScreen = false;
-                player.feetX    = 0f;
-                player.feetY    = 0f;
-                player.headX    = 0f;
-                player.headY    = 0f;
-                player.headWorldPos.x = 0f;
-                player.headWorldPos.y = 0f;
-                player.headWorldPos.z = 0f;
-                player.pawnAddress  = playerPawn;
-                player.yaw          = 0f;
-                player.hasBomb      = hasBomb;
-                player.flashMaxAlpha        = flashMaxAlpha;
-                player.flashDuration        = flashDuration;
-                player.isScoped             = isScoped;
-                player.isDefusingOrPlanting = isDefusingOrPlanting;
-                player.hasKit               = hasKit;
-                player.money                = money;
-                player.controllerAddress    = playerController;
-            } else {
-                // Fallback for edge cases beyond MAX_POOL (should never happen in CS2)
-                player = new PlayerCache.PlayerData(i, health, team, name, null, isLocal, playerPawn);
-                player.hasBomb              = hasBomb;
-                player.flashMaxAlpha        = flashMaxAlpha;
-                player.flashDuration        = flashDuration;
-                player.isScoped             = isScoped;
-                player.isDefusingOrPlanting = isDefusingOrPlanting;
-                player.hasKit               = hasKit;
-                player.money                = money;
-                player.controllerAddress    = playerController;
-            }
+            PlayerCache.PlayerData player = poolSlot < MAX_POOL ? pool[poolSlot++] :
+                    new PlayerCache.PlayerData(i, health, team, name, null, isLocal, pawn);
+
+            player.index = i;
+            player.health = health;
+            player.team = team;
+            player.name = name;
+            player.isLocal = isLocal;
+            player.pawnAddress = pawn;
+            player.controllerAddress = ctrl;
+            player.hasBomb = hasBomb;
+            player.flashMaxAlpha = flashMaxAlpha;
+            player.flashDuration = flashDuration;
+            player.isScoped = isScoped;
+            player.isDefusingOrPlanting = isDefusingOrPlanting;
+            player.hasKit = hasKit;
+            player.money = money;
 
             result.add(player);
+        }
+
+        // Strategy B: If few players found, sweep chunk 0 entity identities directly for player pawns
+        if (result.size() < 2) {
+            long chunk0 = readLong(entitySystem + 0x10);
+            if (chunk0 > 0x10000L && chunk0 < 0x7FFFFFFFFFFFL) {
+                for (int s = 1; s < 512; s++) {
+                    long identity = chunk0 + (long) entityStride * s;
+                    long ent = readLong(identity);
+                    if (ent <= 0x10000L || ent > 0x7FFFFFFFFFFFL) continue;
+
+                    // Check if ent is already tracked as pawn or ctrl
+                    boolean alreadyPresent = false;
+                    for (PlayerCache.PlayerData p : result) {
+                        if (p.pawnAddress == ent || p.controllerAddress == ent) {
+                            alreadyPresent = true;
+                            break;
+                        }
+                    }
+                    if (alreadyPresent) continue;
+
+                    int hp = readInt(ent + CS2Offsets.m_iHealth);
+                    int tm = readInt(ent + CS2Offsets.m_iTeamNum);
+                    if (hp > 0 && hp <= 100 && (tm == 2 || tm == 3)) {
+                        PlayerCache.PlayerData player = poolSlot < MAX_POOL ? pool[poolSlot++] :
+                                new PlayerCache.PlayerData(s, hp, tm, "Player " + s, null, ent == localPlayerPawn, ent);
+                        player.index = s;
+                        player.health = hp;
+                        player.team = tm;
+                        player.name = "Player " + s;
+                        player.isLocal = (ent == localPlayerPawn);
+                        player.pawnAddress = ent;
+                        result.add(player);
+                    }
+                }
+            }
+        }
+
+        if (result.size() > 0) {
+            PlayerCache.rawPlayers = result;
         }
 
         return result;
     }
 
+    // ── Entity System Resolution ─────────────────────────────────────────────
 
-    // ── Private buffer-reusing read helpers ───────────────────────────────────
-    // These helpers call CS2Memory.readInto() with the class-owned buffers so no
-    // Memory object is allocated or freed during the entity traversal inner loop.
+    private static long resolveEntitySystem(long clientBase, long localPlayerPawn) {
+        if (discoveredEntitySystem > 0) {
+            long testChunk = readLong(discoveredEntitySystem + 0x10);
+            if (testChunk > 0x10000L && testChunk < 0x7FFFFFFFFFFFL) {
+                return discoveredEntitySystem;
+            }
+            discoveredEntitySystem = 0;
+        }
 
-    /**
-     * Reads an 8-byte pointer from {@code address} into the pre-allocated
-     * {@link #LONG_BUF}.  Returns {@code 0} on failure.
-     */
+        // Candidate offsets
+        long[] candidateOffsets = {
+            CS2Offsets.dwEntityList,
+            0x2715828L,
+            0x2449378L,
+            0x2515a18L,
+            0x2449368L,
+            0x2715818L
+        };
+
+        for (long off : candidateOffsets) {
+            long directCandidate = clientBase + off;
+            int count = evaluateCandidate(directCandidate);
+            if (count > 0) {
+                discoveredEntitySystem = directCandidate;
+                CS2Offsets.dwEntityList = off;
+                System.out.println("[EntityDataReader] [DIRECT-SYSTEM] Verified CGameEntitySystem at clientBase+0x"
+                        + Long.toHexString(off) + " (sys=0x" + Long.toHexString(directCandidate)
+                        + ") found " + count + " active players (stride=" + entityStride + ")");
+                return directCandidate;
+            }
+
+            long ptrVal = readLong(directCandidate);
+            if (ptrVal > 0x10000L && ptrVal < 0x7FFFFFFFFFFFL) {
+                count = evaluateCandidate(ptrVal);
+                if (count > 0) {
+                    discoveredEntitySystem = ptrVal;
+                    CS2Offsets.dwEntityList = off;
+                    System.out.println("[EntityDataReader] [POINTER-SYSTEM] Verified CGameEntitySystem at clientBase+0x"
+                            + Long.toHexString(off) + " -> 0x" + Long.toHexString(ptrVal)
+                            + " found " + count + " active players (stride=" + entityStride + ")");
+                    return ptrVal;
+                }
+            }
+        }
+
+        // Full client.dll data segment scan
+        long scanStart = clientBase + 0x2000000L;
+        long scanEnd   = clientBase + 0x3000000L;
+        for (long addr = scanStart; addr < scanEnd; addr += 8) {
+            long cand = readLong(addr);
+            if (cand > 0x10000L && cand < 0x7FFFFFFFFFFFL) {
+                int count = evaluateCandidate(cand);
+                if (count > 0) {
+                    discoveredEntitySystem = cand;
+                    long offset = addr - clientBase;
+                    CS2Offsets.dwEntityList = offset;
+                    System.out.println("[EntityDataReader] [SCAN-FOUND] Verified CGameEntitySystem at client.dll+0x"
+                            + Long.toHexString(offset) + " -> 0x" + Long.toHexString(cand)
+                            + " with " + count + " active players");
+                    return cand;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    private static int evaluateCandidate(long sys) {
+        if (sys <= 0x10000L || sys > 0x7FFFFFFFFFFFL) return 0;
+        long chunk0 = readLong(sys + 0x10);
+        if (chunk0 <= 0x10000L || chunk0 > 0x7FFFFFFFFFFFL) return 0;
+
+        for (int stride : new int[] { 120, 112, 128 }) {
+            int validPlayers = 0;
+            for (int s = 1; s <= 64; s++) {
+                long ctrl = readLong(chunk0 + (long) stride * s);
+                if (ctrl <= 0x10000L || ctrl > 0x7FFFFFFFFFFFL) continue;
+
+                int hPawn = readInt(ctrl + CS2Offsets.m_hPlayerPawn);
+                if (hPawn == 0 || hPawn == -1 || (hPawn & 0x7FFF) >= 0x7FFF) {
+                    hPawn = readInt(ctrl + CS2Offsets.m_hObserverPawn);
+                }
+                if (hPawn != 0 && hPawn != -1 && (hPawn & 0x7FFF) < 0x7FFF) {
+                    int pIdx = hPawn & 0x7FFF;
+                    long pChunk = readLong(sys + 0x10 + 8L * (pIdx >> 9));
+                    if (pChunk > 0x10000L && pChunk < 0x7FFFFFFFFFFFL) {
+                        long pawn = readLong(pChunk + (long) stride * (pIdx & 0x1FF));
+                        if (pawn > 0x10000L && pawn < 0x7FFFFFFFFFFFL) {
+                            int hp = readInt(pawn + CS2Offsets.m_iHealth);
+                            int tm = readInt(pawn + CS2Offsets.m_iTeamNum);
+                            if (hp > 0 && hp <= 100 && (tm == 2 || tm == 3)) {
+                                validPlayers++;
+                            }
+                        }
+                    }
+                }
+            }
+            if (validPlayers > 0) {
+                entityStride = stride;
+                return validPlayers;
+            }
+        }
+        return 0;
+    }
+
+    // ── Diagnostic dump ──────────────────────────────────────────────────────
+
+    private static void runDiagnosticDump(long clientBase, long localPlayerPawn, long entitySystem) {
+        System.out.println("[EntityDataReader] ─── Entity pipeline diagnostic dump ───");
+        System.out.println("[EntityDataReader]  clientBase            = 0x" + Long.toHexString(clientBase));
+        System.out.println("[EntityDataReader]  dwEntityList offset   = 0x" + Long.toHexString(CS2Offsets.dwEntityList));
+        System.out.println("[EntityDataReader]  entitySystem          = 0x" + Long.toHexString(entitySystem));
+        System.out.println("[EntityDataReader]  entityStride          = " + entityStride);
+        System.out.println("[EntityDataReader]  localPlayerPawn       = 0x" + Long.toHexString(localPlayerPawn));
+
+        long chunk0 = readLong(entitySystem + 0x10);
+        System.out.println("[EntityDataReader]  chunk0 (sys + 0x10)   = 0x" + Long.toHexString(chunk0));
+
+        if (chunk0 != 0) {
+            int found = 0;
+            for (int s = 1; s <= 64; s++) {
+                long ctrl = readLong(chunk0 + (long) entityStride * s);
+                if (ctrl != 0) {
+                    found++;
+                    int hPawn = readInt(ctrl + CS2Offsets.m_hPlayerPawn);
+                    String name = readName(ctrl + CS2Offsets.m_iszPlayerName);
+                    System.out.println("[EntityDataReader]   slot " + s + " ctrl=0x" + Long.toHexString(ctrl)
+                            + " hPawn=0x" + Integer.toHexString(hPawn) + " name=\"" + name + "\"");
+                    if (hPawn != 0 && hPawn != -1 && (hPawn & 0x7FFF) < 0x7FFF) {
+                        int pIdx = hPawn & 0x7FFF;
+                        long pChunk = readLong(entitySystem + 0x10 + 8L * (pIdx >> 9));
+                        long pawn = readLong(pChunk + (long) entityStride * (pIdx & 0x1FF));
+                        int hp = readInt(pawn + CS2Offsets.m_iHealth);
+                        int team = readInt(pawn + CS2Offsets.m_iTeamNum);
+                        System.out.println("[EntityDataReader]          pawn=0x" + Long.toHexString(pawn) + " hp=" + hp + " team=" + team);
+                    }
+                }
+            }
+            System.out.println("[EntityDataReader]  Total non-null controllers in chunk 0: " + found + " / 64");
+        }
+        System.out.println("[EntityDataReader] ─── End diagnostic dump ───");
+    }
+
+    // ── Private read helpers ─────────────────────────────────────────────────
+
     private static long readLong(long address) {
         return CS2Memory.readInto(address, LONG_BUF, 8) ? LONG_BUF.getLong(0) : 0L;
     }
 
-    /**
-     * Reads a 4-byte integer from {@code address} into the pre-allocated
-     * {@link #INT_BUF}.  Returns {@code 0} on failure.
-     */
     private static int readInt(long address) {
         return CS2Memory.readInto(address, INT_BUF, 4) ? INT_BUF.getInt(0) : 0;
     }
 
-    /**
-     * Reads up to 32 bytes from {@code address} into {@link #NAME_BUF} and returns
-     * the null-terminated content decoded as a UTF-8 string.  Returns an empty
-     * string on failure or when the first byte is already null.
-     */
     private static String readName(long address) {
-        if (!CS2Memory.readInto(address, NAME_BUF, 32)) return "";
+        if (!CS2Memory.readInto(address, NAME_BUF, 64)) return "";
+        long possiblePtr = NAME_BUF.getLong(0);
+        if (possiblePtr > 0x10000L && possiblePtr < 0x7FFFFFFFFFFFL) {
+            String remoteStr = CS2Memory.readString(possiblePtr, 32);
+            if (remoteStr != null && !remoteStr.trim().isEmpty()) {
+                return sanitizeString(remoteStr);
+            }
+        }
         byte[] bytes = NAME_BUF.getByteArray(0, 32);
         int len = 0;
-        while (len < bytes.length && bytes[len] != 0) len++;
-        return new String(bytes, 0, len, StandardCharsets.UTF_8);
+        while (len < bytes.length && bytes[len] != 0 && bytes[len] >= 32 && bytes[len] < 127) len++;
+        return sanitizeString(new String(bytes, 0, len, StandardCharsets.UTF_8));
+    }
+
+    private static String sanitizeString(String s) {
+        if (s == null) return "";
+        String trimmed = s.trim();
+        StringBuilder sb = new StringBuilder();
+        for (char c : trimmed.toCharArray()) {
+            if (c >= 32 && c <= 126) sb.append(c);
+        }
+        return sb.toString();
     }
 }
