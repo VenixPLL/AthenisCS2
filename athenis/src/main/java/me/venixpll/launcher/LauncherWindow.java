@@ -13,8 +13,6 @@ import me.venixpll.cheat.module.impl.BunnyHopModule;
 import me.venixpll.cheat.module.impl.BombTimerModule;
 import me.venixpll.cheat.module.impl.SpectatorListModule;
 import me.venixpll.cheat.module.impl.CrosshairOverlayModule;
-import me.venixpll.cheat.module.impl.SilentAimModule;
-import me.venixpll.cheat.module.impl.NoSpreadModule;
 import me.venixpll.cheat.module.impl.VisRayDebugModule;
 import me.venixpll.cheat.module.impl.DistanceDebugModule;
 import me.venixpll.cheat.module.impl.AutoWeaponModule;
@@ -119,8 +117,6 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new ESPModule());
             ModuleManager.registerModule(new RadarHackModule());
             ModuleManager.registerModule(new AimbotModule());
-            ModuleManager.registerModule(new SilentAimModule());
-            ModuleManager.registerModule(new NoSpreadModule());
             ModuleManager.registerModule(new TriggerBotModule());
             ModuleManager.registerModule(new BunnyHopModule());
             ModuleManager.registerModule(new BombTimerModule());
@@ -746,8 +742,6 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new ESPModule());
                     ModuleManager.registerModule(new RadarHackModule());
                     ModuleManager.registerModule(new AimbotModule());
-                    ModuleManager.registerModule(new SilentAimModule());
-                    ModuleManager.registerModule(new NoSpreadModule());
                     ModuleManager.registerModule(new TriggerBotModule());
                     ModuleManager.registerModule(new BunnyHopModule());
                     ModuleManager.registerModule(new BombTimerModule());
