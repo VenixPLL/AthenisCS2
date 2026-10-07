@@ -3,11 +3,14 @@ package me.venixpll.console;
 import me.venixpll.Main;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
+import me.venixpll.cheat.MemoryLoop;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.ModuleManager;
 import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.config.ConfigManager;
+import me.venixpll.overlay.PerformanceMonitor;
+import me.venixpll.overlay.ProcessMemoryMonitor;
 
 import java.awt.event.KeyEvent;
 import java.util.*;
@@ -40,7 +43,7 @@ public final class ConsoleManager {
         registerDefaultCommands();
     }
 
-    // ── Logging API ───────────────────────────────────────────────────────────
+    // ── Logging API ──────────────────────────────────────────────────────────
 
     /**
      * Appends a log line to the console buffer and notifies all registered listeners.
@@ -104,7 +107,7 @@ public final class ConsoleManager {
         return Collections.unmodifiableList(commandHistory);
     }
 
-    // ── Command Handling ──────────────────────────────────────────────────────
+    // ── Command Handling ─────────────────────────────────────────────────────
 
     public void registerCommand(ConsoleCommand command) {
         commands.put(command.getName().toLowerCase(), command);
@@ -160,7 +163,7 @@ public final class ConsoleManager {
 
     private static String[] tokenize(String input) {
         List<String> list = new ArrayList<>();
-        Matcher m = Pattern.compile("([^\"\\s]\\S*|\".+?\")\\s*").matcher(input);
+        Matcher m = Pattern.compile("([^\\\"\\s]\\S*|\".+?\")\\s*").matcher(input);
         while (m.find()) {
             String token = m.group(1);
             if (token.startsWith("\"") && token.endsWith("\"") && token.length() >= 2) {
@@ -183,7 +186,7 @@ public final class ConsoleManager {
         return null;
     }
 
-    // ── Default Commands Registration ─────────────────────────────────────────
+    // ── Default Commands Registration ───────────────────────────────────────
 
     private void registerDefaultCommands() {
         // Help
@@ -248,6 +251,41 @@ public final class ConsoleManager {
                 console.log("INFO", "  Local Team:    " + (ESPModule.localTeam == 2 ? "Terrorists (T)" : (ESPModule.localTeam == 3 ? "Counter-Terrorists (CT)" : "None / Spectator")));
                 console.log("INFO", "  Screen Size:   " + (int)PlayerCache.screenWidth + "x" + (int)PlayerCache.screenHeight);
                 console.log("INFO", "  Active Mod:    " + ModuleManager.getModules().stream().filter(CheatModule::isEnabled).count() + " / " + ModuleManager.getModules().size());
+                console.log("INFO", "  Process Mem:   " + (ProcessMemoryMonitor.getInstance().getProcessMemoryBytes() / (1024 * 1024)) + " MB");
+                console.log("INFO", "  Fast Tick:     " + MemoryLoop.getFastTickFormatted() + " (" + String.format(Locale.US, "%.1f", MemoryLoop.getFastTickRateHz()) + " Hz)");
+                console.log("INFO", "  Slow Tick:     " + MemoryLoop.getSlowTickFormatted() + " (" + String.format(Locale.US, "%.1f", MemoryLoop.getSlowTickRateHz()) + " Hz)");
+            }
+        });
+
+        // Perf
+        registerCommand(new ConsoleCommand() {
+            @Override
+            public String getName() { return "perf"; }
+            @Override
+            public String getDescription() { return "Displays real-time performance metrics (CPU, RAM, fast/slow thread ticks)."; }
+            @Override
+            public String getUsage() { return "perf"; }
+            @Override
+            public void execute(String[] args, ConsoleManager console) {
+                ProcessMemoryMonitor pmm = ProcessMemoryMonitor.getInstance();
+                Runtime rt = Runtime.getRuntime();
+                long heapUsedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+                long heapMaxMb = rt.maxMemory() / (1024 * 1024);
+                long procMb = pmm.getProcessMemoryBytes() / (1024 * 1024);
+
+                console.log("INFO", "─── Athenis Performance Metrics ───");
+                console.log("INFO", String.format(Locale.US, "  Process RAM:   %d MB", procMb));
+                console.log("INFO", String.format(Locale.US, "  JVM Heap:      %d / %d MB", heapUsedMb, heapMaxMb));
+                console.log("INFO", String.format(Locale.US, "  CPU (Process): %.1f %%", PerformanceMonitor.getLatestProcessCpu() * 100f));
+                console.log("INFO", String.format(Locale.US, "  CPU (System):  %.1f %%", PerformanceMonitor.getLatestSystemCpu() * 100f));
+                console.log("INFO", String.format(Locale.US, "  Fast Thread:   %s (Avg: %.3f ms, %.1f Hz)",
+                        MemoryLoop.getFastTickFormatted(),
+                        MemoryLoop.getFastTickAvgMs(),
+                        MemoryLoop.getFastTickRateHz()));
+                console.log("INFO", String.format(Locale.US, "  Slow Thread:   %s (Avg: %.3f ms, %.1f Hz)",
+                        MemoryLoop.getSlowTickFormatted(),
+                        MemoryLoop.getSlowTickAvgMs(),
+                        MemoryLoop.getSlowTickRateHz()));
             }
         });
 
@@ -499,6 +537,28 @@ public final class ConsoleManager {
             @Override
             public void execute(String[] args, ConsoleManager console) {
                 console.log("INFO", "Athenis CS2 Overlay build " + Main.VERSION + " (Java " + System.getProperty("java.version") + ")");
+            }
+        });
+
+        // Memory
+        registerCommand(new ConsoleCommand() {
+            @Override
+            public String getName() { return "memory"; }
+            @Override
+            public String getDescription() { return "Displays Athenis process memory usage and monitor status."; }
+            @Override
+            public String getUsage() { return "memory"; }
+            @Override
+            public void execute(String[] args, ConsoleManager console) {
+                ProcessMemoryMonitor mon = ProcessMemoryMonitor.getInstance();
+                long curMb = mon.getProcessMemoryBytes() / (1024 * 1024);
+                long threshMb = mon.getThresholdBytes() / (1024 * 1024);
+                long stepMb = mon.getGrowthStepBytes() / (1024 * 1024);
+                console.log("INFO", "─── Athenis Process Memory ───");
+                console.log("INFO", "  Current Memory:  " + curMb + " MB");
+                console.log("INFO", "  Warn Threshold:  " + threshMb + " MB (1 GB)");
+                console.log("INFO", "  Growth Step:     " + stepMb + " MB");
+                console.log("INFO", "  Exceeded 1GB:    " + (mon.hasExceeded() ? "YES" : "NO"));
             }
         });
     }

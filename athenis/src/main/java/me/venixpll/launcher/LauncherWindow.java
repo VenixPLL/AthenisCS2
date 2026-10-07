@@ -12,6 +12,7 @@ import me.venixpll.config.ConfigManager;
 import me.venixpll.console.ConsoleManager;
 import me.venixpll.console.LogEntry;
 import me.venixpll.overlay.OverlayWindow;
+import me.venixpll.overlay.ProcessMemoryMonitor;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -131,6 +132,7 @@ public class LauncherWindow extends JFrame {
         startPulseAnimation();
         setupSystemTray();
         registerMemoryStatusListener();
+        ProcessMemoryMonitor.getInstance().start();
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -293,7 +295,8 @@ public class LauncherWindow extends JFrame {
                 MemoryLoop.stop();
                 OverlayWindow.requestClose();
             }
-            System.exit(0);
+                ProcessMemoryMonitor.getInstance().stop();
+                System.exit(0);
         });
 
         right.add(minBtn);
@@ -860,6 +863,7 @@ public class LauncherWindow extends JFrame {
 
         new Thread(() -> {
             try {
+                ProcessMemoryMonitor.getInstance().start();
                 log("INFO", "Loading CS2 offset tables...");
                 CS2Offsets.load();
 
@@ -1205,6 +1209,7 @@ public class LauncherWindow extends JFrame {
                 if (overlayRunning) {
                     onStop();
                 }
+                ProcessMemoryMonitor.getInstance().stop();
                 System.exit(0);
             });
 

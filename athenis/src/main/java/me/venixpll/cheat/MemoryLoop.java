@@ -6,9 +6,10 @@ import me.venixpll.cheat.module.impl.ESPModule;
 import me.venixpll.cheat.reader.EntityDataReader;
 import me.venixpll.cheat.reader.PositionReader;
 import me.venixpll.cheat.reader.ViewMatrixReader;
+import me.venixpll.overlay.OverlayWindow;
 
 import java.util.List;
-import me.venixpll.overlay.OverlayWindow;
+import java.util.Locale;
 
 /**
  * Orchestrates two background daemon threads for CS2 memory polling.
@@ -56,6 +57,114 @@ public class MemoryLoop {
      */
     private static final long SLOW_LOOP_INTERVAL_MS = 100L;
 
+    // ── Performance Metrics (Tick timings & Rate) ───────────────────────────
+    private static volatile long fastTickNs = 0L;
+    private static volatile double fastTickMs = 0.0;
+    private static volatile double fastTickAvgMs = 0.0;
+    private static volatile double fastTickRateHz = 0.0;
+
+    private static volatile long slowTickNs = 0L;
+    private static volatile double slowTickMs = 0.0;
+    private static volatile double slowTickAvgMs = 0.0;
+    private static volatile double slowTickRateHz = 0.0;
+
+    public static void recordFastTick(long durationNs) {
+        fastTickNs = durationNs;
+        double ms = durationNs / 1_000_000.0;
+        fastTickMs = ms;
+        fastTickAvgMs = (fastTickAvgMs == 0.0) ? ms : (fastTickAvgMs * 0.95 + ms * 0.05);
+    }
+
+    public static void recordSlowTick(long durationNs) {
+        slowTickNs = durationNs;
+        double ms = durationNs / 1_000_000.0;
+        slowTickMs = ms;
+        slowTickAvgMs = (slowTickAvgMs == 0.0) ? ms : (slowTickAvgMs * 0.95 + ms * 0.05);
+    }
+
+    public static void setFastTickRateHz(double hz) {
+        fastTickRateHz = hz;
+    }
+
+    public static void setSlowTickRateHz(double hz) {
+        slowTickRateHz = hz;
+    }
+
+    public static long getFastTickNs() { return fastTickNs; }
+    public static double getFastTickMs() { return fastTickMs; }
+    public static double getFastTickAvgMs() { return fastTickAvgMs; }
+    public static double getFastTickRateHz() { return fastTickRateHz; }
+    public static String getFastTickFormatted() { return formatDuration(fastTickNs); }
+    public static String getFastTickFormattedCompact() { return formatDurationCompact(fastTickNs); }
+
+    public static long getSlowTickNs() { return slowTickNs; }
+    public static double getSlowTickMs() { return slowTickMs; }
+    public static double getSlowTickAvgMs() { return slowTickAvgMs; }
+    public static double getSlowTickRateHz() { return slowTickRateHz; }
+    public static String getSlowTickFormatted() { return formatDuration(slowTickNs); }
+    public static String getSlowTickFormattedCompact() { return formatDurationCompact(slowTickNs); }
+
+    /**
+     * Resets performance metrics (useful for testing and engine stop/start).
+     */
+    public static void resetMetrics() {
+        fastTickNs = 0L;
+        fastTickMs = 0.0;
+        fastTickAvgMs = 0.0;
+        fastTickRateHz = 0.0;
+
+        slowTickNs = 0L;
+        slowTickMs = 0.0;
+        slowTickAvgMs = 0.0;
+        slowTickRateHz = 0.0;
+    }
+
+    /**
+     * Formats a nanosecond duration, automatically scaling between ns, µs, and ms.
+     * Examples:
+     *   450 ns       -> "450 ns"
+     *   45,200 ns    -> "45.2 µs (0.045 ms)"
+     *   1,250,000 ns -> "1.25 ms"
+     *   1,200,000,000 ns -> "1.20 s"
+     *
+     * @param nanos Duration in nanoseconds.
+     * @return Formatted string with auto-scaled unit.
+     */
+    public static String formatDuration(long nanos) {
+        if (nanos < 0) return "0 ns";
+        if (nanos < 1_000L) {
+            return nanos + " ns";
+        } else if (nanos < 1_000_000L) {
+            return String.format(Locale.US, "%.1f µs (%.3f ms)", nanos / 1000.0, nanos / 1_000_000.0);
+        } else if (nanos < 1_000_000_000L) {
+            return String.format(Locale.US, "%.2f ms", nanos / 1_000_000.0);
+        } else {
+            return String.format(Locale.US, "%.2f s", nanos / 1_000_000_000.0);
+        }
+    }
+
+    /**
+     * Compact auto-scaled duration string for small UI labels / graphs:
+     *   450 ns    -> "450 ns"
+     *   45,200 ns -> "45.2 µs"
+     *   1.25 ms   -> "1.25 ms"
+     *
+     * @param nanos Duration in nanoseconds.
+     * @return Compact formatted string.
+     */
+    public static String formatDurationCompact(long nanos) {
+        if (nanos < 0) return "0 ns";
+        if (nanos < 1_000L) {
+            return nanos + " ns";
+        } else if (nanos < 1_000_000L) {
+            return String.format(Locale.US, "%.1f µs", nanos / 1000.0);
+        } else if (nanos < 1_000_000_000L) {
+            return String.format(Locale.US, "%.2f ms", nanos / 1_000_000.0);
+        } else {
+            return String.format(Locale.US, "%.2f s", nanos / 1_000_000_000.0);
+        }
+    }
+
     /**
      * Launches both background daemon threads.
      * <p>
@@ -69,6 +178,7 @@ public class MemoryLoop {
      */
     public static void start() {
         running = true; // reset so restart after stop() works correctly
+        resetMetrics();
         // Reset the entity pipeline diagnostic and discovery state so it fires on the new attach.
         EntityDataReader.resetDiagnosticDump();
         EntityDataReader.resetDiscoveredOffset();
@@ -84,7 +194,7 @@ public class MemoryLoop {
         running = false;
     }
 
-    // ── Fast Position Thread ──────────────────────────────────────────────────────
+    // ── Fast Position Thread ────────────────────────────────────────────────
 
     /**
      * Starts the fast position-sync daemon thread.
@@ -111,10 +221,12 @@ public class MemoryLoop {
         Thread thread = new Thread(() -> {
             System.out.println("[MemoryLoop/Fast] Position sync thread started.");
             int statusState = -1; // -1 = uninitialized, 0 = detached, 1 = attached
+            long lastFastRateNs = System.nanoTime();
+            long fastTickCounter = 0;
 
             while (running) {
                 try {
-                    // ── Attachment guard ────────────────────────────────────────────────
+                    // ── Attachment guard ──────────────────────────────────────────
                     if (!CS2Memory.isAttached()) {
                         if (CS2Memory.attach()) {
                             if (statusState != 1) {
@@ -145,6 +257,8 @@ public class MemoryLoop {
                         continue;
                     }
 
+                    long tickStartNs = System.nanoTime();
+
                     // ── 1. Read latest view matrix ──────────────────────────────────
                     // Writes a freshly-allocated float[16] into PlayerCache.viewMatrix
                     // via a volatile reference swap — renderer never sees a half-written matrix.
@@ -173,6 +287,17 @@ public class MemoryLoop {
                     PlayerCache.renderPlayers = snapshots; // immutable; used by ESPModule
                     PlayerCache.players = raw; // mutable; used by RadarHack etc.
 
+                    long tickDurationNs = System.nanoTime() - tickStartNs;
+                    recordFastTick(tickDurationNs);
+
+                    fastTickCounter++;
+                    long nowNs = System.nanoTime();
+                    if (nowNs - lastFastRateNs >= 1_000_000_000L) {
+                        fastTickRateHz = (fastTickCounter * 1_000_000_000.0) / (nowNs - lastFastRateNs);
+                        fastTickCounter = 0;
+                        lastFastRateNs = nowNs;
+                    }
+
                     // Yield the remainder of the time slice so other threads can run.
                     // We do NOT sleep — any sleep granularity (typically 15 ms on
                     // Windows) would cap us well below high-refresh-rate displays.
@@ -194,7 +319,7 @@ public class MemoryLoop {
         thread.start();
     }
 
-    // ── Slow Data Thread ──────────────────────────────────────────────────────────
+    // ── Slow Data Thread ────────────────────────────────────────────────────
 
     /**
      * Starts the slow entity-data daemon thread.
@@ -217,6 +342,8 @@ public class MemoryLoop {
     private static void startSlowDataThread() {
         Thread thread = new Thread(() -> {
             System.out.println("[MemoryLoop/Slow] Entity data thread started.");
+            long lastSlowRateNs = System.nanoTime();
+            long slowTickCounter = 0;
 
             while (running) {
                 try {
@@ -231,6 +358,8 @@ public class MemoryLoop {
                         Thread.sleep(SLOW_LOOP_INTERVAL_MS);
                         continue;
                     }
+
+                    long tickStartNs = System.nanoTime();
 
                     // ── 1. Resolve local player pawn and team ────────────────────────
                     // These rarely change so reading them here at 10 Hz is plenty.
@@ -272,6 +401,17 @@ public class MemoryLoop {
                     // not for rendering. Running it here at 10 Hz is appropriate.
                     for (CheatModule module : ModuleManager.getModules()) {
                         module.onTick();
+                    }
+
+                    long tickDurationNs = System.nanoTime() - tickStartNs;
+                    recordSlowTick(tickDurationNs);
+
+                    slowTickCounter++;
+                    long nowNs = System.nanoTime();
+                    if (nowNs - lastSlowRateNs >= 1_000_000_000L) {
+                        slowTickRateHz = (slowTickCounter * 1_000_000_000.0) / (nowNs - lastSlowRateNs);
+                        slowTickCounter = 0;
+                        lastSlowRateNs = nowNs;
                     }
 
                     Thread.sleep(SLOW_LOOP_INTERVAL_MS);

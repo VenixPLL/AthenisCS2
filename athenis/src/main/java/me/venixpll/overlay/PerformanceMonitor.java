@@ -4,45 +4,50 @@ import imgui.ImColor;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.ImVec2;
-import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
+import me.venixpll.cheat.MemoryLoop;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
+import java.util.Locale;
 
 /**
  * Separate ImGui window displayed while the overlay menu is open.
  * Shows rolling line-graphs of:
- *   &bull; JVM Heap Used (MB) vs Heap Committed (MB)
- *   &bull; CPU load &mdash; process + system (via com.sun.management extensions)
+ *   &bull; RAM Usage: Process RAM (MB) vs JVM Heap Used / Committed (MB)
+ *   &bull; CPU load: process + system (via com.sun.management extensions)
+ *   &bull; Thread Tick Latency: Fast Position Loop vs Slow Data Loop (ms / auto-scaled)
  *
  * Sampling is throttled to ~60 Hz via a simple nanoTime gate so it never
  * runs faster than the render loop. No background thread is spawned.
  */
 public final class PerformanceMonitor {
 
-    // ── Window geometry ────────────────────────────────────────────────────
+    // ── Window geometry ──────────────────────────────────────────
     private static final float WIN_W = 340f;
-    private static final float WIN_H = 260f;
+    private static final float WIN_H = 320f;
 
-    // ── Graph constants ────────────────────────────────────────────────────
+    // ── Graph constants ──────────────────────────────────────────
     /** Number of samples kept in the rolling history (≈ 2 s at 60 fps). */
     private static final int   HISTORY    = 120;
-    private static final float GRAPH_H    = 72f;
+    private static final float GRAPH_H    = 50f;
     private static final float GRAPH_PAD_X = 12f;
-    private static final float GRAPH_PAD_Y =  8f;
+    private static final float GRAPH_PAD_Y =  6f;
 
-    // ── Ring-buffer sample storage ─────────────────────────────────────────
+    // ── Ring-buffer sample storage ──────────────────────────────
     private static final float[] heapUsedMb = new float[HISTORY];
     private static final float[] heapMaxMb  = new float[HISTORY];
+    private static final float[] procRamMb  = new float[HISTORY];
     private static final float[] cpuProcess = new float[HISTORY]; // 0-1
     private static final float[] cpuSystem  = new float[HISTORY]; // 0-1
+    private static final float[] fastTickMs = new float[HISTORY];
+    private static final float[] slowTickMs = new float[HISTORY];
     /** Next write position in the ring buffer. */
     private static int head = 0;
 
-    // ── MXBeans ───────────────────────────────────────────────────────────────
+    // ── MXBeans ──────────────────────────────────────────────────
     // MemoryMXBean is lightweight — safe to init on any thread.
     private static final MemoryMXBean MEM_BEAN =
             ManagementFactory.getMemoryMXBean();
@@ -74,11 +79,11 @@ public final class PerformanceMonitor {
         warmup.start();
     }
 
-    // ── Sampling throttle ─────────────────────────────────────────────────
+    // ── Sampling throttle ────────────────────────────────────────
     private static long lastSampleNs = 0L;
     private static final long SAMPLE_INTERVAL_NS = 16_000_000L; // ~60 Hz
 
-    // ── Palette — Catppuccin Mocha (same as OverlayMenu) ─────────────────
+    // ── Palette — Catppuccin Mocha (same as OverlayMenu) ─────
     private static final float[] COL_BG      = { 0.039f, 0.043f, 0.055f, 0.97f };
     private static final float[] COL_SURFACE = { 0.067f, 0.075f, 0.094f, 1.00f };
     private static final float[] COL_ACCENT  = { 0.000f, 0.706f, 0.847f, 1.00f }; // cyan
@@ -89,30 +94,30 @@ public final class PerformanceMonitor {
 
     private PerformanceMonitor() {}
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // Public API
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Call every frame while the overlay menu is open.
      * Samples JVM / OS metrics and renders the performance window.
      */
     public static void render() {
-        // ── Throttled sampling ─────────────────────────────────────────────
+        // ── Throttled sampling ───────────────────────────────────
         long nowNs = System.nanoTime();
         if (nowNs - lastSampleNs >= SAMPLE_INTERVAL_NS) {
             lastSampleNs = nowNs;
             sample();
         }
 
-        // ── Window position — right of the main menu ───────────────────────
+        // ── Window position — right of the main menu ────────────
         float screenW = ImGui.getIO().getDisplaySizeX();
         float screenH = ImGui.getIO().getDisplaySizeY();
         float menuX   = (screenW - 820f) * 0.5f;
         float menuY   = (screenH - 520f) * 0.5f;
 
-        ImGui.setNextWindowSize(WIN_W, WIN_H, ImGuiCond.FirstUseEver);
-        ImGui.setNextWindowPos(menuX + 820f + 12f, menuY, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowSize(WIN_W, WIN_H);
+        ImGui.setNextWindowPos(menuX + 820f + 12f, menuY, imgui.flag.ImGuiCond.FirstUseEver);
 
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.WindowBg, 0f, 0f, 0f, 0f);
         ImGui.pushStyleVar(ImGuiStyleVar.WindowRounding, 10f);
@@ -134,16 +139,16 @@ public final class PerformanceMonitor {
         ImGui.popStyleColor();
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // Drawing
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static void drawContents(ImVec2 wp, ImDrawList dl) {
-        // ── Window background ──────────────────────────────────────────────
+        // ── Window background ────────────────────────────────────
         dl.addRectFilled(wp.x, wp.y, wp.x + WIN_W, wp.y + WIN_H,
                 ImColor.rgba(COL_BG[0], COL_BG[1], COL_BG[2], COL_BG[3]), 10f);
 
-        // ── Title bar ─────────────────────────────────────────────────────
+        // ── Title bar ────────────────────────────────────────────
         dl.addRectFilled(wp.x, wp.y, wp.x + WIN_W, wp.y + 34f,
                 ImColor.rgba(COL_SURFACE[0], COL_SURFACE[1], COL_SURFACE[2], 1f),
                 10f, 48 /* ImDrawFlags_RoundCornersTop: TopLeft(16) + TopRight(32) */);
@@ -155,50 +160,77 @@ public final class PerformanceMonitor {
         dl.addText(wp.x + 14f, wp.y + 9f,
                 ImColor.rgba(0.85f, 0.85f, 0.85f, 1f), "Performance Monitor");
 
-        // CPU badge in title
+        // CPU & RAM badge in title
         float latestCpuProc = getLatest(cpuProcess);
         float latestCpuSys  = getLatest(cpuSystem);
         float latestHeap    = getLatest(heapUsedMb);
         float latestHeapMax = getLatest(heapMaxMb);
+        float latestProcRam = getLatest(procRamMb);
+        float latestFastMs  = getLatest(fastTickMs);
+        float latestSlowMs  = getLatest(slowTickMs);
 
-        String cpuBadge = String.format("%.0f%%", latestCpuProc * 100f);
-        dl.addText(wp.x + WIN_W - 40f, wp.y + 9f,
-                colorForFraction(latestCpuProc), cpuBadge);
+        String badge = String.format(Locale.US, "%.0f%% | %.0fM", latestCpuProc * 100f, latestProcRam);
+        float badgeW = badge.length() * 6.8f;
+        dl.addText(wp.x + WIN_W - badgeW - 12f, wp.y + 9f,
+                colorForFraction(latestCpuProc), badge);
 
         // Separator
         dl.addLine(wp.x, wp.y + 34f, wp.x + WIN_W, wp.y + 34f,
                 ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 1f), 1f);
 
-        // ── Memory graph ───────────────────────────────────────────────────
-        float cursorY = wp.y + 42f;
+        // ── 1. RAM / Heap graph ──────────────────────────────────
+        float cursorY = wp.y + 38f;
         cursorY = renderGraph(dl, wp.x, cursorY,
-                "JVM Heap", "MB",
-                heapUsedMb, heapMaxMb,
-                latestHeap, latestHeapMax,
-                COL_ACCENT, COL_SURFACE,
-                latestHeap / Math.max(latestHeapMax, 1f));
+                "RAM / Heap", "MB",
+                procRamMb, heapUsedMb,
+                latestProcRam, latestHeap,
+                COL_ACCENT, COL_DIM,
+                latestProcRam / Math.max(1024f, latestProcRam));
 
-        cursorY += 6f;
         dl.addLine(wp.x + 12f, cursorY, wp.x + WIN_W - 12f, cursorY,
-                ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 0.5f), 1f);
-        cursorY += 8f;
+                ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 0.4f), 1f);
+        cursorY += 5f;
 
-        // ── CPU graph ─────────────────────────────────────────────────────
-        renderGraph(dl, wp.x, cursorY,
+        // ── 2. CPU graph ─────────────────────────────────────────
+        cursorY = renderGraph(dl, wp.x, cursorY,
                 "CPU", "%",
                 cpuProcess, cpuSystem,
                 latestCpuProc * 100f, latestCpuSys * 100f,
                 COL_ACCENT, COL_WARN,
                 latestCpuProc);
+
+        dl.addLine(wp.x + 12f, cursorY, wp.x + WIN_W - 12f, cursorY,
+                ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 0.4f), 1f);
+        cursorY += 5f;
+
+        // ── 3. Thread Tick Latency graph ─────────────────────────
+        cursorY = renderGraph(dl, wp.x, cursorY,
+                "Tick Latency", "ms",
+                fastTickMs, slowTickMs,
+                latestFastMs, latestSlowMs,
+                COL_ACCENT, COL_WARN,
+                (float) Math.min(1.0, latestFastMs / 3.0));
+
+        // ── Thread Stat details row ──────────────────────────────
+        int fastCol = ImColor.rgba(COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+        int slowCol = ImColor.rgba(COL_WARN[0], COL_WARN[1], COL_WARN[2], 1f);
+
+        String fastLabel = String.format(Locale.US, "Fast: %s (~%.0f Hz)",
+                MemoryLoop.getFastTickFormattedCompact(), MemoryLoop.getFastTickRateHz());
+        String slowLabel = String.format(Locale.US, "Slow: %s (~%.0f Hz)",
+                MemoryLoop.getSlowTickFormattedCompact(), MemoryLoop.getSlowTickRateHz());
+
+        dl.addText(wp.x + GRAPH_PAD_X, cursorY, fastCol, fastLabel);
+        dl.addText(wp.x + WIN_W * 0.52f, cursorY, slowCol, slowLabel);
     }
 
     /**
      * Renders a labelled two-series line graph.
      *
-     * @param primary         primary data series (drawn on top, filled below)
-     * @param secondary       secondary series (drawn underneath, lighter fill)
-     * @param latestPrimary   latest value of primary (for label)
-     * @param latestSecondary latest value of secondary (for label)
+     * @param primary          primary data series (drawn on top, filled below)
+     * @param secondary        secondary series (drawn underneath, lighter fill)
+     * @param latestPrimary    latest value of primary (for label)
+     * @param latestSecondary  latest value of secondary (for label)
      * @param fractionForColor 0-1 value used to pick green/amber/red label color
      * @return Y position immediately below the rendered block
      */
@@ -212,62 +244,71 @@ public final class PerformanceMonitor {
 
         float graphW = WIN_W - GRAPH_PAD_X * 2f;
 
-        // ── Label + current-value row ──────────────────────────────────────
+        // ── Label + current-value row ────────────────────────────
         int labelColor = ImColor.rgba(COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
         dl.addText(x + GRAPH_PAD_X, y, labelColor, label);
 
         String valStr;
         if (unit.equals("MB")) {
-            valStr = String.format("%.0f / %.0f MB", latestPrimary, latestSecondary);
+            valStr = String.format(Locale.US, "%.0fM proc  %.0fM heap", latestPrimary, latestSecondary);
+        } else if (unit.equals("ms")) {
+            valStr = String.format(Locale.US, "F: %s  S: %s",
+                    MemoryLoop.getFastTickFormattedCompact(),
+                    MemoryLoop.getSlowTickFormattedCompact());
         } else {
-            valStr = String.format("%.0f%% proc  %.0f%% sys",
+            valStr = String.format(Locale.US, "%.0f%% proc  %.0f%% sys",
                     latestPrimary, latestSecondary);
         }
         int valColor = colorForFraction(fractionForColor);
-        float valW = valStr.length() * 6.8f; // approximate font width
+        float valW = valStr.length() * 6.5f; // approximate font width
         dl.addText(x + WIN_W - GRAPH_PAD_X - valW, y, valColor, valStr);
 
-        y += 16f;
+        y += 15f;
 
-        // ── Graph background ───────────────────────────────────────────────
+        // ── Graph background ────────────────────────────────────
         dl.addRectFilled(x + GRAPH_PAD_X, y,
                 x + GRAPH_PAD_X + graphW, y + GRAPH_H,
                 ImColor.rgba(COL_SURFACE[0], COL_SURFACE[1], COL_SURFACE[2], 1f), 5f);
 
-        // ── Horizontal grid at 25 / 50 / 75 % ─────────────────────────────
+        // ── Horizontal grid at 25 / 50 / 75 % ───────────────────
         int gridCol = ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 0.4f);
         for (int pct = 25; pct <= 75; pct += 25) {
             float gy = y + GRAPH_H * (1f - pct / 100f);
             dl.addLine(x + GRAPH_PAD_X, gy, x + GRAPH_PAD_X + graphW, gy, gridCol, 1f);
         }
 
-        // ── Determine the scale ceiling ────────────────────────────────────
-        // For MB graphs: use the max committed heap as ceiling (stable axis).
-        // For CPU graphs: fixed 1.0 (= 100 %).
-        float maxVal = unit.equals("MB") ? Math.max(arrayMax(heapMaxMb), 1f) : 1f;
+        // ── Determine the scale ceiling ─────────────────────────
+        float maxVal;
+        if (unit.equals("MB")) {
+            maxVal = Math.max(Math.max(arrayMax(heapMaxMb), arrayMax(procRamMb)), 1f);
+        } else if (unit.equals("ms")) {
+            maxVal = Math.max(Math.max(arrayMax(slowTickMs), arrayMax(fastTickMs)), 0.5f);
+        } else {
+            maxVal = 1f; // CPU 100%
+        }
 
-        // ── Draw secondary series first (behind primary) ───────────────────
+        // ── Draw secondary series first (behind primary) ────────
         if (secondary != null) {
             drawFill(dl, secondary, x + GRAPH_PAD_X, y, graphW, maxVal, colSecondary, 0.12f);
             drawLine(dl, secondary, x + GRAPH_PAD_X, y, graphW, maxVal, colSecondary, 1.5f);
         }
 
-        // ── Draw primary series ────────────────────────────────────────────
+        // ── Draw primary series ─────────────────────────────────
         drawFill(dl,  primary, x + GRAPH_PAD_X, y, graphW, maxVal, colPrimary, 0.20f);
         drawLine(dl,  primary, x + GRAPH_PAD_X, y, graphW, maxVal, colPrimary, 2.0f);
 
-        // ── Current-value dot at right edge ───────────────────────────────
+        // ── Current-value dot at right edge ─────────────────────
         float latest  = getLatest(primary);
         float dotY    = y + GRAPH_H * (1f - Math.min(1f, latest / maxVal));
         float dotX    = x + GRAPH_PAD_X + graphW;
         // Outer glow
-        dl.addCircleFilled(dotX, dotY, 5f,
+        dl.addCircleFilled(dotX, dotY, 4f,
                 ImColor.rgba(colPrimary[0], colPrimary[1], colPrimary[2], 0.25f), 8);
         // Core dot
-        dl.addCircleFilled(dotX, dotY, 3f,
+        dl.addCircleFilled(dotX, dotY, 2.5f,
                 ImColor.rgba(colPrimary[0], colPrimary[1], colPrimary[2], 1f), 8);
 
-        // ── Border ────────────────────────────────────────────────────────
+        // ── Border ──────────────────────────────────────────────
         dl.addRect(x + GRAPH_PAD_X, y,
                 x + GRAPH_PAD_X + graphW, y + GRAPH_H,
                 ImColor.rgba(COL_SEP[0], COL_SEP[1], COL_SEP[2], 0.7f), 5f, 0, 1f);
@@ -310,19 +351,22 @@ public final class PerformanceMonitor {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // Sampling
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
-    private static void sample() {
+    public static void sample() {
         // Heap
         long usedBytes = MEM_BEAN.getHeapMemoryUsage().getUsed();
         long cmmtBytes = MEM_BEAN.getHeapMemoryUsage().getCommitted();
         heapUsedMb[head] = usedBytes / (1024f * 1024f);
         heapMaxMb[head]  = cmmtBytes / (1024f * 1024f);
 
-        // CPU — only sample once the background warmup has finished;
-        // until then keep the arrays at 0 so the graph renders cleanly.
+        // Process RAM (via ProcessMemoryMonitor)
+        long procBytes = ProcessMemoryMonitor.getInstance().getProcessMemoryBytes();
+        procRamMb[head] = procBytes / (1024f * 1024f);
+
+        // CPU — only sample once background warmup finishes
         double proc = 0.0, sys = 0.0;
         if (beanReady && SUN_OS_BEAN != null) {
             proc = SUN_OS_BEAN.getProcessCpuLoad();
@@ -333,18 +377,22 @@ public final class PerformanceMonitor {
         cpuProcess[head] = (float) proc;
         cpuSystem[head]  = (float) sys;
 
+        // Thread tick times (ms)
+        fastTickMs[head] = (float) MemoryLoop.getFastTickMs();
+        slowTickMs[head] = (float) MemoryLoop.getSlowTickMs();
+
         head = (head + 1) % HISTORY;
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Utility
-    // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Utility & Getters
+    // ─────────────────────────────────────────────────────────────────────────
 
-    private static float getLatest(float[] arr) {
+    public static float getLatest(float[] arr) {
         return arr[(head - 1 + HISTORY) % HISTORY];
     }
 
-    private static float arrayMax(float[] arr) {
+    public static float arrayMax(float[] arr) {
         float m = 0f;
         for (float v : arr) if (v > m) m = v;
         return m;
@@ -354,7 +402,7 @@ public final class PerformanceMonitor {
      * Maps a 0-1 fraction to a colour gradient:
      * 0 = green, 0.5 = amber, 1 = red.
      */
-    private static int colorForFraction(float f) {
+    public static int colorForFraction(float f) {
         f = Math.min(1f, Math.max(0f, f));
         if (f < 0.5f) {
             float t = f * 2f;
@@ -371,7 +419,19 @@ public final class PerformanceMonitor {
         }
     }
 
-    private static float lerp(float a, float b, float t) {
+    public static float lerp(float a, float b, float t) {
         return a + (b - a) * t;
     }
+
+    public static float[] getProcRamMb() { return procRamMb; }
+    public static float[] getFastTickHistoryMs() { return fastTickMs; }
+    public static float[] getSlowTickHistoryMs() { return slowTickMs; }
+
+    public static float getLatestProcessCpu() { return getLatest(cpuProcess); }
+    public static float getLatestSystemCpu() { return getLatest(cpuSystem); }
+    public static float getLatestProcRamMb() { return getLatest(procRamMb); }
+    public static float getLatestHeapUsedMb() { return getLatest(heapUsedMb); }
+    public static float getLatestHeapMaxMb() { return getLatest(heapMaxMb); }
+    public static float getLatestFastTickMs() { return getLatest(fastTickMs); }
+    public static float getLatestSlowTickMs() { return getLatest(slowTickMs); }
 }
