@@ -14,7 +14,7 @@ public class VisCheckAdapter {
         return loadedMap;
     }
 
-    // ── Debug helpers ─────────────────────────────────────────────────────────
+    // ── Debug helpers ──────────────────────────────────────────
 
     /**
      * Enable or disable VisCheck ray debug logging.
@@ -45,12 +45,13 @@ public class VisCheckAdapter {
         VisCheck.printStats();
     }
 
-    // ── Map loading ───────────────────────────────────────────────────────────
+    // ── Map loading ──────────────────────────────────────────
 
     public static synchronized void update(String mapName) {
         if (mapName == null || mapName.isEmpty()) {
             currentVisCheck = null;
             loadedMap = "";
+            System.gc();
             return;
         }
 
@@ -60,6 +61,10 @@ public class VisCheckAdapter {
 
         // Reset per-map counters before loading the new geometry
         VisCheck.resetStats();
+
+        // Release old map's geometry to free its heap memory before loading the new map
+        currentVisCheck = null;
+        System.gc();
 
         loadedMap = mapName;
         String resourcePath = "/physics/" + mapName + ".opt";
@@ -80,6 +85,10 @@ public class VisCheckAdapter {
             VisCheck vis = new VisCheck(bytes, mapName);
             currentVisCheck = vis;
             System.out.println("[VisCheckAdapter] Successfully loaded VisCheck for " + mapName);
+
+            // Release transient buffer and run post-load GC
+            bytes = null;
+            System.gc();
         } catch (Exception e) {
             System.err.println("[VisCheckAdapter] Error loading optimized geometry for map "
                     + mapName + ": " + e.getMessage());

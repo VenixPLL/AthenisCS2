@@ -129,6 +129,9 @@ public class OptimizedGeometry {
                         totalDropped++;
                     }
                 }
+                if (mesh instanceof ArrayList) {
+                    ((ArrayList<?>) mesh).trimToSize();
+                }
                 meshes.add(mesh);
             }
             if (totalDropped > 0) {

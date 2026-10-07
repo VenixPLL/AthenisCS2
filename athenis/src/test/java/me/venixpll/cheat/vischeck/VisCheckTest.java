@@ -148,4 +148,27 @@ class VisCheckTest {
         VisCheck tiny = new VisCheck(one.array(), "");
         assertFalse(tiny.isPointVisible(CAMERA, new Vector3(200, 0, 64)));
     }
+
+    @Test
+    void multiTriangleBvhSplitsCorrectly() {
+        // Create 32 small triangles along a line (> LEAF_THRESHOLD = 16) to force node splitting
+        int count = 32;
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate((int) (8 + 8 + count * 36))
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        buf.putLong(1);      // 1 mesh
+        buf.putLong(count);  // 32 triangles
+        for (int i = 0; i < count; i++) {
+            float y = i * 10f;
+            // Wall triangle at x = 100
+            buf.putFloat(100f); buf.putFloat(y); buf.putFloat(0f);
+            buf.putFloat(100f); buf.putFloat(y + 10f); buf.putFloat(0f);
+            buf.putFloat(100f); buf.putFloat(y); buf.putFloat(50f);
+        }
+
+        VisCheck vc = new VisCheck(buf.array(), "");
+        // Ray through x=100 at y=50, z=20 should be blocked
+        assertFalse(vc.isPointVisible(new Vector3(0, 50, 20), new Vector3(200, 50, 20)));
+        // Ray behind it along y=500 should be visible
+        assertTrue(vc.isPointVisible(new Vector3(0, 500, 20), new Vector3(200, 500, 20)));
+    }
 }

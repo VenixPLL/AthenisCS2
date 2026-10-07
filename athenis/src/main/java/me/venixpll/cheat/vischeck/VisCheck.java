@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class VisCheck {
 
-    // ── Ray hit result (for visual debug) ────────────────────────────────────
+    // ── Ray hit result (for visual debug) ────────────────────────
 
     /**
      * Carries the result of a full ray-cast including the closest blocking
@@ -43,7 +43,13 @@ public class VisCheck {
         }
     }
 
-    private static final int LEAF_THRESHOLD = 4;
+    /**
+     * Threshold for leaf nodes: leaves hold up to 16 triangles.
+     * Keeps tree depth low and dramatically reduces the total number of BVH nodes
+     * (cutting tree memory by ~75% vs a threshold of 4) while maintaining fast SIMD/cache-friendly
+     * sequential ray-triangle testing at leaf level.
+     */
+    private static final int LEAF_THRESHOLD = 16;
 
     /** Number of bins used for Surface Area Heuristic (SAH) split evaluation. */
     private static final int SAH_BINS = 12;
@@ -219,7 +225,7 @@ public class VisCheck {
         }
     }
 
-    // ── Debug configuration ───────────────────────────────────────────────────
+    // ── Debug configuration ──────────────────────────────────────
     /** Master toggle: set to true to enable all debug output. */
     public static volatile boolean DEBUG = false;
 
@@ -229,7 +235,7 @@ public class VisCheck {
      */
     public static volatile long DEBUG_THROTTLE_MS = 500L;
 
-    // ── Internal throttle state ───────────────────────────────────────────────
+    // ── Internal throttle state ──────────────────────────────────
     private static final AtomicLong lastDebugBlockedMs = new AtomicLong(0L);
     private static final AtomicLong lastDebugVisibleMs = new AtomicLong(0L);
     public static final AtomicLong totalRayCasts = new AtomicLong(0L);
@@ -246,7 +252,7 @@ public class VisCheck {
         return dir + java.io.File.separator + mapName + "_deleted.json";
     }
 
-    // ── Constructor (file path) ───────────────────────────────────────────────
+    // ── Constructor (file path) ──────────────────────────────────
     public VisCheck(String optimizedGeometryFile, String mapName) {
         this.mapName = mapName;
         if (!geometry.loadFromFile(optimizedGeometryFile)) {
@@ -263,9 +269,12 @@ public class VisCheck {
                 loadDeletedFromFile(path);
             }
         }
+
+        // Post-build GC to reclaim temporary build buffers
+        System.gc();
     }
 
-    // ── Constructor (bytes) ───────────────────────────────────────────────────
+    // ── Constructor (bytes) ──────────────────────────────────────
     public VisCheck(byte[] bytes, String mapName) {
         this.mapName = mapName;
         if (!geometry.loadFromBytes(bytes)) {
@@ -282,6 +291,9 @@ public class VisCheck {
                 loadDeletedFromFile(path);
             }
         }
+
+        // Post-build GC to reclaim temporary build buffers and byte array
+        System.gc();
     }
 
     private void buildBVHForAllMeshes() {
@@ -298,7 +310,7 @@ public class VisCheck {
                 source, geometry.meshes.size(), totalTris, bvhNodes.size());
     }
 
-    // ── Core visibility check ─────────────────────────────────────────────────
+    // ── Core visibility check ────────────────────────────────────
 
     /**
      * Full ray-cast that always collects hit information regardless of DEBUG flag.
@@ -438,7 +450,7 @@ public class VisCheck {
         return !blocked;
     }
 
-    // ── Debug logging helpers ─────────────────────────────────────────────────
+    // ── Debug logging helpers ────────────────────────────────────
 
     private void debugOverlap(Vector3 p1, Vector3 p2) {
         System.out.printf("[VisCheck][DEBUG] OVERLAP — sender and target at same position: %s%n",
@@ -491,7 +503,7 @@ public class VisCheck {
                 sb.append(String.format("│    AABB       : min=%s  max=%s%n",
                         vec3Str(hitTri.computeAABB().min), vec3Str(hitTri.computeAABB().max)));
             } else {
-                sb.append("│  Hit triangle : (tracking unavailable — non-debug BVH path)%n");
+                sb.append("│  Hit triangle : (tracking unavailable — non-debug BVH path)\n");
             }
         }
 
@@ -522,7 +534,7 @@ public class VisCheck {
         return vec3Str(n);
     }
 
-    // ── Triangle–Ray Möller–Trumbore ──────────────────────────────────────────
+    // ── Triangle–Ray Möller–Trumbore ─────────────────────────────
 
     public float rayIntersectsTriangle(Vector3 rayOrigin, Vector3 rayDir, TriangleCombined triangle) {
         final float epsilon = 1e-7f;
@@ -550,71 +562,125 @@ public class VisCheck {
         return (t > epsilon) ? t : -1.0f;
     }
 
-    // ── BVH builder ───────────────────────────────────────────────────────────
+    // ── Flat triangle bounds & reusable build scratch buffers ────
+
+    /**
+     * Stores triangle bounding boxes in flat parallel primitive float arrays.
+     * Eliminates millions of temporary AABB and Vector3 object allocations during BVH building.
+     */
+    private static final class FlatBoxes {
+        final float[] minX;
+        final float[] minY;
+        final float[] minZ;
+        final float[] maxX;
+        final float[] maxY;
+        final float[] maxZ;
+
+        FlatBoxes(int n) {
+            minX = new float[n];
+            minY = new float[n];
+            minZ = new float[n];
+            maxX = new float[n];
+            maxY = new float[n];
+            maxZ = new float[n];
+        }
+
+        void set(int i, TriangleCombined tri) {
+            float x0 = tri.v0.x, x1 = tri.v1.x, x2 = tri.v2.x;
+            float y0 = tri.v0.y, y1 = tri.v1.y, y2 = tri.v2.y;
+            float z0 = tri.v0.z, z1 = tri.v1.z, z2 = tri.v2.z;
+
+            minX[i] = Math.min(x0, Math.min(x1, x2));
+            minY[i] = Math.min(y0, Math.min(y1, y2));
+            minZ[i] = Math.min(z0, Math.min(z1, z2));
+
+            maxX[i] = Math.max(x0, Math.max(x1, x2));
+            maxY[i] = Math.max(y0, Math.max(y1, y2));
+            maxZ[i] = Math.max(z0, Math.max(z1, z2));
+        }
+
+        float centroid(int i, int axis) {
+            switch (axis) {
+                case 0: return (minX[i] + maxX[i]) * 0.5f;
+                case 1: return (minY[i] + maxY[i]) * 0.5f;
+                default: return (minZ[i] + maxZ[i]) * 0.5f;
+            }
+        }
+    }
+
+    /**
+     * Pre-allocated scratch buffers reused across recursive buildNode calls.
+     * Prevents tens of millions of short-lived array and AABB allocations during SAH splits.
+     */
+    private static final class BVHBuildScratch {
+        final int[] binCount = new int[SAH_BINS];
+        final float[] binMinX = new float[SAH_BINS];
+        final float[] binMinY = new float[SAH_BINS];
+        final float[] binMinZ = new float[SAH_BINS];
+        final float[] binMaxX = new float[SAH_BINS];
+        final float[] binMaxY = new float[SAH_BINS];
+        final float[] binMaxZ = new float[SAH_BINS];
+
+        final float[] leftArea = new float[SAH_BINS - 1];
+        final int[] leftCount = new int[SAH_BINS - 1];
+        final float[] rightArea = new float[SAH_BINS - 1];
+        final int[] rightCount = new int[SAH_BINS - 1];
+
+        void clearBins() {
+            java.util.Arrays.fill(binCount, 0);
+        }
+    }
+
+    // ── BVH builder ──────────────────────────────────────────────
 
     /**
      * Builds a BVH over the given mesh.
      *
-     * <p>Every triangle's AABB is computed exactly once up-front (the previous
-     * implementation re-computed two AABBs per sort comparison, allocating
-     * millions of short-lived objects during build). Splitting uses binned
-     * Surface Area Heuristic (SAH) evaluation across all three axes, which
-     * produces substantially tighter trees than a plain median split on
-     * skewed map-geometry distributions.</p>
+     * <p>Triangle bounds are precomputed into a single {@link FlatBoxes} primitive buffer.
+     * Splitting uses binned Surface Area Heuristic (SAH) evaluated with a reused {@link BVHBuildScratch}
+     * buffer, creating zero temporary heap objects during recursive node splitting.</p>
      */
     private BVHNode buildBVH(List<TriangleCombined> tris) {
         BVHNode root = new BVHNode();
         int n = tris.size();
         if (n == 0) {
-            // Empty mesh (e.g. every triangle filtered as displacement terrain).
-            // A bare node would have null bounds and NPE on the first ray, but
-            // the root must still exist because mesh indices are baked into
-            // deleted-triangle keys and must stay aligned with geometry.meshes.
-            // A degenerate zero-area box can never be hit by a ray, so
-            // traversal safely reports no-hit for this mesh.
             root.bounds = new AABB(new Vector3(), new Vector3());
             return root;
         }
 
-        // Precompute all triangle AABBs once.
         TriangleCombined[] trisArr = tris.toArray(new TriangleCombined[0]);
-        AABB[] boxes = new AABB[n];
+        FlatBoxes boxes = new FlatBoxes(n);
         for (int i = 0; i < n; i++) {
-            boxes[i] = trisArr[i].computeAABB();
+            boxes.set(i, trisArr[i]);
         }
 
-        // Index order array that gets partitioned in place during recursion.
         int[] order = new int[n];
         for (int i = 0; i < n; i++) order[i] = i;
 
-        buildNode(root, trisArr, boxes, order, 0, n);
+        BVHBuildScratch scratch = new BVHBuildScratch();
+        buildNode(root, trisArr, boxes, order, 0, n, scratch);
         return root;
     }
 
     /**
      * Recursively builds one BVH node covering {@code order[from, to)}.
-     *
-     * @param node  Node to fill in.
-     * @param boxes Precomputed per-triangle AABBs (indexed like trisArr).
-     * @param order Triangle indices in current partition order.
-     * @param from  Inclusive start of this node's range in {@code order}.
-     * @param to    Exclusive end of this node's range in {@code order}.
      */
-    private void buildNode(BVHNode node, TriangleCombined[] tris, AABB[] boxes, int[] order, int from, int to) {
-        // 1. Compute node bounds from children ranges.
-        AABB first = boxes[order[from]];
-        Vector3 bmin = new Vector3(first.min.x, first.min.y, first.min.z);
-        Vector3 bmax = new Vector3(first.max.x, first.max.y, first.max.z);
+    private void buildNode(BVHNode node, TriangleCombined[] tris, FlatBoxes boxes,
+                           int[] order, int from, int to, BVHBuildScratch scratch) {
+        // 1. Compute node bounds from child range.
+        int first = order[from];
+        float bminX = boxes.minX[first], bminY = boxes.minY[first], bminZ = boxes.minZ[first];
+        float bmaxX = boxes.maxX[first], bmaxY = boxes.maxY[first], bmaxZ = boxes.maxZ[first];
         for (int i = from + 1; i < to; i++) {
-            AABB b = boxes[order[i]];
-            bmin.x = Math.min(bmin.x, b.min.x);
-            bmin.y = Math.min(bmin.y, b.min.y);
-            bmin.z = Math.min(bmin.z, b.min.z);
-            bmax.x = Math.max(bmax.x, b.max.x);
-            bmax.y = Math.max(bmax.y, b.max.y);
-            bmax.z = Math.max(bmax.z, b.max.z);
+            int idx = order[i];
+            bminX = Math.min(bminX, boxes.minX[idx]);
+            bminY = Math.min(bminY, boxes.minY[idx]);
+            bminZ = Math.min(bminZ, boxes.minZ[idx]);
+            bmaxX = Math.max(bmaxX, boxes.maxX[idx]);
+            bmaxY = Math.max(bmaxY, boxes.maxY[idx]);
+            bmaxZ = Math.max(bmaxZ, boxes.maxZ[idx]);
         }
-        node.bounds = new AABB(bmin, bmax);
+        node.bounds = new AABB(new Vector3(bminX, bminY, bminZ), new Vector3(bmaxX, bmaxY, bmaxZ));
 
         int count = to - from;
         if (count <= LEAF_THRESHOLD) {
@@ -632,74 +698,98 @@ public class VisCheck {
         float bestCost = Float.MAX_VALUE;
 
         for (int axis = 0; axis < 3; axis++) {
-            float amin = axisCoord(bmin, axis);
-            float amax = axisCoord(bmax, axis);
+            float amin, amax;
+            switch (axis) {
+                case 0:  amin = bminX; amax = bmaxX; break;
+                case 1:  amin = bminY; amax = bmaxY; break;
+                default: amin = bminZ; amax = bmaxZ; break;
+            }
             float extent = amax - amin;
             if (extent < 1e-6f)
                 continue; // degenerate on this axis
 
-            // Bin all triangles by centroid along this axis.
-            int[] binCount = new int[SAH_BINS];
-            AABB[] binBounds = new AABB[SAH_BINS];
+            scratch.clearBins();
             float scale = SAH_BINS / extent;
+
             for (int i = from; i < to; i++) {
-                AABB b = boxes[order[i]];
-                float c = axisCoord(b.min, axis) + axisCoord(b.max, axis);
-                int bin = (int) ((c * 0.5f - amin) * scale);
+                int idx = order[i];
+                float c = boxes.centroid(idx, axis);
+                int bin = (int) ((c - amin) * scale);
                 if (bin < 0) bin = 0;
                 if (bin >= SAH_BINS) bin = SAH_BINS - 1;
-                binCount[bin]++;
-                if (binBounds[bin] == null) {
-                    binBounds[bin] = new AABB(
-                            new Vector3(b.min.x, b.min.y, b.min.z),
-                            new Vector3(b.max.x, b.max.y, b.max.z));
+
+                if (scratch.binCount[bin] == 0) {
+                    scratch.binMinX[bin] = boxes.minX[idx];
+                    scratch.binMinY[bin] = boxes.minY[idx];
+                    scratch.binMinZ[bin] = boxes.minZ[idx];
+                    scratch.binMaxX[bin] = boxes.maxX[idx];
+                    scratch.binMaxY[bin] = boxes.maxY[idx];
+                    scratch.binMaxZ[bin] = boxes.maxZ[idx];
                 } else {
-                    AABB bb = binBounds[bin];
-                    bb.min.x = Math.min(bb.min.x, b.min.x);
-                    bb.min.y = Math.min(bb.min.y, b.min.y);
-                    bb.min.z = Math.min(bb.min.z, b.min.z);
-                    bb.max.x = Math.max(bb.max.x, b.max.x);
-                    bb.max.y = Math.max(bb.max.y, b.max.y);
-                    bb.max.z = Math.max(bb.max.z, b.max.z);
+                    scratch.binMinX[bin] = Math.min(scratch.binMinX[bin], boxes.minX[idx]);
+                    scratch.binMinY[bin] = Math.min(scratch.binMinY[bin], boxes.minY[idx]);
+                    scratch.binMinZ[bin] = Math.min(scratch.binMinZ[bin], boxes.minZ[idx]);
+                    scratch.binMaxX[bin] = Math.max(scratch.binMaxX[bin], boxes.maxX[idx]);
+                    scratch.binMaxY[bin] = Math.max(scratch.binMaxY[bin], boxes.maxY[idx]);
+                    scratch.binMaxZ[bin] = Math.max(scratch.binMaxZ[bin], boxes.maxZ[idx]);
                 }
+                scratch.binCount[bin]++;
             }
 
             // Sweep left→right accumulating left-side areas/counts...
-            float[] leftArea = new float[SAH_BINS - 1];
-            int[] leftCount = new int[SAH_BINS - 1];
-            AABB accLeft = null;
+            float accMinX = 0f, accMinY = 0f, accMinZ = 0f;
+            float accMaxX = 0f, accMaxY = 0f, accMaxZ = 0f;
             int cntLeft = 0;
             for (int s = 0; s < SAH_BINS - 1; s++) {
-                if (binCount[s] > 0) {
-                    accLeft = mergeInto(accLeft, binBounds[s]);
-                    cntLeft += binCount[s];
+                if (scratch.binCount[s] > 0) {
+                    if (cntLeft == 0) {
+                        accMinX = scratch.binMinX[s]; accMinY = scratch.binMinY[s]; accMinZ = scratch.binMinZ[s];
+                        accMaxX = scratch.binMaxX[s]; accMaxY = scratch.binMaxY[s]; accMaxZ = scratch.binMaxZ[s];
+                    } else {
+                        accMinX = Math.min(accMinX, scratch.binMinX[s]);
+                        accMinY = Math.min(accMinY, scratch.binMinY[s]);
+                        accMinZ = Math.min(accMinZ, scratch.binMinZ[s]);
+                        accMaxX = Math.max(accMaxX, scratch.binMaxX[s]);
+                        accMaxY = Math.max(accMaxY, scratch.binMaxY[s]);
+                        accMaxZ = Math.max(accMaxZ, scratch.binMaxZ[s]);
+                    }
+                    cntLeft += scratch.binCount[s];
                 }
-                leftArea[s] = cntLeft == 0 ? 0f : surfaceArea(accLeft);
-                leftCount[s] = cntLeft;
+                scratch.leftArea[s] = (cntLeft == 0) ? 0f : boxSurfaceArea(accMinX, accMinY, accMinZ, accMaxX, accMaxY, accMaxZ);
+                scratch.leftCount[s] = cntLeft;
             }
 
             // ...and right→left accumulating right-side areas/counts.
-            float[] rightArea = new float[SAH_BINS - 1];
-            int[] rightCount = new int[SAH_BINS - 1];
-            AABB accRight = null;
+            accMinX = 0f; accMinY = 0f; accMinZ = 0f;
+            accMaxX = 0f; accMaxY = 0f; accMaxZ = 0f;
             int cntRight = 0;
             for (int s = SAH_BINS - 1; s > 0; s--) {
-                if (binCount[s] > 0) {
-                    accRight = mergeInto(accRight, binBounds[s]);
-                    cntRight += binCount[s];
+                if (scratch.binCount[s] > 0) {
+                    if (cntRight == 0) {
+                        accMinX = scratch.binMinX[s]; accMinY = scratch.binMinY[s]; accMinZ = scratch.binMinZ[s];
+                        accMaxX = scratch.binMaxX[s]; accMaxY = scratch.binMaxY[s]; accMaxZ = scratch.binMaxZ[s];
+                    } else {
+                        accMinX = Math.min(accMinX, scratch.binMinX[s]);
+                        accMinY = Math.min(accMinY, scratch.binMinY[s]);
+                        accMinZ = Math.min(accMinZ, scratch.binMinZ[s]);
+                        accMaxX = Math.max(accMaxX, scratch.binMaxX[s]);
+                        accMaxY = Math.max(accMaxY, scratch.binMaxY[s]);
+                        accMaxZ = Math.max(accMaxZ, scratch.binMaxZ[s]);
+                    }
+                    cntRight += scratch.binCount[s];
                 }
-                rightArea[s - 1] = cntRight == 0 ? 0f : surfaceArea(accRight);
-                rightCount[s - 1] = cntRight;
+                scratch.rightArea[s - 1] = (cntRight == 0) ? 0f : boxSurfaceArea(accMinX, accMinY, accMinZ, accMaxX, accMaxY, accMaxZ);
+                scratch.rightCount[s - 1] = cntRight;
             }
 
             // Evaluate cost of every candidate split.
             float invParentArea = 1.0f / Math.max(surfaceArea(node.bounds), 1e-9f);
             for (int s = 0; s < SAH_BINS - 1; s++) {
-                if (leftCount[s] == 0 || rightCount[s] == 0)
+                if (scratch.leftCount[s] == 0 || scratch.rightCount[s] == 0)
                     continue;
                 float cost = SAH_TRAVERSAL_COST
                         + SAH_INTERSECT_COST * invParentArea
-                        * (leftCount[s] * leftArea[s] + rightCount[s] * rightArea[s]);
+                        * (scratch.leftCount[s] * scratch.leftArea[s] + scratch.rightCount[s] * scratch.rightArea[s]);
                 if (cost < bestCost) {
                     bestCost = cost;
                     bestAxis = axis;
@@ -711,49 +801,27 @@ public class VisCheck {
         // 3. Partition the index range around the chosen plane.
         int mid;
         if (bestAxis == -1) {
-            // Fully degenerate bounds (all centroids identical): fall back to
-            // an arbitrary half split so recursion still terminates.
             mid = from + count / 2;
         } else {
             mid = partition(order, boxes, from, to, bestAxis, bestPlane);
             if (mid <= from || mid >= to) {
-                // Numerical edge case: everything landed on one side.
-                // Fall back to centroid-sorted median split on that axis.
                 mid = medianSplit(order, boxes, from, to, bestAxis);
             }
         }
 
         node.left = new BVHNode();
         node.right = new BVHNode();
-        buildNode(node.left, tris, boxes, order, from, mid);
-        buildNode(node.right, tris, boxes, order, mid, to);
+        buildNode(node.left, tris, boxes, order, from, mid, scratch);
+        buildNode(node.right, tris, boxes, order, mid, to, scratch);
     }
 
-    // ── BVH builder helpers ───────────────────────────────────────────────────
+    // ── BVH builder helpers ──────────────────────────────────────
 
-    /** Returns the given coordinate component of a vector (0=x, 1=y, 2=z). */
-    private static float axisCoord(Vector3 v, int axis) {
-        switch (axis) {
-            case 0:  return v.x;
-            case 1:  return v.y;
-            default: return v.z;
-        }
-    }
-
-    /** Returns {@code acc} merged with {@code b} (allocating on first call). */
-    private static AABB mergeInto(AABB acc, AABB b) {
-        if (acc == null) {
-            return new AABB(
-                    new Vector3(b.min.x, b.min.y, b.min.z),
-                    new Vector3(b.max.x, b.max.y, b.max.z));
-        }
-        acc.min.x = Math.min(acc.min.x, b.min.x);
-        acc.min.y = Math.min(acc.min.y, b.min.y);
-        acc.min.z = Math.min(acc.min.z, b.min.z);
-        acc.max.x = Math.max(acc.max.x, b.max.x);
-        acc.max.y = Math.max(acc.max.y, b.max.y);
-        acc.max.z = Math.max(acc.max.z, b.max.z);
-        return acc;
+    private static float boxSurfaceArea(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        float dx = maxX - minX;
+        float dy = maxY - minY;
+        float dz = maxZ - minZ;
+        return 2.0f * (dx * dy + dy * dz + dz * dx);
     }
 
     /** Surface area of an axis-aligned box (half-area would suffice for SAH). */
@@ -768,12 +836,11 @@ public class VisCheck {
      * Partitions {@code order[from, to)} in place so that triangles whose
      * centroid is left of {@code plane} come first. Returns the split index.
      */
-    private static int partition(int[] order, AABB[] boxes,
+    private static int partition(int[] order, FlatBoxes boxes,
             int from, int to, int axis, float plane) {
         int lo = from, hi = to - 1;
         while (lo <= hi) {
-            AABB b = boxes[order[lo]];
-            float c = (axisCoord(b.min, axis) + axisCoord(b.max, axis)) * 0.5f;
+            float c = boxes.centroid(order[lo], axis);
             if (c < plane) {
                 lo++;
             } else {
@@ -791,14 +858,13 @@ public class VisCheck {
      * {@code axis} and returns the median index. Used when the SAH partition
      * degenerates (all centroids on one side of the plane).
      */
-    private static int medianSplit(int[] order, AABB[] boxes,
+    private static int medianSplit(int[] order, FlatBoxes boxes,
             int from, int to, int axis) {
-        // Simple insertion sort — only used on rare degenerate subranges.
         for (int i = from + 1; i < to; i++) {
             int cur = order[i];
-            float cc = centroid(boxes[cur], axis);
+            float cc = boxes.centroid(cur, axis);
             int j = i - 1;
-            while (j >= from && centroid(boxes[order[j]], axis) > cc) {
+            while (j >= from && boxes.centroid(order[j], axis) > cc) {
                 order[j + 1] = order[j];
                 j--;
             }
@@ -807,11 +873,7 @@ public class VisCheck {
         return from + (to - from) / 2;
     }
 
-    private static float centroid(AABB b, int axis) {
-        return (axisCoord(b.min, axis) + axisCoord(b.max, axis)) * 0.5f;
-    }
-
-    // ── BVH traversal (production — no tracking overhead) ────────────────────
+    // ── BVH traversal (production — no tracking overhead) ────────
 
     /**
      * Boolean "any-hit" traversal with early exit: returns {@code true} as
@@ -825,11 +887,13 @@ public class VisCheck {
             return false;
 
         if (node.isLeaf()) {
-            for (TriangleCombined tri : node.triangles) {
-                if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
-                float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
-                if (t > 0.0f && t < maxDistance)
-                    return true; // early exit — first occluder wins
+            if (node.triangles != null) {
+                for (TriangleCombined tri : node.triangles) {
+                    if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
+                    float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
+                    if (t > 0.0f && t < maxDistance)
+                        return true; // early exit — first occluder wins
+                }
             }
             return false;
         }
@@ -866,16 +930,18 @@ public class VisCheck {
             return;
 
         if (node.isLeaf()) {
-            for (TriangleCombined tri : node.triangles) {
-                result.trianglesTested++;
-                // Skip triangles that have been manually deleted
-                if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
-                float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
-                if (t > 0.0f && t < maxDistance && t < hitDistance[0]) {
-                    hitDistance[0] = t;
-                    result.hit = true;
-                    result.closestTriangle = tri;
-                    result.closestTriangleIndex = tri.index;
+            if (node.triangles != null) {
+                for (TriangleCombined tri : node.triangles) {
+                    result.trianglesTested++;
+                    // Skip triangles that have been manually deleted
+                    if (deletedTriangles.contains(encodeTriKey(meshIdx, tri.index))) continue;
+                    float t = rayIntersectsTriangle(rayOrigin, rayDir, tri);
+                    if (t > 0.0f && t < maxDistance && t < hitDistance[0]) {
+                        hitDistance[0] = t;
+                        result.hit = true;
+                        result.closestTriangle = tri;
+                        result.closestTriangleIndex = tri.index;
+                    }
                 }
             }
         } else {
@@ -886,7 +952,7 @@ public class VisCheck {
         }
     }
 
-    // ── Public debug utilities ────────────────────────────────────────────────
+    // ── Public debug utilities ───────────────────────────────────
 
     /**
      * Prints a full stats snapshot to stdout — call this from your debug
@@ -912,8 +978,7 @@ public class VisCheck {
 
     /**
      * Convenience: prints a single manual debug trace for a specific sender/target
-     * pair
-     * regardless of the throttle, without modifying global counters.
+     * pair regardless of the throttle, without modifying global counters.
      * Useful for one-off angle checks from a console command.
      */
     public void debugTrace(Vector3 sender, Vector3 target, String label) {
@@ -944,7 +1009,7 @@ public class VisCheck {
             }
         }
 
-        System.out.println("\n╔══ [VisCheck][TRACE:" + label + "] ══════════════════════════════════════╗");
+        System.out.println("\n╔══ [VisCheck][TRACE:" + label + "] ═══════════════════════════════════════╗");
         System.out.printf("║  Result       : %s%n", blocked ? "BLOCKED" : "VISIBLE");
         System.out.printf("║  Sender       : %s%n", vec3Str(sender));
         System.out.printf("║  Target       : %s%n", vec3Str(target));
@@ -970,6 +1035,6 @@ public class VisCheck {
         }
         System.out.printf("║  BVH meshes   : %d  nodes visited: %d  tris tested: %d%n",
                 bvhNodes.size(), nodesVisited, trisTested);
-        System.out.println("╚══════════════════════════════════════════════════════════════════╝");
+        System.out.println("╚═════════════════════════════════════════════════════════════════╝");
     }
 }
