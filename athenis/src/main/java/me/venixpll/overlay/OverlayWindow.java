@@ -1,18 +1,16 @@
 package me.venixpll.overlay;
 
-import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinDef.RECT;
 import com.sun.jna.win32.W32APIOptions;
-import imgui.ImGui;
 import imgui.ImFontAtlas;
 import imgui.ImFontConfig;
+import imgui.ImGui;
 import imgui.app.Application;
 import imgui.app.Configuration;
 import imgui.flag.ImGuiConfigFlags;
-import java.awt.event.KeyEvent;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.PlayerCache;
 import me.venixpll.cheat.module.CheatModule;
@@ -24,6 +22,8 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.glfw.GLFWWindowPosCallback;
 import org.lwjgl.glfw.GLFWWindowSizeCallback;
+
+import java.awt.event.KeyEvent;
 
 /**
  * Overlay window container extending the ImGui Application lifecycle wrapper.
@@ -442,6 +442,7 @@ public class OverlayWindow extends Application {
         if (menuOpen) {
             OverlayMenu.render();
             PerformanceMonitor.render();
+            MemoryHexViewer.render();
         }
 
         // Draw Watermark in top-left corner

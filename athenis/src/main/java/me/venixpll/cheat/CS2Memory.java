@@ -3,18 +3,14 @@ package me.venixpll.cheat;
 import com.sun.jna.Memory;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
-import com.sun.jna.platform.win32.Kernel32;
-import com.sun.jna.platform.win32.Tlhelp32;
-import com.sun.jna.platform.win32.WinBase;
-import com.sun.jna.platform.win32.WinDef;
-import com.sun.jna.platform.win32.WinNT;
+import com.sun.jna.platform.win32.*;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
+import com.sun.jna.ptr.IntByReference;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.List;
-import com.sun.jna.ptr.IntByReference;
 
 /**
  * CS2Memory handles external interaction with the Counter-Strike 2 process.
@@ -272,6 +268,15 @@ public class CS2Memory {
      * 
      * @return True if attached, false otherwise.
      */
+    /**
+     * Returns the target process ID.
+     *
+     * @return CS2 process ID or 0 if not attached.
+     */
+    public static int getProcessId() {
+        return processId;
+    }
+
     public static boolean isAttached() {
         return processHandle != null;
     }
@@ -452,6 +457,27 @@ public class CS2Memory {
         mem.setByte(0, value);
         return Kernel32.INSTANCE.WriteProcessMemory(processHandle, new Pointer(address), mem, 1, null);
     }
+
+    /**
+     * Reads an array of bytes from the specified memory address.
+     *
+     * @param address Native memory address to read from.
+     * @param size    Number of bytes to read.
+     * @return Byte array containing read memory, or an empty array on failure.
+     */
+    public static byte[] readBytes(long address, int size) {
+        if (processHandle == null || address == 0 || size <= 0)
+            return new byte[0];
+        byte[] buffer = new byte[size];
+        Memory mem = new Memory(size);
+        if (Kernel32.INSTANCE.ReadProcessMemory(processHandle, new Pointer(address), mem, size, null)) {
+            mem.read(0, buffer, 0, size);
+            return buffer;
+        }
+        return new byte[0];
+    }
+
+
 
     public static boolean writeAngles(long address, float pitch, float yaw) {
         if (processHandle == null || address == 0)

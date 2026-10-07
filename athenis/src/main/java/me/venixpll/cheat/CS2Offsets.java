@@ -3,13 +3,15 @@ package me.venixpll.cheat;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.*;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.time.Duration;
 
@@ -29,7 +31,9 @@ public class CS2Offsets {
     public static long dwCSGOInput = 39280992L; // 0x2576160
     public static long dwGlobalVars = 35831448L; // 0x222BE98
     public static long dwForceJump = 0L;
-    public static long dwPlantedC4 = 38570192L; // 0x24C88D0
+    public static long dwPlantedC4 = 38570192L; // 0x24C88D0;
+    public static long dwSensitivity = 0x255f998L;
+    public static long dwSensitivity_sensitivity = 0x58L;
 
     // engine2.dll offsets for server tick count → current game time
     public static long dwNetworkGameClient = 9547712L;
@@ -352,6 +356,12 @@ public class CS2Offsets {
         }
         if (clientOffsets.has("dwPlantedC4")) {
             dwPlantedC4 = clientOffsets.get("dwPlantedC4").getAsLong();
+        }
+        if (clientOffsets.has("dwSensitivity")) {
+            dwSensitivity = clientOffsets.get("dwSensitivity").getAsLong();
+        }
+        if (clientOffsets.has("dwSensitivity_sensitivity")) {
+            dwSensitivity_sensitivity = clientOffsets.get("dwSensitivity_sensitivity").getAsLong();
         }
 
         if (obj.has("engine2.dll")) {

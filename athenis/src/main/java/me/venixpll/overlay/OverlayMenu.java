@@ -1,5 +1,6 @@
 package me.venixpll.overlay;
 
+import com.sun.jna.platform.win32.User32;
 import imgui.ImColor;
 import imgui.ImGui;
 import imgui.ImVec2;
@@ -10,9 +11,10 @@ import me.venixpll.cheat.module.CheatModule;
 import me.venixpll.cheat.module.MenuGroup;
 import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.ModuleManager;
-import me.venixpll.cheat.setting.Setting;
 import me.venixpll.cheat.module.impl.ESPModule;
-import com.sun.jna.platform.win32.User32;
+import me.venixpll.cheat.setting.Setting;
+import me.venixpll.console.ConsoleManager;
+import me.venixpll.console.LogEntry;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -78,9 +80,18 @@ public class OverlayMenu {
     private static int selectedModuleIdx = 0;
     /** Sentinel value: SYSTEM → Settings page is selected. */
     private static final int SYSTEM_SETTINGS_IDX = -1;
+    /** Sentinel value: SYSTEM → Console page is selected. */
+    private static final int SYSTEM_CONSOLE_IDX = -2;
 
     /** True while the Settings page is waiting for a panic-key press. */
     static boolean panicKeyListening = false;
+
+    // ── Console UI state ──────────────────────────────────────────────────────
+    private static final imgui.type.ImString consoleCmdInput = new imgui.type.ImString(256);
+    private static final imgui.type.ImString consoleSearchFilter = new imgui.type.ImString(128);
+    private static int consoleFilterLevel = 0; // 0=ALL, 1=INFO, 2=WARN, 3=ERROR, 4=INPUT
+    private static boolean consoleAutoScroll = true;
+    private static boolean consoleScrollToBottom = false;
 
     // ── Icons ──────────────────────────────────────────────────────────────────
     /** OpenGL texture IDs, keyed by icon filename (e.g. "eye-48.png"). */
@@ -103,6 +114,9 @@ public class OverlayMenu {
         // Clamp module selection
         if (selectedModuleIdx >= modules.size()) {
             selectedModuleIdx = modules.isEmpty() ? SYSTEM_SETTINGS_IDX : 0;
+        }
+        if (selectedModuleIdx < SYSTEM_CONSOLE_IDX) {
+            selectedModuleIdx = SYSTEM_SETTINGS_IDX;
         }
 
         // ── Outer window ──────────────────────────────────────────────────────
@@ -200,6 +214,8 @@ public class OverlayMenu {
 
         if (selected != null) {
             renderModuleSettings(selected);
+        } else if (selectedModuleIdx == SYSTEM_CONSOLE_IDX) {
+            renderSystemConsolePage(panelW, panelH);
         } else {
             renderSystemSettingsPage();
         }
@@ -272,17 +288,18 @@ public class OverlayMenu {
         ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
     }
 
-    /** Renders the SYSTEM group — currently only a "Settings" item. */
+    /** Renders the SYSTEM group — Settings and Console pages. */
     private static void renderSidebarSystemGroup() {
         // Push SYSTEM section towards the bottom of the sidebar scrollable area
-        float targetY = (WINDOW_H - TOPBAR_H) - 64f;
+        float targetY = (WINDOW_H - TOPBAR_H) - 98f;
         if (ImGui.getCursorPosY() < targetY) {
             ImGui.setCursorPosY(targetY);
         } else {
             ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
         }
         renderCategoryHeader("SYSTEM");
-        renderSidebarSystemItem();
+        renderSidebarSystemItem("Settings", "settings-48.png", SYSTEM_SETTINGS_IDX);
+        renderSidebarSystemItem("Console", "keyboard-48.png", SYSTEM_CONSOLE_IDX);
         ImGui.setCursorPosY(ImGui.getCursorPosY() + 4f);
     }
 
@@ -395,9 +412,9 @@ public class OverlayMenu {
                 textCol, mod.getName());
     }
 
-    /** Renders the SYSTEM → Settings item (not backed by a CheatModule). */
-    private static void renderSidebarSystemItem() {
-        boolean isActive = (selectedModuleIdx == SYSTEM_SETTINGS_IDX);
+    /** Renders a SYSTEM navigation item (Settings, Console, etc.). */
+    private static void renderSidebarSystemItem(String label, String iconName, int idx) {
+        boolean isActive = (selectedModuleIdx == idx);
         float itemH = 34f;
 
         if (isActive) {
@@ -411,8 +428,8 @@ public class OverlayMenu {
         }
 
         ImGui.setCursorPosX(0f);
-        if (ImGui.selectable("##sysSettings", isActive, 0, SIDEBAR_W, itemH)) {
-            selectedModuleIdx = SYSTEM_SETTINGS_IDX;
+        if (ImGui.selectable("##sys_" + label, isActive, 0, SIDEBAR_W, itemH)) {
+            selectedModuleIdx = idx;
         }
         if (!isActive && ImGui.isItemHovered()) {
             ImVec2 cp = ImGui.getItemRectMin();
@@ -423,8 +440,8 @@ public class OverlayMenu {
 
         ImVec2 itemMin = ImGui.getItemRectMin();
 
-        // Settings icon — PNG texture tinted cyan
-        int iconTexId = getIconId(MenuGroup.SYSTEM.iconName);
+        // Icon — PNG texture tinted cyan
+        int iconTexId = getIconId(iconName);
         if (iconTexId > 0) {
             float iconY = itemMin.y + (itemH - 16f) * 0.5f;
             float iconX = itemMin.x + 12f;
@@ -439,7 +456,7 @@ public class OverlayMenu {
         ImGui.getWindowDrawList().addText(
                 itemMin.x + 34f, itemMin.y + (itemH - ImGui.getTextLineHeight()) * 0.5f,
                 ImColor.rgba(nameBright, nameBright, nameBright, 1f),
-                "Settings");
+                label);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -455,7 +472,14 @@ public class OverlayMenu {
         // Module name — vertically at y+9 same as PerformanceMonitor title
         ImGui.setCursorPos(18f, 9f);
         ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.92f, 0.92f, 0.95f, 1f);
-        String mainTitle = (selected != null) ? selected.getName().toUpperCase() : "SETTINGS";
+        String mainTitle;
+        if (selected != null) {
+            mainTitle = selected.getName().toUpperCase();
+        } else if (selectedModuleIdx == SYSTEM_CONSOLE_IDX) {
+            mainTitle = "CONSOLE";
+        } else {
+            mainTitle = "SETTINGS";
+        }
         ImGui.text(mainTitle);
         ImGui.popStyleColor();
 
@@ -502,6 +526,192 @@ public class OverlayMenu {
         }
     }
 
+
+    /** Built-in Developer / Debug Console page (SYSTEM → Console). */
+    private static void renderSystemConsolePage(float panelW, float panelH) {
+        float availW = ImGui.getContentRegionAvailX();
+
+        ImGui.spacing();
+
+        // ── Toolbar Row ──────────────────────────────────────────────────────────
+        // Filter combo
+        String[] filterOptions = { "ALL", "INFO", "WARN", "ERROR", "COMMANDS" };
+        ImGui.setNextItemWidth(90f);
+        if (ImGui.beginCombo("##ConsoleFilter", filterOptions[consoleFilterLevel])) {
+            for (int i = 0; i < filterOptions.length; i++) {
+                boolean isSelected = (consoleFilterLevel == i);
+                if (ImGui.selectable(filterOptions[i], isSelected)) {
+                    consoleFilterLevel = i;
+                }
+            }
+            ImGui.endCombo();
+        }
+
+        ImGui.sameLine(0f, 8f);
+
+        // Search text filter
+        ImGui.setNextItemWidth(140f);
+        ImGui.inputTextWithHint("##ConsoleSearch", "Filter text...", consoleSearchFilter);
+
+        ImGui.sameLine(0f, 10f);
+
+        // Auto-scroll checkbox
+        if (ImGui.checkbox("Auto-scroll", consoleAutoScroll)) {
+            consoleAutoScroll = !consoleAutoScroll;
+        }
+
+        ImGui.sameLine(0f, 10f);
+
+        // Clear button
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, 0.16f, 0.18f, 0.24f, 1.0f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, 0.22f, 0.25f, 0.32f, 1.0f);
+        if (ImGui.button("Clear##ConsoleClear")) {
+            ConsoleManager.getInstance().clear();
+        }
+
+        ImGui.sameLine(0f, 6f);
+
+        // Copy button
+        if (ImGui.button("Copy All##ConsoleCopy")) {
+            StringBuilder sb = new StringBuilder();
+            for (LogEntry e : ConsoleManager.getInstance().getLogs()) {
+                sb.append(e.getFormatted()).append("\n");
+            }
+            ImGui.setClipboardText(sb.toString());
+        }
+        ImGui.popStyleColor(2);
+
+        // Log count badge on right
+        List<LogEntry> logs = ConsoleManager.getInstance().getLogs();
+        String countStr = logs.size() + " logs";
+        float countW = ImGui.calcTextSize(countStr).x;
+        float rightX = availW - countW - 14f;
+        if (rightX > ImGui.getCursorPosX() + 10f) {
+            ImGui.sameLine(0f, 0f);
+            ImGui.setCursorPosX(rightX);
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, COL_DIM[0], COL_DIM[1], COL_DIM[2], 0.85f);
+            ImGui.text(countStr);
+            ImGui.popStyleColor();
+        }
+
+        ImGui.spacing();
+
+        // ── Main Log Viewport ────────────────────────────────────────────────────
+        float logViewportH = panelH - 96f;
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ChildBg, 0.04f, 0.05f, 0.065f, 0.95f);
+        ImGui.pushStyleVar(ImGuiStyleVar.ChildRounding, 6f);
+        ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 8f, 8f);
+        ImGui.beginChild("##ConsoleLogsView", availW - 4f, logViewportH, true, 0);
+
+        String searchLower = consoleSearchFilter.get().trim().toLowerCase();
+
+        for (LogEntry entry : logs) {
+            // Level filter
+            if (consoleFilterLevel == 1 && !entry.getLevel().equals("INFO")) continue;
+            if (consoleFilterLevel == 2 && !entry.getLevel().equals("WARN")) continue;
+            if (consoleFilterLevel == 3 && !entry.getLevel().equals("ERROR")) continue;
+            if (consoleFilterLevel == 4 && !entry.getLevel().equals("INPUT")) continue;
+
+            // Search query filter
+            if (!searchLower.isEmpty() && !entry.getRawText().toLowerCase().contains(searchLower)) {
+                continue;
+            }
+
+            // Timestamp [HH:mm:ss]
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, COL_DIM[0], COL_DIM[1], COL_DIM[2], 0.80f);
+            ImGui.text("[" + entry.getTimestamp() + "]");
+            ImGui.popStyleColor();
+
+            // Tag if present
+            if (entry.getTag() != null) {
+                ImGui.sameLine(0f, 4f);
+                ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, 0.54f, 0.70f, 0.98f, 1.0f); // Lavender
+                ImGui.text(entry.getTag());
+                ImGui.popStyleColor();
+            }
+
+            // Message body
+            ImGui.sameLine(0f, 4f);
+            float[] msgColor = resolveLogColor(entry.getLevel(), entry.getMessage());
+            ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, msgColor[0], msgColor[1], msgColor[2], 1.0f);
+            ImGui.textUnformatted(entry.getMessage());
+            ImGui.popStyleColor();
+        }
+
+        if (consoleAutoScroll && (consoleScrollToBottom || ImGui.getScrollY() >= ImGui.getScrollMaxY() - 25f)) {
+            ImGui.setScrollHereY(1.0f);
+            consoleScrollToBottom = false;
+        }
+
+        ImGui.endChild();
+        ImGui.popStyleVar(2);
+        ImGui.popStyleColor();
+
+        ImGui.spacing();
+
+        // ── Bottom Command Prompt Bar ────────────────────────────────────────────
+        ImGui.setCursorPosX(6f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+        ImGui.text(">");
+        ImGui.popStyleColor();
+
+        ImGui.sameLine(0f, 8f);
+        ImGui.setNextItemWidth(availW - 106f);
+
+        boolean enterPressed = ImGui.inputTextWithHint(
+                "##ConsoleInput",
+                "Enter command (type 'help', 'modules', 'toggle esp', 'status')...",
+                consoleCmdInput,
+                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue
+        );
+
+        ImGui.sameLine(0f, 6f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Button, COL_ACCENT[0] * 0.7f, COL_ACCENT[1] * 0.7f, COL_ACCENT[2] * 0.7f, 1f);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.ButtonHovered, COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2], 1f);
+        boolean execClicked = ImGui.button("Execute##ConsoleExec", 75f, 0f);
+        ImGui.popStyleColor(2);
+
+        if (enterPressed || execClicked) {
+            String cmd = consoleCmdInput.get().trim();
+            if (!cmd.isEmpty()) {
+                ConsoleManager.getInstance().executeCommand(cmd);
+                consoleCmdInput.set("");
+                consoleScrollToBottom = true;
+            }
+            ImGui.setKeyboardFocusHere(-1);
+        }
+    }
+
+    private static float[] resolveLogColor(String level, String msg) {
+        if ("ERROR".equalsIgnoreCase(level)) {
+            return new float[]{ 0.95f, 0.54f, 0.66f }; // Red
+        }
+        if ("WARN".equalsIgnoreCase(level)) {
+            return new float[]{ 0.98f, 0.89f, 0.69f }; // Yellow
+        }
+        if ("SUCCESS".equalsIgnoreCase(level)) {
+            return new float[]{ 0.65f, 0.89f, 0.63f }; // Green
+        }
+        if ("INPUT".equalsIgnoreCase(level)) {
+            return new float[]{ COL_ACCENT[0], COL_ACCENT[1], COL_ACCENT[2] }; // Cyan
+        }
+        String lo = msg.toLowerCase();
+        if (lo.contains("error") || lo.contains("fail") || lo.contains("exception")) {
+            return new float[]{ 0.95f, 0.54f, 0.66f };
+        }
+        if (lo.contains("warn")) {
+            return new float[]{ 0.98f, 0.89f, 0.69f };
+        }
+        if (lo.contains("success") || lo.contains("attached") || lo.contains("found")
+                || lo.contains("registered") || lo.contains("ready") || lo.contains("enabled")) {
+            return new float[]{ 0.65f, 0.89f, 0.63f };
+        }
+        if (lo.contains("0x") || lo.contains("pid") || lo.contains("base")) {
+            return new float[]{ 0.54f, 0.86f, 0.92f };
+        }
+        return new float[]{ 0.80f, 0.84f, 0.96f };
+    }
+
     /** Built-in Settings page (SYSTEM → Settings). */
     private static void renderSystemSettingsPage() {
         float availW = ImGui.getContentRegionAvailX();
@@ -540,6 +750,24 @@ public class OverlayMenu {
                 me.venixpll.overlay.OverlayWindow.toggleKeyJava)));
         ImGui.popStyleColor();
         ImGui.spacing();
+
+        // -- Real-Time Memory Hex Viewer row ---------------------------------
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 1f);
+        ImGui.text("Real-Time Memory Hex Inspector (Cheat Engine Style)");
+        ImGui.popStyleColor();
+        ImGui.setCursorPosX(settingX);
+        boolean hexOpen = MemoryHexViewer.isOpen();
+        if (ImGui.checkbox("Show Memory Hex Viewer Window", hexOpen)) {
+            MemoryHexViewer.setOpen(!hexOpen);
+        }
+        ImGui.setCursorPosX(settingX);
+        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text,
+                COL_DIM[0], COL_DIM[1], COL_DIM[2], 0.8f);
+        ImGui.textWrapped("Opens an interactive real-time hex memory viewer with live byte-change highlights, value inspectors (Int, Float, Long), and memory editing.");
+        ImGui.popStyleColor();
+        ImGui.dummy(0f, 10f);
 
         // -- Stream-proof Mode row -------------------------------------------
         ImGui.setCursorPosX(settingX);

@@ -1,35 +1,31 @@
 package me.venixpll.launcher;
 
 import imgui.app.Application;
+import me.venixpll.Main;
 import me.venixpll.cheat.CS2Memory;
 import me.venixpll.cheat.CS2Offsets;
 import me.venixpll.cheat.MemoryLoop;
 import me.venixpll.cheat.module.ModuleManager;
-import me.venixpll.cheat.module.impl.AimbotModule;
-import me.venixpll.cheat.module.impl.ESPModule;
-import me.venixpll.cheat.module.impl.RadarHackModule;
-import me.venixpll.cheat.module.impl.TriggerBotModule;
-import me.venixpll.cheat.module.impl.BunnyHopModule;
-import me.venixpll.cheat.module.impl.BombTimerModule;
-import me.venixpll.cheat.module.impl.SpectatorListModule;
-import me.venixpll.cheat.module.impl.CrosshairOverlayModule;
-import me.venixpll.cheat.module.impl.VisRayDebugModule;
-import me.venixpll.cheat.module.impl.DistanceDebugModule;
-import me.venixpll.cheat.module.impl.AutoWeaponModule;
-import me.venixpll.cheat.module.impl.SpeedometerModule;
-import me.venixpll.config.ConfigManager;
-import me.venixpll.overlay.OverlayWindow;
+import me.venixpll.cheat.module.impl.*;
 import me.venixpll.cheat.vischeck.VPhysToOptConverter;
-import me.venixpll.Main;
+import me.venixpll.config.ConfigManager;
+import me.venixpll.console.ConsoleManager;
+import me.venixpll.console.LogEntry;
+import me.venixpll.overlay.OverlayWindow;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.basic.BasicScrollBarUI;
-import javax.swing.text.*;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Style;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import java.awt.*;
 import java.awt.event.*;
-import java.io.*;
-import java.time.LocalTime;
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -106,7 +102,7 @@ public class LauncherWindow extends JFrame {
      */
     public LauncherWindow() {
         setUndecorated(true);
-        setSize(860, 580);
+        setSize(860, 610);
         setMinimumSize(new Dimension(700, 460));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -128,6 +124,7 @@ public class LauncherWindow extends JFrame {
             ModuleManager.registerModule(new SpeedometerModule());
         }
         ConfigManager.load();
+        ConsoleManager.getInstance().addListener(this::renderLogEntry);
 
         buildUI();
         redirectStreams();
@@ -185,10 +182,46 @@ public class LauncherWindow extends JFrame {
 
         JPanel body = new JPanel(new BorderLayout());
         body.setBackground(C_BG);
-        body.add(buildStatusBar(), BorderLayout.NORTH);
+
+        JPanel headerSection = new JPanel(new BorderLayout());
+        headerSection.setBackground(C_BG);
+        headerSection.add(buildStatusBar(), BorderLayout.NORTH);
+        headerSection.add(buildWarningBanner(), BorderLayout.SOUTH);
+
+        body.add(headerSection, BorderLayout.NORTH);
         body.add(buildLogArea(), BorderLayout.CENTER);
         body.add(buildControls(), BorderLayout.SOUTH);
         add(body, BorderLayout.CENTER);
+    }
+
+    /**
+     * Warning banner informing the user about in-game offset loading requirements.
+     */
+    private JPanel buildWarningBanner() {
+        JPanel banner = new JPanel(new BorderLayout(10, 0));
+        banner.setBackground(new Color(0x18140E));
+        banner.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(0x4A3712)),
+                new EmptyBorder(8, 16, 8, 16)
+        ));
+
+        JLabel badge = new JLabel(" NOTICE ");
+        badge.setFont(new Font("Segoe UI", Font.BOLD, 10));
+        badge.setOpaque(true);
+        badge.setBackground(new Color(0x423112));
+        badge.setForeground(C_WARN);
+        badge.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(0x7A5B20), 1),
+                new EmptyBorder(2, 5, 2, 5)
+        ));
+
+        JLabel text = new JLabel("<html><b>Notice:</b> If experiencing offset read errors, launch while in an <b>active match / practice</b> (not main menu). Once the in-game player table is loaded, everything functions as normal.</html>");
+        text.setFont(F_SMALL);
+        text.setForeground(new Color(0xE2D6BC));
+
+        banner.add(badge, BorderLayout.WEST);
+        banner.add(text, BorderLayout.CENTER);
+        return banner;
     }
 
     /**
@@ -379,7 +412,7 @@ public class LauncherWindow extends JFrame {
         JButton clearBtn = buildFlatButton("CLEAR LOG", C_TEXT_DIM, C_SURFACE2);
         clearBtn.addActionListener(e -> {
             logPane.setText("");
-            log("INFO", "Log cleared.");
+            ConsoleManager.getInstance().clear();
         });
         left.add(clearBtn);
 
@@ -535,11 +568,11 @@ public class LauncherWindow extends JFrame {
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setBackground(C_SURFACE);
 
-        stopBtn = buildFlatButton("■  STOP", C_ERROR, new Color(0x2D0D0D));
+        stopBtn = buildStopButton("STOP", C_ERROR, new Color(0x2D0D0D));
         stopBtn.setEnabled(false);
         stopBtn.addActionListener(e -> onStop());
 
-        startBtn = buildGradientButton("▶  START", C_ACCENT, new Color(0x005F73));
+        startBtn = buildStartButton("START", C_ACCENT, new Color(0x005F73));
         startBtn.addActionListener(e -> onStart());
 
         right.add(stopBtn);
@@ -615,6 +648,99 @@ public class LauncherWindow extends JFrame {
         };
         btn.setForeground(fg);
         btn.setFont(F_BTN);
+        btn.setPreferredSize(new Dimension(120, 34));
+        styleButtonBase(btn);
+        return btn;
+    }
+
+    /**
+     * Creates the primary START button with a crisp vector play icon and gradient fill.
+     */
+    private JButton buildStartButton(String label, Color topCol, Color botCol) {
+        JButton btn = new JButton() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+                Color top = isEnabled() ? topCol : C_TEXT_DIM;
+                Color bot = isEnabled() ? botCol : new Color(0x3D3D3D);
+
+                g2.setPaint(new GradientPaint(0, 0, top, 0, getHeight(), bot));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+
+                if (getModel().isRollover() && isEnabled()) {
+                    g2.setColor(new Color(255, 255, 255, 28));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                }
+
+                g2.setFont(F_BTN);
+                FontMetrics fm = g2.getFontMetrics();
+                int textW = fm.stringWidth(label);
+                int iconW = 9;
+                int gap = 8;
+                int totalW = iconW + gap + textW;
+                int startX = (getWidth() - totalW) / 2;
+                int centerY = getHeight() / 2;
+
+                // Vector play triangle
+                Color fg = isEnabled() ? C_BG : new Color(0x161B22);
+                g2.setColor(fg);
+                int[] px = { startX, startX, startX + iconW };
+                int[] py = { centerY - 5, centerY + 5, centerY };
+                g2.fillPolygon(px, py, 3);
+
+                // Label
+                int textY = centerY + (fm.getAscent() - fm.getDescent()) / 2;
+                g2.drawString(label, startX + iconW + gap, textY);
+
+                g2.dispose();
+            }
+        };
+        btn.setPreferredSize(new Dimension(120, 34));
+        styleButtonBase(btn);
+        return btn;
+    }
+
+    /**
+     * Creates the STOP button with a crisp vector stop square icon.
+     */
+    private JButton buildStopButton(String label, Color fg, Color bg) {
+        JButton btn = new JButton() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                Color fill = isEnabled()
+                        ? (getModel().isRollover() ? bg.brighter() : bg)
+                        : C_SURFACE2;
+                g2.setColor(fill);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+
+                g2.setFont(F_BTN);
+                FontMetrics fm = g2.getFontMetrics();
+                int textW = fm.stringWidth(label);
+                int iconW = 8;
+                int gap = 8;
+                int totalW = iconW + gap + textW;
+                int startX = (getWidth() - totalW) / 2;
+                int centerY = getHeight() / 2;
+
+                Color textCol = isEnabled() ? fg : C_TEXT_DIM;
+                g2.setColor(textCol);
+
+                // Vector stop square
+                g2.fillRect(startX, centerY - 4, iconW, iconW);
+
+                // Label
+                int textY = centerY + (fm.getAscent() - fm.getDescent()) / 2;
+                g2.drawString(label, startX + iconW + gap, textY);
+
+                g2.dispose();
+            }
+        };
         btn.setPreferredSize(new Dimension(120, 34));
         styleButtonBase(btn);
         return btn;
@@ -751,12 +877,12 @@ public class LauncherWindow extends JFrame {
                     ModuleManager.registerModule(new DistanceDebugModule());
                     ModuleManager.registerModule(new AutoWeaponModule());
                     ModuleManager.registerModule(new SpeedometerModule());
+                    // ModuleManager.registerModule(new SkinChangerModule()); // disabled temporarily
                 }
 
                 // Restore user's last saved configuration before starting the engine.
                 log("INFO", "Loading saved configuration...");
                 ConfigManager.load();
-
                 log("INFO", "Starting background memory threads...");
                 MemoryLoop.start();
 
@@ -841,27 +967,26 @@ public class LauncherWindow extends JFrame {
      *               prefix.
      */
     void log(String level, String rawMsg) {
+        ConsoleManager.getInstance().log(level, rawMsg);
+    }
+
+    private void renderLogEntry(LogEntry entry) {
         if (!SwingUtilities.isEventDispatchThread()) {
-            SwingUtilities.invokeLater(() -> log(level, rawMsg));
+            SwingUtilities.invokeLater(() -> renderLogEntry(entry));
             return;
         }
         try {
             // Dim timestamp
-            appendStyled("[" + LocalTime.now().format(TIME_FMT) + "] ", C_TEXT_DIM, false);
+            appendStyled("[" + entry.getTimestamp() + "] ", C_TEXT_DIM, false);
 
-            // If the message already carries a [Tag] prefix, colour that separately
-            // from the body so e.g. "[CS2Memory] Found..." shows a distinct teal tag.
-            if (rawMsg.startsWith("[") && rawMsg.indexOf(']') > 0) {
-                int end = rawMsg.indexOf(']') + 1;
-                String tag = rawMsg.substring(0, end);
-                String rest = rawMsg.substring(end).stripLeading();
-                appendStyled(tag + " ", C_TAG, true);
-                appendStyled(rest + "\n", resolveColor(level, rest), false);
+            if (entry.getTag() != null) {
+                appendStyled(entry.getTag() + " ", C_TAG, true);
+                appendStyled(entry.getMessage() + "\n", resolveColor(entry.getLevel(), entry.getMessage()), false);
             } else {
-                appendStyled(rawMsg + "\n", resolveColor(level, rawMsg), false);
+                appendStyled(entry.getMessage() + "\n", resolveColor(entry.getLevel(), entry.getMessage()), false);
             }
 
-            // Always scroll to the newest line
+            // Always scroll to newest line
             logPane.setCaretPosition(logDoc.getLength());
         } catch (Exception ignored) {
         }
@@ -976,8 +1101,7 @@ public class LauncherWindow extends JFrame {
             String level = isErrorStream ? "ERROR" : "INFO";
             if (line.toLowerCase().contains("warn"))
                 level = "WARN";
-            final String finalLevel = level;
-            SwingUtilities.invokeLater(() -> log(finalLevel, line));
+            ConsoleManager.getInstance().log(level, line);
         }
     }
 

@@ -15,7 +15,6 @@ import me.venixpll.cheat.module.ModuleCategory;
 import me.venixpll.cheat.module.impl.aimbot.AimMode;
 import me.venixpll.cheat.module.impl.aimbot.AimType;
 import me.venixpll.cheat.module.impl.aimbot.ClassicAimMode;
-import me.venixpll.cheat.module.impl.aimbot.HumanAimMode;
 import me.venixpll.cheat.module.impl.aimbot.PidSpringAimMode;
 import me.venixpll.cheat.setting.BooleanSetting;
 import me.venixpll.cheat.setting.FloatSetting;
@@ -32,7 +31,7 @@ import java.util.List;
 /**
  * Aimbot Module — screen-space aim assist for CS2.
  *
- * <p>Supports modular aimbot modes (e.g. Classic, PID Spring, Human) implemented via
+ * <p>Supports modular aimbot modes (e.g. Classic, PID Spring) implemented via
  * individual {@link AimMode} strategy classes.
  *
  * <p>Rate-limit : 500 Hz nanosecond gate (same principle as DragonBurn AimDelay).
@@ -64,7 +63,6 @@ public class AimbotModule extends ManagedThreadModule {
     private final List<AimMode> aimModes = new ArrayList<>();
     private final ClassicAimMode classicMode = new ClassicAimMode();
     private final PidSpringAimMode pidSpringMode = new PidSpringAimMode();
-    private final HumanAimMode humanMode = new HumanAimMode();
 
     // ── Mode selector ─────────────────────────────────────────────────────────
     public final ModeSetting aimMode;
@@ -119,7 +117,6 @@ public class AimbotModule extends ManagedThreadModule {
         // Register default aim modes
         registerAimModeInternal(classicMode);
         registerAimModeInternal(pidSpringMode);
-        registerAimModeInternal(humanMode);
 
         // Mode selector (always visible)
         aimMode = new ModeSetting("Aim Mode##aimbot", 0, AimType.getDisplayNames());
@@ -183,8 +180,14 @@ public class AimbotModule extends ManagedThreadModule {
      * Shows settings belonging to the active AimMode and hides settings of unselected modes.
      * Called whenever aimMode selection changes on tick.
      */
+    private int lastModeIndex = 0;
+
     private void applyModeVisibility() {
         int selectedIndex = aimMode.getValue();
+        if (selectedIndex != lastModeIndex) {
+            resetState();
+            lastModeIndex = selectedIndex;
+        }
         for (int i = 0; i < aimModes.size(); i++) {
             boolean isSelected = (i == selectedIndex);
             for (Setting<?> setting : aimModes.get(i).getSettings()) {
@@ -265,6 +268,7 @@ public class AimbotModule extends ManagedThreadModule {
     protected void runLoop() throws Exception {
         // 1. Wait for CS2 attachment
         if (!PlayerCache.tracking) {
+            resetState();
             Thread.sleep(100);
             return;
         }

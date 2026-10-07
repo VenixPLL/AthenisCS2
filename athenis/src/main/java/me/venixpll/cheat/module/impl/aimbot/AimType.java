@@ -5,8 +5,7 @@ package me.venixpll.cheat.module.impl.aimbot;
  */
 public enum AimType {
     CLASSIC("Classic"),
-    PID_SPRING("PID Spring"),
-    HUMAN("Human");
+    PID_SPRING("PID Spring");
 
     private final String displayName;
 
