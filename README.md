@@ -72,6 +72,8 @@ you create with the VisRay editor are stored in `%APPDATA%\Athenis\patches\`.
 | Auto Weapon | Fires Zeus or knife when an enemy is inside effective range. |
 | BunnyHop | Jump timing while Space is held. |
 
+![Aim Assist](img/aim-assist.gif)
+
 ### Debug
 
 | Module | Notes |
