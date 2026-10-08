@@ -37,18 +37,18 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class ESPModule extends CheatModule {
 
     // ── Master Toggles ────────────────────────────────────────────────────────
-    public final BooleanSetting playerEsp  = new BooleanSetting("Show Player ESP",  true);
+    public final BooleanSetting playerEsp  = new BooleanSetting("Show Player ESP",  false);
     public final BooleanSetting grenadeEsp = new BooleanSetting("Show Grenade ESP", true);
     public final BooleanSetting damageEsp  = new BooleanSetting("Show Damage ESP",  true);
-    public final BooleanSetting gazeEsp    = new BooleanSetting("Show Gaze ESP",    true);
+    public final BooleanSetting gazeEsp    = new BooleanSetting("Show Gaze ESP",    false);
 
     // ── Player ESP Settings ───────────────────────────────────────────────────
     /** Toggle to show/hide player bounding boxes */
-    public final BooleanSetting boxEsp    = new BooleanSetting("Render Box", true);
+    public final BooleanSetting boxEsp    = new BooleanSetting("Render Box", false);
     /** Toggle to show/hide player skeletons */
     public final BooleanSetting skeletonEsp = new BooleanSetting("Render Skeleton", true);
     /** Toggle to render only invisible bone parts */
-    public final BooleanSetting invisibleBonesOnly = new BooleanSetting("Invisible Bones Only", false);
+    public final BooleanSetting invisibleBonesOnly = new BooleanSetting("Invisible Bones Only", true);
     /** Toggle to show/hide player health bars */
     public final BooleanSetting healthEsp = new BooleanSetting("Show Health Indicators", true);
     /** Toggle to show/hide player names */
@@ -62,7 +62,7 @@ public class ESPModule extends CheatModule {
     /** Show a “Blind” badge when the target is currently flashed. */
     public final BooleanSetting flagBlind      = new BooleanSetting("Flag: Blind",          true);
     /** Show a “Scoped” badge when the target has their weapon zoomed in. */
-    public final BooleanSetting flagScoped     = new BooleanSetting("Flag: Scoped",         true);
+    public final BooleanSetting flagScoped     = new BooleanSetting("Flag: Scoped",         false);
     /** Show a “Defusing” badge when the target is actively defusing the bomb. */
     public final BooleanSetting flagDefusing   = new BooleanSetting("Flag: Defusing",       true);
     /** Show a “Kit” badge when the target is carrying a defuse kit. */
@@ -70,7 +70,7 @@ public class ESPModule extends CheatModule {
     /** Show a "BOMB" pill above whoever currently carries the C4 (topmost flag). */
     public final BooleanSetting flagBomb       = new BooleanSetting("Flag: Bomb",            true);
     /** Show the target’s current in-game money balance. */
-    public final BooleanSetting flagMoney      = new BooleanSetting("Flag: Money",           true);
+    public final BooleanSetting flagMoney      = new BooleanSetting("Flag: Money",           false);
 
     // ── Bomb Carrier World ESP Settings ─────────────────────────────────────
     /**
@@ -99,13 +99,13 @@ public class ESPModule extends CheatModule {
 
     // ── Damage ESP Settings ───────────────────────────────────────────────────
     public final BooleanSetting showDamage = new BooleanSetting(
-            "Show Damage Card", true);
+            "Show Damage Card", false);
 
     public final BooleanSetting showFloating = new BooleanSetting(
             "Show Floating Numbers", true);
 
     public final BooleanSetting showTeammates = new BooleanSetting(
-            "Show Teammates Damage", false);
+            "Show Teammates Damage", true);
 
     public final ColorSetting damageColor = new ColorSetting(
             "Damage Color##dmgesp", 1.0f, 0.38f, 0.0f, 1.0f);
@@ -121,7 +121,7 @@ public class ESPModule extends CheatModule {
 
     // ── Hit Marker Settings ───────────────────────────────────────────────────
     /** Master toggle for the animated hit-marker X at screen center. */
-    public final BooleanSetting showHitmarker = new BooleanSetting("Show Hit Marker", true);
+    public final BooleanSetting showHitmarker = new BooleanSetting("Show Hit Marker", false);
     /** Color of the hit marker on regular (non-lethal) hits. */
     public final ColorSetting hitmarkerColor = new ColorSetting(
             "Hit Marker Color##dmgesp", 1.0f, 1.0f, 1.0f, 1.0f);
@@ -134,26 +134,26 @@ public class ESPModule extends CheatModule {
 
     // ── Kill Feed Settings ────────────────────────────────────────────────────
     /** Master toggle for the custom kill feed panel (top-right). */
-    public final BooleanSetting showKillfeed = new BooleanSetting("Show Kill Feed", true);
+    public final BooleanSetting showKillfeed = new BooleanSetting("Show Kill Feed", false);
     /** How long a kill feed row stays visible, in seconds. */
     public final FloatSetting killfeedDuration = new FloatSetting(
             "Kill Feed Duration##dmgesp", 6f, 3f, 12f);
 
     // ── Sound ESP Settings ────────────────────────────────────────────────────
     /** Master toggle: directional footstep indicators around the crosshair. */
-    public final BooleanSetting soundEsp = new BooleanSetting("Show Sound ESP", true);
+    public final BooleanSetting soundEsp = new BooleanSetting("Show Sound ESP", false);
     /** When on, only enemies produce indicators — teammates stay silent. */
     public final BooleanSetting soundEnemyOnly = new BooleanSetting("Enemy Only##soundesp", true);
     /** Color of the directional wedges. */
     public final ColorSetting soundColor = new ColorSetting("Sound Color##soundesp", 1.0f, 0.30f, 0.25f, 1.0f);
     /** Radius of the indicator ring around the crosshair, in pixels. */
-    public final FloatSetting soundRingRadius = new FloatSetting("Indicator Radius##soundesp", 120f, 50f, 320f);
+    public final FloatSetting soundRingRadius = new FloatSetting("Indicator Radius##soundesp", 82.247f, 50f, 320f);
     /** How long a footstep indicator stays visible, in seconds. */
-    public final FloatSetting soundDuration = new FloatSetting("Indicator Duration##soundesp", 1.6f, 0.5f, 4.0f);
+    public final FloatSetting soundDuration = new FloatSetting("Indicator Duration##soundesp", 1.017f, 0.5f, 4.0f);
     /** Footsteps farther away than this many world units are not indicated. */
     public final FloatSetting soundMaxDistance = new FloatSetting("Max Hearing Distance##soundesp", 1600f, 300f, 5000f);
     /** Print the distance in meters next to each wedge. */
-    public final BooleanSetting soundShowDistance = new BooleanSetting("Show Distance Label##soundesp", true);
+    public final BooleanSetting soundShowDistance = new BooleanSetting("Show Distance Label##soundesp", false);
 
     // ── Gaze Direction ESP Settings ──────────────────────────────────────────
     /** Gaze ray length in CS2 world units (1 u ≈ 1 inch). */
@@ -164,7 +164,7 @@ public class ESPModule extends CheatModule {
             "Gaze Proximity (units)##gaze", 1200f, 200f, 5000f);
     /** Line thickness in pixels. */
     public final FloatSetting gazeThickness = new FloatSetting(
-            "Gaze Line Thickness##gaze", 1.5f, 0.5f, 5.0f);
+            "Gaze Line Thickness##gaze", 1.022f, 0.5f, 5.0f);
     /** Color of the gaze ray line. */
     public final ColorSetting gazeColor = new ColorSetting(
             "Gaze Color##gaze", 1.0f, 0.55f, 0.0f, 0.85f);

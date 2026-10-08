@@ -93,7 +93,7 @@ public class CrosshairOverlayModule extends CheatModule {
      * </ul>
      */
     public final ModeSetting style = new ModeSetting(
-            "Style##crosshair", 0, "Cross", "Dot", "Circle + Cross", "T-Shape");
+            "Style##crosshair", 1, "Cross", "Dot", "Circle + Cross", "T-Shape");
 
     /** Length of each arm of the crosshair in pixels. */
     public final FloatSetting size = new FloatSetting(
@@ -147,7 +147,7 @@ public class CrosshairOverlayModule extends CheatModule {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public CrosshairOverlayModule() {
-        super("Crosshair Overlay", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
+        super("Crosshair Overlay", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, true);
         addSetting(mode);
         addSetting(style);
         addSetting(size);

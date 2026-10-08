@@ -1,0 +1,303 @@
+{
+  "toggleKeyJava": 47,
+  "offsetsFolder": "",
+  "streamProof": false,
+  "panicKeyVK": 46,
+  "panicDisableAllModules": true,
+  "modules": {
+    "ESP Overlay": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Show Player ESP": false,
+        "Show Grenade ESP": true,
+        "Show Damage ESP": true,
+        "Render Box": false,
+        "Render Skeleton": true,
+        "Invisible Bones Only": true,
+        "Show Health Indicators": true,
+        "Show Player Names": true,
+        "Enemy-Only Team Filter": true,
+        "Extrapolation (ms)": 20.0,
+        "Enemy Color": [
+          1.0,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "Team Color": [
+          0.2,
+          0.6,
+          1.0,
+          1.0
+        ],
+        "Highlight Bomb Carrier": true,
+        "Carrier Color##carrier": [
+          1.0,
+          0.45,
+          0.0,
+          1.0
+        ],
+        "Show Player Flags": true,
+        "Flag: Blind": true,
+        "Flag: Scoped": false,
+        "Flag: Defusing": true,
+        "Flag: Kit": true,
+        "Flag: Bomb": true,
+        "Flag: Money": false,
+        "Show HE Grenade": true,
+        "Show Flashbang": true,
+        "Show Smoke": true,
+        "Show Molotov": true,
+        "Show Decoy": true,
+        "Max Distance (units)": 3000.0,
+        "Min Scale": 0.25,
+        "Show Damage Card": false,
+        "Show Floating Numbers": true,
+        "Show Teammates Damage": true,
+        "Damage Color##dmgesp": [
+          1.0,
+          0.38,
+          0.0,
+          1.0
+        ],
+        "Shots Color##dmgesp": [
+          0.75,
+          0.78,
+          0.85,
+          1.0
+        ],
+        "Text Scale##dmgesp": 2.0,
+        "Crosshair Radius px##dmgesp": 300.0,
+        "Show Hit Marker": false,
+        "Hit Marker Color##dmgesp": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "Kill Marker Color##dmgesp": [
+          1.0,
+          0.15,
+          0.15,
+          1.0
+        ],
+        "Hit Marker Size##dmgesp": 18.0,
+        "Show Kill Feed": false,
+        "Kill Feed Duration##dmgesp": 6.0,
+        "Show Sound ESP": false,
+        "Enemy Only##soundesp": true,
+        "Sound Color##soundesp": [
+          1.0,
+          0.3,
+          0.25,
+          1.0
+        ],
+        "Indicator Radius##soundesp": 82.247,
+        "Indicator Duration##soundesp": 1.017,
+        "Max Hearing Distance##soundesp": 1600.0,
+        "Show Distance Label##soundesp": false,
+        "Show Gaze ESP": false,
+        "Gaze Ray Length##gaze": 800.0,
+        "Gaze Proximity (units)##gaze": 1200.0,
+        "Gaze Line Thickness##gaze": 1.022,
+        "Gaze Color##gaze": [
+          1.0,
+          0.55,
+          0.0,
+          0.85
+        ],
+        "Show Gaze Tip##gaze": true,
+        "Stop at Walls##gaze": true
+      }
+    },
+    "Radar Hack": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Enemy Only": false,
+        "Overlay Mini-Radar": true,
+        "Enemy Status Widget": true,
+        "Rotate Radar Map": false,
+        "Radar X Pos": 197.938,
+        "Radar Y Pos": 77.938,
+        "Radar Size": 349.227,
+        "Radar Scale (Zoom)": 20.0,
+        "Square Radar (Full Map)": true,
+        "Auto-Sync Map Radar": true,
+        "Map Center X": 0.0,
+        "Map Center Y": 0.0
+      }
+    },
+    "Aimbot": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Aim Mode##aimbot": 0,
+        "Target Bone##aimbot": 0,
+        "Activation##aimbot": 1,
+        "Aim Key##aimbot": 0,
+        "FOV (degrees)##aimbot": 0.783,
+        "FOV Min##aimbot": 0.029,
+        "Enemy Only##aimbot": true,
+        "VisCheck##aimbot": true,
+        "Spotted Fallback##aimbot": true,
+        "Cancel on Shoot##aimbot": true,
+        "Flashbang Check##aimbot": true,
+        "Show FOV Circle##aimbot": false,
+        "Smooth##aimbot": 6.416,
+        "Sensitivity##aimbot": 2.647,
+        "Humanize##aimbot": true,
+        "Humanize Strength##aimbot": 1.823,
+        "Stiffness (kP)##aimbot": 75.632,
+        "Damping (kD)##aimbot": 35.256,
+        "Mass##aimbot": 0.215,
+        "Max Force##aimbot": 1815.86,
+        "Sensitivity##aimbot_pid": 0.06
+      }
+    },
+    "TriggerBot": {
+      "enabled": false,
+      "expanded": true,
+      "bindKey": 90,
+      "settings": {
+        "Target Zone##triggerbot": 3,
+        "One-Shot Mode##triggerbot": true,
+        "Reaction Delay (ms)##triggerbot": 12.615,
+        "Click Duration (ms)##triggerbot": 5.0,
+        "Cooldown (ms)##triggerbot": 669.998,
+        "Bone Radius (% box)##triggerbot": 0.04,
+        "Enemy Only##triggerbot": true,
+        "VisCheck Filter##triggerbot": true,
+        "Flashbang Check##triggerbot": true,
+        "Stop When Moving##triggerbot": true,
+        "Max Move Speed (u/s)##triggerbot": 60.212
+      }
+    },
+    "BunnyHop": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Plus Jump Delay (ms)": 0.0,
+        "Minus Jump Delay (ms)": 0.0
+      }
+    },
+    "Bomb Timer": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Banner X": 1587.0,
+        "Banner Y": 5.0
+      }
+    },
+    "Spectator List": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {}
+    },
+    "Crosshair Overlay": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Mode##crosshair": 0,
+        "Style##crosshair": 1,
+        "Size##crosshair": 8.0,
+        "Gap##crosshair": 4.0,
+        "Thickness##crosshair": 1.5,
+        "Color##crosshair": [
+          0.0,
+          1.0,
+          0.45,
+          1.0
+        ],
+        "Outline##crosshair": true,
+        "Outline Color##crosshair": [
+          0.0,
+          0.0,
+          0.0,
+          0.85
+        ],
+        "Center Dot##crosshair": true,
+        "Dot Size##crosshair": 2.0,
+        "Opacity##crosshair": 1.0
+      }
+    },
+    "VisRay Debug": {
+      "enabled": false,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Ray Mode##visray": 1,
+        "Crosshair Range##visray": 4096.0,
+        "Show Ray Line##visray": true,
+        "Show Hit Triangle##visray": true,
+        "Show Hit Point##visray": true,
+        "Show All Deleted##visray": true,
+        "Show Info Panel##visray": true,
+        "Nearest Enemy Only##visray": false,
+        "Delete Bind##visray": 0,
+        "Save Bind##visray": 10,
+        "Restore Bind##visray": 5
+      }
+    },
+    "Distance Debug": {
+      "enabled": false,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Target All Players (Teammates \u0026 Enemies)##distdbg": true,
+        "Show Cursor Obstacle Marker##distdbg": true,
+        "Connect Line to 3D Blocking Vertex##distdbg": true,
+        "Max Wall Range##distdbg": 8192.0,
+        "Base Marker Size##distdbg": 14.0,
+        "Enable Perspective Scaling##distdbg": true,
+        "Highlight Target Player##distdbg": true,
+        "Show Distance under Crosshair##distdbg": true,
+        "Distance Unit##distdbg": 0,
+        "Obstacle Marker Color##distdbg": [
+          0.0,
+          0.85,
+          1.0,
+          0.95
+        ],
+        "Player Highlight Color##distdbg": [
+          0.2,
+          0.95,
+          0.35,
+          1.0
+        ],
+        "Distance Text Color##distdbg": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "Auto Weapon": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {
+        "Enemy Only##autoweapon": true,
+        "Zeus Range (units)##autoweapon": 100.139,
+        "Knife Range (units)##autoweapon": 65.0,
+        "Click Duration (ms)##autoweapon": 10.0,
+        "Post-Fire Cooldown (ms)##autoweapon": 350.0
+      }
+    },
+    "Speedometer": {
+      "enabled": true,
+      "expanded": true,
+      "bindKey": -1,
+      "settings": {}
+    }
+  }
+}

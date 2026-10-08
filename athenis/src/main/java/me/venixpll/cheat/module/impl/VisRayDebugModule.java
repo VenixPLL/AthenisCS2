@@ -44,7 +44,7 @@ public class VisRayDebugModule extends CheatModule {
 
     // ── Settings ──────────────────────────────────────────────────────────────
     public final ModeSetting rayMode = new ModeSetting(
-            "Ray Mode##visray", 0, "Enemy", "Crosshair");
+            "Ray Mode##visray", 1, "Enemy", "Crosshair");
     public final FloatSetting crosshairDist = new FloatSetting(
             "Crosshair Range##visray", 4096f, 64f, 16384f);
     public final BooleanSetting showRay = new BooleanSetting(
@@ -58,13 +58,13 @@ public class VisRayDebugModule extends CheatModule {
     public final BooleanSetting showInfoPanel = new BooleanSetting(
             "Show Info Panel##visray", true);
     public final BooleanSetting nearestOnly = new BooleanSetting(
-            "Nearest Enemy Only##visray", true);
+            "Nearest Enemy Only##visray", false);
     public final ModeSetting deleteKey = new ModeSetting(
             "Delete Bind##visray", 0, KEY_NAMES);
     public final ModeSetting saveKey = new ModeSetting(
             "Save Bind##visray", 10, KEY_NAMES); // Default index 10: "S"
     public final ModeSetting restoreKey = new ModeSetting(
-            "Restore Bind##visray", 2, KEY_NAMES); // Default index 9: "R"
+            "Restore Bind##visray", 5, KEY_NAMES); // Default index 9: "R"
 
     // ── Reusable projection scratch buffers ───────────────────────────────────
     private final float[] scrA      = new float[2];

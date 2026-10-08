@@ -61,7 +61,7 @@ public class AutoWeaponModule extends ManagedThreadModule {
      * Zeus in-game range is ~170 units; the default 155 leaves a reaction margin.
      */
     public final FloatSetting zeusRange = new FloatSetting(
-            "Zeus Range (units)##autoweapon", 155.0f, 50.0f, 250.0f);
+            "Zeus Range (units)##autoweapon", 100.139f, 50.0f, 250.0f);
 
     /**
      * Maximum world-unit distance at which the Knife will auto-fire.
@@ -74,7 +74,7 @@ public class AutoWeaponModule extends ManagedThreadModule {
      * Duration (ms) the simulated LMB press is held down before releasing.
      */
     public final FloatSetting clickDuration = new FloatSetting(
-            "Click Duration (ms)##autoweapon", 60.0f, 10.0f, 300.0f);
+            "Click Duration (ms)##autoweapon", 10.0f, 10.0f, 300.0f);
 
     /**
      * Cooldown (ms) applied after each auto-fire event before the module can
@@ -89,7 +89,7 @@ public class AutoWeaponModule extends ManagedThreadModule {
     // ---- Constructor -------------------------------------------------------
 
     public AutoWeaponModule() {
-        super("Auto Weapon", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-AutoWeapon");
+        super("Auto Weapon", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, true, "Athenis-AutoWeapon");
         addSetting(enemyOnly);
         addSetting(zeusRange);
         addSetting(knifeRange);

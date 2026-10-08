@@ -48,7 +48,7 @@ public class SpeedometerModule extends CheatModule {
     private final Deque<SpeedSample> history = new ArrayDeque<>();
 
     public SpeedometerModule() {
-        super("Speedometer", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
+        super("Speedometer", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, true);
     }
 
     @Override

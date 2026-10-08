@@ -70,14 +70,14 @@ public class BombTimerModule extends CheatModule {
      * Default centres the pill on a 1920-wide screen; bounded 0 – 1920.
      */
     public final FloatSetting bannerX = new FloatSetting(
-            "Banner X", 1920f / 2f - PILL_W / 2f, 0f, 1920f);
+            "Banner X", 1587.0f, 0f, 1920f);
 
     /**
      * Y coordinate of the banner's top edge.
      * Default places the pill near the top of a 1080-high screen; bounded 0 – 1060.
      */
     public final FloatSetting bannerY = new FloatSetting(
-            "Banner Y", 14f, 0f, 1060f);
+            "Banner Y", 5.0f, 0f, 1060f);
 
     // ── Pre-allocated buffers (avoid GC pressure in render loop) ──────────────
     private final imgui.ImVec2 textSizeBuf = new imgui.ImVec2();
@@ -104,7 +104,7 @@ public class BombTimerModule extends CheatModule {
     private float dragOriginMouseY  = 0f;
 
     public BombTimerModule() {
-        super("Bomb Timer", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, false);
+        super("Bomb Timer", ModuleCategory.EXTERNAL, MenuGroup.VISUALS, true);
         addSetting(bannerX);
         addSetting(bannerY);
     }

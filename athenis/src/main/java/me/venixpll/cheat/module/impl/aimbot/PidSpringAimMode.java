@@ -12,15 +12,15 @@ import java.util.List;
 public class PidSpringAimMode extends AimMode {
 
     public final FloatSetting pidStiffness = new FloatSetting(
-            "Stiffness (kP)##aimbot", 75.0f, 1.0f, 149.0f);
+            "Stiffness (kP)##aimbot", 75.632f, 1.0f, 149.0f);
     public final FloatSetting pidDamping = new FloatSetting(
-            "Damping (kD)##aimbot", 35.0f, 0.5f, 70.0f);
+            "Damping (kD)##aimbot", 35.256f, 0.5f, 70.0f);
     public final FloatSetting pidMass = new FloatSetting(
-            "Mass##aimbot", 0.2f, 0.01f, 0.4f);
+            "Mass##aimbot", 0.215f, 0.01f, 0.4f);
     public final FloatSetting pidMaxForce = new FloatSetting(
-            "Max Force##aimbot", 1800.0f, 1.0f, 3600.0f);
+            "Max Force##aimbot", 1815.86f, 1.0f, 3600.0f);
     public final FloatSetting pidSensitivity = new FloatSetting(
-            "Sensitivity##aimbot_pid", 0.1f, 0.01f, 0.2f);
+            "Sensitivity##aimbot_pid", 0.06f, 0.01f, 0.2f);
 
     private volatile float springVelX = 0f;
     private volatile float springVelY = 0f;

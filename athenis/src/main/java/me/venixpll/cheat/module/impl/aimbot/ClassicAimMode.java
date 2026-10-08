@@ -14,13 +14,13 @@ import java.util.Random;
 public class ClassicAimMode extends AimMode {
 
     public final FloatSetting smooth = new FloatSetting(
-            "Smooth##aimbot", 6.5f, 1.0f, 30.0f);
+            "Smooth##aimbot", 6.416f, 1.0f, 30.0f);
     public final FloatSetting sensitivity = new FloatSetting(
-            "Sensitivity##aimbot", 1.5f, 0.1f, 10.0f);
+            "Sensitivity##aimbot", 2.647f, 0.1f, 10.0f);
     public final BooleanSetting humanize = new BooleanSetting(
             "Humanize##aimbot", true);
     public final FloatSetting humanizeStrength = new FloatSetting(
-            "Humanize Strength##aimbot", 3.6f, 0.0f, 20.0f);
+            "Humanize Strength##aimbot", 1.823f, 0.0f, 20.0f);
 
     private final Random rng = new Random();
     private volatile float prevDeltaX = 0f;

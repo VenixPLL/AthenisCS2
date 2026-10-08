@@ -70,26 +70,26 @@ public class TriggerBotModule extends ManagedThreadModule {
 
     /** Which body region triggers a shot. */
     public final ModeSetting targetMode = new ModeSetting(
-            "Target Zone##triggerbot", 0, "Head", "Body", "Legs", "All");
+            "Target Zone##triggerbot", 3, "Head", "Body", "Legs", "All");
 
     /**
      * When enabled: after a shot the module ignores the shot player for
      * {@code cooldown} ms and will not shoot again until the crosshair leaves
      * and re-enters a target. Ideal for AWP / Scout.
      */
-    public final BooleanSetting oneShotMode = new BooleanSetting("One-Shot Mode##triggerbot", false);
+    public final BooleanSetting oneShotMode = new BooleanSetting("One-Shot Mode##triggerbot", true);
 
     /** Pause between crosshair-on-target detection and click, in milliseconds. */
     public final FloatSetting reactionDelay = new FloatSetting(
-            "Reaction Delay (ms)##triggerbot", 10.0f, 0.0f, 150.0f);
+            "Reaction Delay (ms)##triggerbot", 12.615f, 0.0f, 150.0f);
 
     /** Duration the mouse button is held down, in milliseconds. */
     public final FloatSetting clickDuration = new FloatSetting(
-            "Click Duration (ms)##triggerbot", 40.0f, 5.0f, 200.0f);
+            "Click Duration (ms)##triggerbot", 5.0f, 5.0f, 200.0f);
 
     /** Post-click cooldown before the next shot is allowed, in milliseconds. */
     public final FloatSetting cooldown = new FloatSetting(
-            "Cooldown (ms)##triggerbot", 100.0f, 20.0f, 1000.0f);
+            "Cooldown (ms)##triggerbot", 669.998f, 20.0f, 1000.0f);
 
     /**
      * Per-bone hit radius as a fraction of the player's screen box height.
@@ -97,7 +97,7 @@ public class TriggerBotModule extends ManagedThreadModule {
      * Only used for body/leg bones; the head radius comes from ESPModule's formula.
      */
     public final FloatSetting boneRadiusFrac = new FloatSetting(
-            "Bone Radius (% box)##triggerbot", 0.06f, 0.02f, 0.20f);
+            "Bone Radius (% box)##triggerbot", 0.04f, 0.02f, 0.20f);
 
     /** Only fire at opponents. */
     public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only##triggerbot", true);
@@ -116,7 +116,7 @@ public class TriggerBotModule extends ManagedThreadModule {
      * faster than {@link #maxMoveSpeed} units/sec. Useful for rifles where
      * accuracy is penalised while moving.
      */
-    public final BooleanSetting stopWhenMoving = new BooleanSetting("Stop When Moving##triggerbot", false);
+    public final BooleanSetting stopWhenMoving = new BooleanSetting("Stop When Moving##triggerbot", true);
 
     /**
      * Maximum local-player ground speed (units/sec) allowed while firing.
@@ -124,7 +124,7 @@ public class TriggerBotModule extends ManagedThreadModule {
      * stationary (allows the tiny drift while standing).
      */
     public final FloatSetting maxMoveSpeed = new FloatSetting(
-            "Max Move Speed (u/s)##triggerbot", 50.0f, 0.0f, 300.0f);
+            "Max Move Speed (u/s)##triggerbot", 60.212f, 0.0f, 300.0f);
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
@@ -139,6 +139,7 @@ public class TriggerBotModule extends ManagedThreadModule {
 
     public TriggerBotModule() {
         super("TriggerBot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-TriggerBot");
+        setBindKey(90);
         addSetting(targetMode);
         addSetting(oneShotMode);
         addSetting(reactionDelay);

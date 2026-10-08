@@ -54,7 +54,7 @@ public class RadarHackModule extends CheatModule {
         /**
          * When enabled, only enemies are force-spotted; teammates are left unchanged.
          */
-        public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only", true);
+        public final BooleanSetting enemyOnly = new BooleanSetting("Enemy Only", false);
 
         /** Draw the custom ImGui minimap overlay on-screen. */
         public final BooleanSetting showOverlay = new BooleanSetting("Overlay Mini-Radar", true);
@@ -65,16 +65,16 @@ public class RadarHackModule extends CheatModule {
         /**
          * Toggle to rotate the radar map matching the player's view yaw orientation.
          */
-        public final BooleanSetting rotateRadar = new BooleanSetting("Rotate Radar Map", true);
+        public final BooleanSetting rotateRadar = new BooleanSetting("Rotate Radar Map", false);
 
         /** Radar X Position offset (default top-left to align with CS2 radar). */
-        public final FloatSetting radarX = new FloatSetting("Radar X Pos", 20.0f, 0.0f, 1920.0f);
+        public final FloatSetting radarX = new FloatSetting("Radar X Pos", 197.938f, 0.0f, 1920.0f);
 
         /** Radar Y Position offset (default top-left to align with CS2 radar). */
-        public final FloatSetting radarY = new FloatSetting("Radar Y Pos", 20.0f, 0.0f, 1080.0f);
+        public final FloatSetting radarY = new FloatSetting("Radar Y Pos", 77.938f, 0.0f, 1080.0f);
 
         /** Radar size (width/height of the square overlay). */
-        public final FloatSetting radarSize = new FloatSetting("Radar Size", 200.0f, 50.0f, 500.0f);
+        public final FloatSetting radarSize = new FloatSetting("Radar Size", 349.227f, 50.0f, 500.0f);
 
         /**
          * Radar coverage in world units per radar pixel. For mini-radar use 5–50; for
@@ -88,7 +88,7 @@ public class RadarHackModule extends CheatModule {
          * relative to a configurable map centre, without any rotation.
          * The local player is drawn as a white arrow at their actual position.
          */
-        public final BooleanSetting squareRadar = new BooleanSetting("Square Radar (Full Map)", false);
+        public final BooleanSetting squareRadar = new BooleanSetting("Square Radar (Full Map)", true);
 
         /**
          * Automatically detect the current map and use official overview coordinates

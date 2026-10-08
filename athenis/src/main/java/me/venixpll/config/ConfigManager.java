@@ -16,6 +16,9 @@ import me.venixpll.overlay.OverlayWindow;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -136,6 +139,103 @@ public final class ConfigManager {
     }
 
     /**
+     * Applies configuration values from a parsed {@link JsonObject} to registered modules.
+     */
+    public static void applyConfig(JsonObject root) {
+        if (root == null) return;
+
+        if (root.has("toggleKeyJava")) {
+            OverlayWindow.toggleKeyJava = root.get("toggleKeyJava").getAsInt();
+        }
+
+        if (root.has("offsetsFolder")) {
+            offsetsFolder = root.get("offsetsFolder").getAsString();
+        }
+
+        if (root.has("streamProof")) {
+            OverlayWindow.streamProof = root.get("streamProof").getAsBoolean();
+        }
+
+        if (root.has("panicKeyVK")) {
+            OverlayWindow.panicKeyVK = root.get("panicKeyVK").getAsInt();
+        }
+
+        if (root.has("panicDisableAllModules")) {
+            OverlayWindow.panicDisableAllModules = root.get("panicDisableAllModules").getAsBoolean();
+        }
+
+        if (root.has("modules")) {
+            JsonObject modules = root.getAsJsonObject("modules");
+
+            for (CheatModule module : ModuleManager.getModules()) {
+                if (!modules.has(module.getName())) continue;
+                JsonObject moduleObj = modules.getAsJsonObject(module.getName());
+
+                // Restore enabled state
+                if (moduleObj.has("enabled")) {
+                    module.setEnabled(moduleObj.get("enabled").getAsBoolean());
+                }
+
+                // Restore expanded state
+                if (moduleObj.has("expanded")) {
+                    module.setSettingsExpanded(moduleObj.get("expanded").getAsBoolean());
+                }
+
+                // Restore keybind
+                if (moduleObj.has("bindKey")) {
+                    module.setBindKey(moduleObj.get("bindKey").getAsInt());
+                }
+
+                // Restore individual settings
+                if (!moduleObj.has("settings")) continue;
+                JsonObject settingObj = moduleObj.getAsJsonObject("settings");
+
+                for (Setting<?> setting : module.getSettings()) {
+                    JsonElement el = settingObj.get(setting.getName());
+                    if (el == null) continue;
+
+                    try {
+                        if (setting instanceof FloatSetting) {
+                            ((FloatSetting) setting).setValue(el.getAsFloat());
+                        } else if (setting instanceof BooleanSetting) {
+                            ((BooleanSetting) setting).setValue(el.getAsBoolean());
+                        } else if (setting instanceof ModeSetting) {
+                            ((ModeSetting) setting).setValue(el.getAsInt());
+                        } else if (setting instanceof ColorSetting) {
+                            float[] rgba = GSON.fromJson(el, float[].class);
+                            ((ColorSetting) setting).setValue(rgba);
+                        }
+                    } catch (Exception typeMismatch) {
+                        System.err.println("[ConfigManager] Skipping incompatible value for '"
+                                + setting.getName() + "' in module '" + module.getName() + "'");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads the bundled default settings from classpath (/data/default_settings.json).
+     */
+    public static void loadDefaults() {
+        try (InputStream in = ConfigManager.class.getResourceAsStream("/data/default_settings.json")) {
+            if (in != null) {
+                try (InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
+                    JsonObject root = GSON.fromJson(reader, JsonObject.class);
+                    if (root != null) {
+                        applyConfig(root);
+                        System.out.println("[ConfigManager] Bundled default configuration applied.");
+                    }
+                }
+            } else {
+                System.out.println("[ConfigManager] No bundled default settings found in classpath.");
+            }
+        } catch (Exception e) {
+            System.err.println("[ConfigManager] Failed to load default settings: " + e.getMessage());
+        }
+    }
+
+    /**
      * Deserialises the settings file produced by {@link #save()} and applies
      * each value to the matching registered module/setting.
      * <p>
@@ -148,86 +248,19 @@ public final class ConfigManager {
     public static void load() {
         File file = resolveFile();
         if (!file.exists()) {
-            System.out.println("[ConfigManager] No settings file found — using defaults.");
+            System.out.println("[ConfigManager] No settings file found — loading default configuration.");
+            loadDefaults();
+            // Automatically persist defaults so settings.json is created on initial run
+            save();
             return;
         }
 
         try (FileReader reader = new FileReader(file)) {
             JsonObject root = GSON.fromJson(reader, JsonObject.class);
-            if (root == null) return;
-
-            if (root.has("toggleKeyJava")) {
-                OverlayWindow.toggleKeyJava = root.get("toggleKeyJava").getAsInt();
+            if (root != null) {
+                applyConfig(root);
+                System.out.println("[ConfigManager] Settings loaded from: " + file.getAbsolutePath());
             }
-
-            if (root.has("offsetsFolder")) {
-                offsetsFolder = root.get("offsetsFolder").getAsString();
-            }
-
-            if (root.has("streamProof")) {
-                OverlayWindow.streamProof = root.get("streamProof").getAsBoolean();
-            }
-
-            if (root.has("panicKeyVK")) {
-                OverlayWindow.panicKeyVK = root.get("panicKeyVK").getAsInt();
-            }
-
-            if (root.has("panicDisableAllModules")) {
-                OverlayWindow.panicDisableAllModules = root.get("panicDisableAllModules").getAsBoolean();
-            }
-
-            if (root.has("modules")) {
-                JsonObject modules = root.getAsJsonObject("modules");
-
-                for (CheatModule module : ModuleManager.getModules()) {
-                    if (!modules.has(module.getName())) continue;
-                    JsonObject moduleObj = modules.getAsJsonObject(module.getName());
-
-                    // Restore enabled state
-                    if (moduleObj.has("enabled")) {
-                        module.setEnabled(moduleObj.get("enabled").getAsBoolean());
-                    }
-
-                    // Restore expanded state
-                    if (moduleObj.has("expanded")) {
-                        module.setSettingsExpanded(moduleObj.get("expanded").getAsBoolean());
-                    }
-
-                    // Restore keybind
-                    if (moduleObj.has("bindKey")) {
-                        module.setBindKey(moduleObj.get("bindKey").getAsInt());
-                    }
-
-                    // Restore individual settings
-                    if (!moduleObj.has("settings")) continue;
-                    JsonObject settingObj = moduleObj.getAsJsonObject("settings");
-
-                    for (Setting<?> setting : module.getSettings()) {
-                        JsonElement el = settingObj.get(setting.getName());
-                        if (el == null) continue;
-
-                        try {
-                            if (setting instanceof FloatSetting) {
-                                ((FloatSetting) setting).setValue(el.getAsFloat());
-                            } else if (setting instanceof BooleanSetting) {
-                                ((BooleanSetting) setting).setValue(el.getAsBoolean());
-                            } else if (setting instanceof ModeSetting) {
-                                ((ModeSetting) setting).setValue(el.getAsInt());
-                            } else if (setting instanceof ColorSetting) {
-                                float[] rgba = GSON.fromJson(el, float[].class);
-                                ((ColorSetting) setting).setValue(rgba);
-                            }
-                        } catch (Exception typeMismatch) {
-                            // Skip values whose stored type doesn't match the
-                            // current setting kind (e.g. schema drift between versions).
-                            System.err.println("[ConfigManager] Skipping incompatible value for '"
-                                    + setting.getName() + "' in module '" + module.getName() + "'");
-                        }
-                    }
-                }
-            }
-
-            System.out.println("[ConfigManager] Settings loaded from: " + file.getAbsolutePath());
         } catch (Exception e) {
             System.err.println("[ConfigManager] Failed to load settings: " + e.getMessage());
         }

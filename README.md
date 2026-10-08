@@ -35,7 +35,7 @@ This produces two artifacts in `athenis/target/`:
 3. Press **START** in the launcher. Offsets are fetched from
    [a2x/cs2-dumper](https://github.com/a2x/cs2-dumper) and fall back to the
    bundled copy when offline.
-4. Press **INSERT** in-game to open the menu. **DELETE** is the default panic key.
+4. Press **/** (Slash) in-game to open the menu. **DELETE** is the default panic key.
 5. **STOP** in the launcher detaches and closes the overlay.
 
 If the launcher reports offset read errors, start it while already in a match

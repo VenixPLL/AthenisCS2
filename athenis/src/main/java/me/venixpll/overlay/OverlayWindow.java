@@ -70,7 +70,7 @@ public class OverlayWindow extends Application {
      * Configurable Java keycode to toggle the menu, default is KeyEvent.VK_INSERT
      * (155)
      */
-    public static int toggleKeyJava = KeyEvent.VK_INSERT;
+    public static int toggleKeyJava = KeyEvent.VK_SLASH; // 47 ('/')
 
     /**
      * Stream-proof mode: excludes the overlay window from screen capture
@@ -91,7 +91,7 @@ public class OverlayWindow extends Application {
      * modules; {@code false} only modules whose {@code isDangerous()} flag
      * is set (the default, matching the safety-first intent).
      */
-    public static boolean panicDisableAllModules = false;
+    public static boolean panicDisableAllModules = true;
 
     /** Randomized GLFW window title (set in configure) used to locate our own HWND. */
     private static String overlayWindowTitle = null;

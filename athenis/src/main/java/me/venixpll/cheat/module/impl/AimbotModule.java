@@ -76,9 +76,9 @@ public class AimbotModule extends ManagedThreadModule {
             "Aim Key##aimbot", 0,
             "Right Mouse", "Middle Mouse", "Left Alt", "Left Shift", "X Key", "Z Key", "Ctrl");
     public final FloatSetting fov = new FloatSetting(
-            "FOV (degrees)##aimbot", 0.7f, 0.5f, 45.0f);
+            "FOV (degrees)##aimbot", 0.783f, 0.5f, 45.0f);
     public final FloatSetting fovMin = new FloatSetting(
-            "FOV Min##aimbot", 0.01f, 0.01f, 3.0f);
+            "FOV Min##aimbot", 0.029f, 0.01f, 3.0f);
     public final BooleanSetting enemyOnly = new BooleanSetting(
             "Enemy Only##aimbot", true);
     public final BooleanSetting useVisCheck = new BooleanSetting(
@@ -92,7 +92,7 @@ public class AimbotModule extends ManagedThreadModule {
             "Flashbang Check##aimbot", true);
     /** When true, draws the FOV circle on the overlay. */
     public final BooleanSetting showFov = new BooleanSetting(
-            "Show FOV Circle##aimbot", true);
+            "Show FOV Circle##aimbot", false);
 
     // ── Mode settings aliases (for direct access & backward compatibility) ─────
     public final FloatSetting smooth = classicMode.smooth;
@@ -112,7 +112,7 @@ public class AimbotModule extends ManagedThreadModule {
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public AimbotModule() {
-        super("Aimbot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-Aimbot");
+        super("Aimbot", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, true, "Athenis-Aimbot");
 
         // Register default aim modes
         registerAimModeInternal(classicMode);

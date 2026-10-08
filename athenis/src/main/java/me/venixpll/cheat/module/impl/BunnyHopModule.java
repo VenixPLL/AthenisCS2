@@ -21,11 +21,11 @@ public class BunnyHopModule extends ManagedThreadModule {
 
     /** Delay in milliseconds before executing the jump action */
     public final FloatSetting plusJumpDelay = new FloatSetting(
-            "Plus Jump Delay (ms)", 10.0f, 0.0f, 100.0f);
+            "Plus Jump Delay (ms)", 0.0f, 0.0f, 100.0f);
 
     /** Loop / release delay in milliseconds */
     public final FloatSetting minusJumpDelay = new FloatSetting(
-            "Minus Jump Delay (ms)", 10.0f, 0.0f, 100.0f);
+            "Minus Jump Delay (ms)", 0.0f, 0.0f, 100.0f);
 
     private static final int VK_SPACE = 0x20;
     private static final int FORCE_JUMP_ACTIVE = 65537;
@@ -36,7 +36,7 @@ public class BunnyHopModule extends ManagedThreadModule {
     private static final int CROUCHING = 65667;
 
     public BunnyHopModule() {
-        super("BunnyHop", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, false, "Athenis-BunnyHop");
+        super("BunnyHop", ModuleCategory.EXTERNAL, MenuGroup.COMBAT, true, "Athenis-BunnyHop");
         addSetting(plusJumpDelay);
         addSetting(minusJumpDelay);
     }
